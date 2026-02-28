@@ -4,7 +4,7 @@ Fresh Next.js rebuild of https://evedeck.space that keeps the WonderCMS visual s
 
 ## Product
 
-EveDeck is an EVE-O Preview-like .NET application specifically made to provide EVE-O Preview features for tablets using [Spacedesk](https://www.spacedesk.net/) to simulate a monitor.
+EveDeck is an EVE-O Preview-like .NET application specifically made to provide EVE-O Preview features for tablets. For turning a tablet into a monitor, use either [Spacedesk](https://www.spacedesk.net/) for free or [SuperDisplay](https://superdisplay.app/) as the preferred paid option.
 
 ## Routes
 
