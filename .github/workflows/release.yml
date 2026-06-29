@@ -69,6 +69,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
 
       - name: Setup Node 22
         uses: actions/setup-node@v4
@@ -91,7 +92,7 @@ jobs:
           git commit -m "chore: add release v${{ needs.build-and-release.outputs.version }} to content.ts
 
           Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-          git push
+          git push origin HEAD:main
 
       - name: Write SSH key
         run: |
