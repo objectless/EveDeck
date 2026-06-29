@@ -94,22 +94,19 @@ jobs:
           Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
           git push origin HEAD:main
 
-      - name: Write SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H REDACTED-HOST >> ~/.ssh/known_hosts
-
-      - name: Make deploy scripts executable
-        run: chmod +x site/deploy/deploy.sh site/deploy/deploy-rsync.sh
-
-      - name: Deploy site
+      - name: Setup SSH and deploy
         env:
-          EVEDECK_LOCAL_PATH: ${{ github.workspace }}/site/
-          EVEDECK_KEY_SSH: ~/.ssh/deploy_key
-          EVEDECK_REMOTE_HOST: REDACTED-HOST
-          EVEDECK_REMOTE_PATH: /home/REDACTED-USER/web/evedeck.space/private/app/
-          EVEDECK_APP_NAME: evedeck
-          EVEDECK_HEALTHCHECK_URL: https://evedeck.space/health
-        run: bash site/deploy/deploy.sh
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          printf '%s' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          ssh-keyscan -H REDACTED-HOST >> "$HOME/.ssh/known_hosts"
+          chmod +x site/deploy/deploy.sh site/deploy/deploy-rsync.sh
+          export EVEDECK_LOCAL_PATH="${{ github.workspace }}/site/"
+          export EVEDECK_KEY_SSH="$HOME/.ssh/deploy_key"
+          export EVEDECK_REMOTE_HOST="REDACTED-HOST"
+          export EVEDECK_REMOTE_PATH="/home/REDACTED-USER/web/evedeck.space/private/app/"
+          export EVEDECK_APP_NAME="evedeck"
+          export EVEDECK_HEALTHCHECK_URL="https://evedeck.space/health"
+          bash site/deploy/deploy.sh
