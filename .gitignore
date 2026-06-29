@@ -1,0 +1,14 @@
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+TestResults/
+*.log
+
+# Build / publish output
+publish/
+
+# Local Claude Code settings
+.claude/settings.local.json
