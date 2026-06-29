@@ -8,3 +8,10 @@ pnpm-debug.log*
 .env
 .env.local
 .DS_Store
+
+# Large release artifacts — served from GitHub Releases instead
+site/public/files/*.zip
+site/public/files/*.exe
+publish/
+sc-winx64/
+settings.local.json
