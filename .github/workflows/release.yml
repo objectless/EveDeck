@@ -39,27 +39,33 @@ jobs:
           (Get-Content $proj) -replace '<Version>[^<]+</Version>', "<Version>$ver</Version>" |
             Set-Content $proj
 
-      - name: Publish self-contained exe
+      - name: Publish self-contained
         shell: pwsh
         run: |
           dotnet publish ewc/src/EveWindowCommander/EveWindowCommander.csproj `
             -c Release --self-contained -r win-x64 `
-            -p:PublishSingleFile=true `
             -o publish-ci
 
-      - name: Rename exe
+      - name: Package as zip
         shell: pwsh
-        run: Rename-Item publish-ci/EveWindowCommander.exe EveDeck.exe
+        run: |
+          Rename-Item publish-ci\EveWindowCommander.exe EveDeck.exe
+          Compress-Archive -Path publish-ci\* -DestinationPath "EveDeck-v${{ steps.ver.outputs.version }}.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: EveDeck v${{ steps.ver.outputs.version }}
           body: |
-            Download **EveDeck.exe** below — single self-contained executable, no installer or .NET runtime required.
+            Download **EveDeck-v${{ steps.ver.outputs.version }}.zip** below, extract, and run **EveDeck.exe**.
+
+            No installer or .NET runtime required — everything is bundled.
+
+            > **Windows SmartScreen:** click **More info → Run anyway** on first launch.
+            > Right-click → Properties → Unblock also removes the prompt permanently.
 
             See [evedeck.space/releases](https://evedeck.space/releases) for full release notes.
-          files: publish-ci/EveDeck.exe
+          files: EveDeck-v${{ steps.ver.outputs.version }}.zip
 
   update-site:
     needs: build-and-release
@@ -81,7 +87,7 @@ jobs:
         env:
           VERSION: ${{ needs.build-and-release.outputs.version }}
           REPO: ${{ github.repository }}
-        run: node site/scripts/add-release.mjs "$VERSION" "https://github.com/$REPO/releases/download/v$VERSION/EveDeck.exe"
+        run: node site/scripts/add-release.mjs "$VERSION" "https://github.com/$REPO/releases/download/v$VERSION/EveDeck-v$VERSION.zip"
 
       - name: Commit content.ts update
         shell: bash
