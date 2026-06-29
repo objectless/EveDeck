@@ -1569,6 +1569,147 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
           </Grid>
         </TabItem>
 
+        <!-- ──────────────────── PROFILE SYNC TAB ──────────────────── -->
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="&#xE8C8;" FontFamily="Segoe MDL2 Assets" FontSize="13" Margin="0,0,7,0" VerticalAlignment="Center"/>
+              <TextBlock Text="Profile Sync" VerticalAlignment="Center"/>
+            </StackPanel>
+          </TabItem.Header>
+          <Grid Margin="12">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Folder selector row -->
+            <Grid Grid.Row="0" Margin="0,0,0,10">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                <TextBlock Text="&#xE8C8;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                           Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBlock Text="Settings folder:" VerticalAlignment="Center"/>
+              </StackPanel>
+              <ComboBox Grid.Column="1"
+                        ItemsSource="{Binding SettingsFolders}"
+                        SelectedItem="{Binding SelectedSettingsFolder}"
+                        DisplayMemberPath="DisplayName"
+                        VerticalAlignment="Center"/>
+              <Button Grid.Column="2" Content="Refresh" Command="{Binding RefreshSettingsFoldersCommand}"
+                      Margin="8,0,0,0" VerticalAlignment="Center"/>
+            </Grid>
+
+            <!-- Source | Targets -->
+            <Grid Grid.Row="1">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+
+              <!-- SOURCE panel -->
+              <DockPanel Grid.Column="0">
+                <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="4" Padding="10,6" Margin="0,0,0,6">
+                  <StackPanel>
+                    <TextBlock Text="SOURCE" FontSize="10" FontWeight="Bold"
+                               Foreground="{StaticResource AccentBrush}" Margin="0,0,0,2"/>
+                    <TextBlock Text="Copy settings from this character" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                  </StackPanel>
+                </Border>
+                <ListBox DockPanel.Dock="Bottom"
+                         ItemsSource="{Binding CharacterProfiles}"
+                         SelectedItem="{Binding SourceProfile}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel Orientation="Horizontal" Margin="2,3">
+                        <Ellipse Width="36" Height="36" Margin="0,0,9,0" VerticalAlignment="Center"
+                                 Style="{StaticResource PortraitDot}">
+                          <Ellipse.Fill>
+                            <ImageBrush ImageSource="{Binding PortraitUrl}" Stretch="UniformToFill"/>
+                          </Ellipse.Fill>
+                        </Ellipse>
+                        <StackPanel VerticalAlignment="Center">
+                          <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"/>
+                          <TextBlock Text="{Binding CharacterId}" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                        </StackPanel>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </DockPanel>
+
+              <!-- TARGETS panel -->
+              <DockPanel Grid.Column="2">
+                <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="4" Padding="10,6" Margin="0,0,0,6">
+                  <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                      <Button Content="All" Command="{Binding SelectAllProfileTargetsCommand}" Padding="8,2" Margin="0,0,4,0"/>
+                      <Button Content="Clear" Command="{Binding ClearAllProfileTargetsCommand}" Padding="8,2"/>
+                    </StackPanel>
+                    <StackPanel>
+                      <TextBlock Text="TARGETS" FontSize="10" FontWeight="Bold"
+                                 Foreground="{StaticResource AccentBrush}" Margin="0,0,0,2"/>
+                      <TextBlock Text="Check characters to receive the settings" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                    </StackPanel>
+                  </DockPanel>
+                </Border>
+                <ListBox DockPanel.Dock="Bottom"
+                         ItemsSource="{Binding CharacterProfiles}">
+                  <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                      <Setter Property="Focusable" Value="False"/>
+                    </Style>
+                  </ListBox.ItemContainerStyle>
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                Margin="2,3" VerticalContentAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                          <Ellipse Width="36" Height="36" Margin="0,0,9,0" VerticalAlignment="Center"
+                                   Style="{StaticResource PortraitDot}">
+                            <Ellipse.Fill>
+                              <ImageBrush ImageSource="{Binding PortraitUrl}" Stretch="UniformToFill"/>
+                            </Ellipse.Fill>
+                          </Ellipse>
+                          <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"/>
+                            <TextBlock Text="{Binding CharacterId}" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                          </StackPanel>
+                        </StackPanel>
+                      </CheckBox>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </DockPanel>
+            </Grid>
+
+            <!-- Status + Copy button -->
+            <Grid Grid.Row="2" Margin="0,10,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="{Binding ProfileCopyStatus}"
+                         Foreground="{StaticResource MutedBrush}"
+                         VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"/>
+              <Button Grid.Column="1" Content="Copy Settings  →"
+                      Command="{Binding ExecuteCopyProfilesCommand}"
+                      Margin="16,0,0,0" Padding="14,6"
+                      FontWeight="SemiBold"/>
+            </Grid>
+          </Grid>
+        </TabItem>
+
         <!-- ──────────────────── ABOUT TAB ──────────────────── -->
         <TabItem>
           <TabItem.Header>
@@ -1616,7 +1757,7 @@ EveDeck arranges your EVE clients into tidy on-screen layouts and lets you jump 
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Clients" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
                 <TextBlock Grid.Row="0" Grid.Column="1" Text="Match each detected EVE window to a slot in your layout." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
@@ -1630,8 +1771,10 @@ EveDeck arranges your EVE clients into tidy on-screen layouts and lets you jump 
                 <TextBlock Grid.Row="4" Grid.Column="1" Text="See your displays and their exact coordinates for placing layouts." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
                 <TextBlock Grid.Row="5" Grid.Column="0" Text="Display Tips" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
                 <TextBlock Grid.Row="5" Grid.Column="1" Text="How to use AMD VSR or Nvidia DSR to give the master slot more pixels." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
-                <TextBlock Grid.Row="6" Grid.Column="0" Text="Disclaimer" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
-                <TextBlock Grid.Row="6" Grid.Column="1" Text="Exactly what EveDeck will and won't do to your clients." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Profile Sync" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
+                <TextBlock Grid.Row="6" Grid.Column="1" Text="Mass-copy one character's EVE UI settings to multiple alts in one click." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="Disclaimer" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
+                <TextBlock Grid.Row="7" Grid.Column="1" Text="Exactly what EveDeck will and won't do to your clients." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
               </Grid>
 
               <Separator Margin="0,4,0,16"/>

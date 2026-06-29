@@ -215,7 +215,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         Log.Info("EveDeck started.");
         _ = CheckForUpdateAsync();
+        InitProfileCopy();
     }
+
+    partial void InitProfileCopy();
 
     private async Task CheckForUpdateAsync()
     {
