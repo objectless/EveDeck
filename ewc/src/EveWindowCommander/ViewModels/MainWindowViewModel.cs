@@ -68,6 +68,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private HotkeyBinding? _capturingHotkey;
     private string _status = "Ready.";
     private string _lastUpdatedText = "Not refreshed yet";
+    private bool _updateAvailable;
+    private string _updateVersion = "";
 
     public MainWindowViewModel()
     {
@@ -183,6 +185,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         Log.Info("EVE Window Commander started.");
+        _ = CheckForUpdateAsync();
+    }
+
+    private async Task CheckForUpdateAsync()
+    {
+        var info = await UpdateCheckService.CheckAsync().ConfigureAwait(false);
+        if (info is null || !UpdateCheckService.IsNewer(info.Version)) return;
+        _updateVersion = info.Version;
+        UpdateAvailable = true;
     }
 
     // ── Observables ────────────────────────────────────────────────────────────
@@ -393,6 +404,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return v is null ? "dev" : $"v{v.Major}.{v.Minor}.{v.Build}";
         }
     }
+
+    public bool UpdateAvailable
+    {
+        get => _updateAvailable;
+        private set
+        {
+            if (!SetProperty(ref _updateAvailable, value)) return;
+            OnPropertyChanged(nameof(UpdateMessage));
+        }
+    }
+
+    public string UpdateMessage => _updateAvailable
+        ? $"Update available: v{_updateVersion} — evedeck.space/releases"
+        : "";
 
     public int WindowCount => Windows.Count;
     public int MonitorCount => Monitors.Count;

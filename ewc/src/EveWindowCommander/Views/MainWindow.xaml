@@ -122,6 +122,62 @@
         </DockPanel>
       </Border>
 
+      <!-- ═══ Update Banner ═══ -->
+      <Border DockPanel.Dock="Top"
+              Padding="12,6"
+              BorderThickness="0,0,0,1"
+              Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolToVis}}">
+        <Border.Background>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#1A2B0C" Offset="0"/>
+            <GradientStop Color="#162508" Offset="1"/>
+          </LinearGradientBrush>
+        </Border.Background>
+        <Border.BorderBrush>
+          <SolidColorBrush Color="#2D6A1A" Opacity=".6"/>
+        </Border.BorderBrush>
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Left"
+                     Foreground="#6EE84A"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"
+                     Text="{Binding UpdateMessage}"/>
+          <Button DockPanel.Dock="Right"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Center"
+                  Padding="10,3"
+                  FontSize="11"
+                  FontWeight="SemiBold"
+                  Cursor="Hand"
+                  ToolTip="Open release page in browser"
+                  Click="UpdateBanner_Click">
+            <Button.Style>
+              <Style TargetType="Button">
+                <Setter Property="Background" Value="#2A6018"/>
+                <Setter Property="Foreground" Value="#CEFFA8"/>
+                <Setter Property="BorderBrush" Value="#3D8022"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Template">
+                  <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                      <Border Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="4"
+                              Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      </Border>
+                    </ControlTemplate>
+                  </Setter.Value>
+                </Setter>
+              </Style>
+            </Button.Style>
+            Download update ↗
+          </Button>
+        </DockPanel>
+      </Border>
+
       <!-- ═══ Status Bar ═══ -->
       <Border DockPanel.Dock="Bottom"
               Background="#0A0D14"

@@ -454,6 +454,9 @@ public partial class MainWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e)
         => Close();
 
+    private void UpdateBanner_Click(object sender, RoutedEventArgs e)
+        => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://evedeck.space/releases") { UseShellExecute = true });
+
     private void FrameColorPreset_Click(object sender, RoutedEventArgs e)
     {
         if (sender is System.Windows.Controls.Button { Tag: string color })
