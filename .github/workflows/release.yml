@@ -101,6 +101,9 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H REDACTED-HOST >> ~/.ssh/known_hosts
 
+      - name: Make deploy scripts executable
+        run: chmod +x site/deploy/deploy.sh site/deploy/deploy-rsync.sh
+
       - name: Deploy site
         env:
           EVEDECK_LOCAL_PATH: ${{ github.workspace }}/site/
