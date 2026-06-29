@@ -49,7 +49,6 @@ jobs:
       - name: Package as zip
         shell: pwsh
         run: |
-          Rename-Item publish-ci\EveWindowCommander.exe EveDeck.exe
           Compress-Archive -Path publish-ci\* -DestinationPath "EveDeck-v${{ steps.ver.outputs.version }}.zip"
 
       - name: Create GitHub Release

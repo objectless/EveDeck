@@ -492,7 +492,7 @@ public partial class MainWindow : Window
         {
             Title = "Export Settings",
             Filter = "JSON settings|*.json",
-            FileName = $"ewc_settings_{DateTime.Now:yyyy-MM-dd}.json"
+            FileName = $"evedeck_settings_{DateTime.Now:yyyy-MM-dd}.json"
         };
         if (dlg.ShowDialog(this) == true)
             _viewModel.ExportSettings(dlg.FileName);

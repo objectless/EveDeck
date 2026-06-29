@@ -15,7 +15,7 @@ public sealed class LogService
     {
         _logFolder = logFolder;
         Directory.CreateDirectory(_logFolder);
-        _logPath = Path.Combine(_logFolder, $"ewc-{DateTime.Now:yyyyMMdd}.log");
+        _logPath = Path.Combine(_logFolder, $"evedeck-{DateTime.Now:yyyyMMdd}.log");
     }
 
     public void Info(string message) => Write("Info", message);

@@ -238,7 +238,7 @@
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                       <Button Content="Spawn Test Windows"
                               Command="{Binding SpawnTestWindowsCommand}"
-                              ToolTip="Open one Notepad window per slot, titled 'EWC TEST - Slot N', so you can test layout placement without EVE running."
+                              ToolTip="Open one Notepad window per slot, titled 'EveDeck TEST - Slot N', so you can test layout placement without EVE running."
                               Margin="0,0,8,0"/>
                       <CheckBox Content="Include Notepad test windows"
                                 IsChecked="{Binding IncludeNotepadTestWindows}"

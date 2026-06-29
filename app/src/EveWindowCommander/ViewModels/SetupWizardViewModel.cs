@@ -174,7 +174,7 @@ public sealed class SetupWizardViewModel : ObservableObject
                     : $"This display is {w}×{h} ({RatioText(w, h)}). Grid tiles will be sized to fit the monitor, which is fine at any aspect ratio.");
             }
             if (m.ScalePercent != 100)
-                parts.Add($"Display scaling is {m.ScalePercent:0}%. EWC places windows in physical pixels, so the layout already accounts for this.");
+                parts.Add($"Display scaling is {m.ScalePercent:0}%. EveDeck places windows in physical pixels, so the layout already accounts for this.");
 
             return string.Join("\n\n", parts);
         }

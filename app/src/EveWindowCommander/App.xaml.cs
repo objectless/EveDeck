@@ -14,7 +14,7 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        _singleInstanceMutex = new Mutex(true, "EveWindowCommander.SingleInstance", out var isFirstInstance);
+        _singleInstanceMutex = new Mutex(true, "EveDeck.SingleInstance", out var isFirstInstance);
         _ownsSingleInstanceMutex = isFirstInstance;
         if (!isFirstInstance)
         {
