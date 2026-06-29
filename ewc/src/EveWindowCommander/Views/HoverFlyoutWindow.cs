@@ -21,6 +21,7 @@ internal sealed class HoverFlyoutWindow : Window
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
+        Topmost = true;
 
         Left = physX / dpiScale;
         Top = physY / dpiScale;

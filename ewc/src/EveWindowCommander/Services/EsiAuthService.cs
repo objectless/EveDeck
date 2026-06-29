@@ -59,7 +59,7 @@ public sealed class EsiAuthService
 
         var html = code is not null && returnedState == state
             ? "<html><body style='font-family:sans-serif;background:#0a0d14;color:#e2e8f0;padding:40px'><h2>✓ Login successful — you can close this tab.</h2></body></html>"
-            : "<html><body style='font-family:sans-serif;background:#0a0d14;color:#ef4444;padding:40px'><h2>Login failed — check EVE Window Commander.</h2></body></html>";
+            : "<html><body style='font-family:sans-serif;background:#0a0d14;color:#ef4444;padding:40px'><h2>Login failed — check EveDeck.</h2></body></html>";
         var htmlBytes = Encoding.UTF8.GetBytes(html);
         context.Response.ContentType = "text/html; charset=utf-8";
         context.Response.ContentLength64 = htmlBytes.Length;

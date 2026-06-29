@@ -11,7 +11,7 @@ public sealed class ConfigService
 
     public string AppDataFolder { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "EVE Window Commander");
+        "EveDeck");
 
     public string ConfigPath => Path.Combine(AppDataFolder, "settings.json");
     public string LogsFolder => Path.Combine(AppDataFolder, "logs");
@@ -19,6 +19,15 @@ public sealed class ConfigService
 
     public AppSettings Load()
     {
+        // One-time migration: move settings from old "EVE Window Commander" folder to "EveDeck".
+        var oldFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "EVE Window Commander");
+        if (Directory.Exists(oldFolder) && !Directory.Exists(AppDataFolder))
+        {
+            try { Directory.Move(oldFolder, AppDataFolder); } catch { }
+        }
+
         Directory.CreateDirectory(AppDataFolder);
         Directory.CreateDirectory(LogsFolder);
 
@@ -49,43 +58,80 @@ public sealed class ConfigService
     public void Save(AppSettings settings)
     {
         Directory.CreateDirectory(AppDataFolder);
-        File.WriteAllText(ConfigPath, JsonSerializer.Serialize(settings, JsonOptions));
+        // Write to a temp file then atomically replace — prevents zero-filled settings.json on crash.
+        var tmp = ConfigPath + ".tmp";
+        File.WriteAllText(tmp, JsonSerializer.Serialize(settings, JsonOptions));
+        File.Replace(tmp, ConfigPath, destinationBackupFileName: null);
     }
 
     // ── Backup ────────────────────────────────────────────────────────────────
 
-    // Copy current settings to a timestamped file in BackupsFolder, keeping at most `keep` files.
-    public void CreateBackup(int keep = 10)
+    private static bool IsFileHealthy(string path)
+    {
+        try
+        {
+            var bytes = File.ReadAllBytes(path);
+            if (bytes.Length < 10 || bytes.All(b => b == 0)) return false;
+            return JsonSerializer.Deserialize<AppSettings>(
+                System.Text.Encoding.UTF8.GetString(bytes), new JsonSerializerOptions()) is not null;
+        }
+        catch { return false; }
+    }
+
+    // Copy current settings to a timestamped file in BackupsFolder.
+    // Skips if the current settings.json is corrupt/empty to avoid overwriting healthy backups.
+    public void CreateBackup()
     {
         if (!File.Exists(ConfigPath)) return;
+        var raw = File.ReadAllText(ConfigPath);
+        AppSettings? s = null;
+        try { s = JsonSerializer.Deserialize<AppSettings>(raw, JsonOptions); } catch { }
+        if (s is null) return; // corrupt — don't overwrite good backups
         Directory.CreateDirectory(BackupsFolder);
-        var stamp = DateTime.Now.ToString("yyyy-MM-ddTHH-mm-ss");
-        var dest = Path.Combine(BackupsFolder, $"settings_backup_{stamp}.json");
-        // Avoid duplicate stamps if called twice in the same second.
+        var slots = s.CharacterSets.Sum(cs => cs.Assignments.Count);
+        var chars = s.CharacterSets.Sum(cs => cs.Assignments.Sum(a => a.EsiCharacters.Count));
+        var now = DateTime.Now;
+        var dest = Path.Combine(BackupsFolder, SettingsBackup.BuildFileName(now, slots, chars));
         if (!File.Exists(dest))
             try { File.Copy(ConfigPath, dest); } catch { }
-        PruneBackups(keep);
+        PruneBackups();
     }
 
     public IReadOnlyList<SettingsBackup> GetBackups()
     {
         if (!Directory.Exists(BackupsFolder)) return Array.Empty<SettingsBackup>();
         return Directory.GetFiles(BackupsFolder, "settings_backup_*.json")
-            .Select(p => new SettingsBackup(File.GetLastWriteTime(p), p))
+            .Select(p => SettingsBackup.FromPath(p))
+            .Where(b => b is not null)
+            .Cast<SettingsBackup>()
             .OrderByDescending(b => b.Timestamp)
             .ToList();
     }
 
-    // Overwrite settings.json with a backup file. Caller is responsible for restarting the app.
+    // Overwrite settings.json with a backup file. Throws if the backup is corrupt.
+    // Caller is responsible for restarting the app.
     public void RestoreBackup(string backupPath)
     {
+        if (!IsFileHealthy(backupPath))
+            throw new InvalidOperationException("The selected backup file appears to be corrupt and cannot be restored.");
         File.Copy(backupPath, ConfigPath, overwrite: true);
     }
 
-    private void PruneBackups(int keep)
+    // Keep 5 backups from today + 1 per prior day for 7 days (roughly 12 total).
+    private void PruneBackups()
     {
-        var old = GetBackups().Skip(keep).ToList();
-        foreach (var b in old)
+        var all = GetBackups();
+        var today = DateTime.Today;
+        var keep = all
+            .Where(b => b.Timestamp.Date == today).Take(5)
+            .Concat(all
+                .Where(b => b.Timestamp.Date != today)
+                .GroupBy(b => b.Timestamp.Date)
+                .Where(g => (today - g.Key).TotalDays <= 7)
+                .Select(g => g.First()))
+            .Select(b => b.Path)
+            .ToHashSet();
+        foreach (var b in all.Where(b => !keep.Contains(b.Path)))
             try { File.Delete(b.Path); } catch { }
     }
 
@@ -168,6 +214,25 @@ public sealed class ConfigService
         }
 
         ReorderCharacterHotkeysFirst(settings.Hotkeys);
+
+        // Migrate to CharacterSets: wrap the existing Assignments+Hotkeys into the Default set.
+        if (settings.CharacterSets.Count == 0)
+        {
+            var defaultSet = new Models.CharacterSet { Name = "Default" };
+            foreach (var a in settings.Assignments) defaultSet.Assignments.Add(a);
+            foreach (var h in settings.Hotkeys) defaultSet.Hotkeys.Add(h);
+            settings.CharacterSets.Add(defaultSet);
+            settings.ActiveCharacterSetId = defaultSet.Id;
+        }
+        else if (string.IsNullOrEmpty(settings.ActiveCharacterSetId)
+            || settings.CharacterSets.All(s => s.Id != settings.ActiveCharacterSetId))
+        {
+            settings.ActiveCharacterSetId = settings.CharacterSets[0].Id;
+        }
+
+        // Mark the active set so the UI toggle buttons show it as selected.
+        foreach (var s in settings.CharacterSets)
+            s.IsActive = s.Id == settings.ActiveCharacterSetId;
     }
 
     // The "Switch to character" hotkeys are the most-used rows, so surface them at the top of the

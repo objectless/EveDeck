@@ -105,6 +105,9 @@ public sealed partial class MainWindowViewModel
         // 2f — Auto-label slot from EVE character name when slot still has default name.
         TryAutoLabelSlot(assignment, SelectedWindow);
 
+        if (assignment.IsTopmost)
+            _windowService.SetWindowTopmost(SelectedWindow.Handle, true);
+
         Log.Info($"Added '{title}' to slot {assignment.SlotNumber} ({assignment.Label}).");
         Save();
     }

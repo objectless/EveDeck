@@ -1,6 +1,6 @@
-# EVE Window Commander
+# EveDeck
 
-EVE Window Commander is a Windows desktop window manager for EVE Online multibox layouts. It is similar in spirit to Borderless Gaming, but focused on assigning EVE client windows to named slots, applying saved layouts, and focusing one client at a time with safe global hotkeys.
+EveDeck is a Windows desktop window manager for EVE Online multibox layouts. It is similar in spirit to Borderless Gaming, but focused on assigning EVE client windows to named slots, applying saved layouts, and focusing one client at a time with safe global hotkeys.
 
 ## Safety Policy
 
@@ -69,19 +69,19 @@ dotnet publish .\src\EveWindowCommander\EveWindowCommander.csproj -c Release -r 
 Settings are stored in:
 
 ```text
-%LOCALAPPDATA%\EVE Window Commander\settings.json
+%LOCALAPPDATA%\EveDeck\settings.json
 ```
 
 Logs are stored in:
 
 ```text
-%LOCALAPPDATA%\EVE Window Commander\logs
+%LOCALAPPDATA%\EveDeck\logs
 ```
 
 ## Acceptance Smoke Test
 
 1. Launch four Notepad windows or four EVE clients.
-2. Open EVE Window Commander.
+2. Open EveDeck.
 3. Leave "Include Notepad test windows" enabled if testing with Notepad.
 4. Assign each detected window to slots 1 through 4.
 5. Select `3200x1800 VSR 2x2 - four 1600x900 slots`.

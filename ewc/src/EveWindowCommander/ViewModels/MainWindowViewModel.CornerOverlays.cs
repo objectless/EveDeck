@@ -5,39 +5,88 @@ namespace EveWindowCommander.ViewModels;
 
 public sealed partial class MainWindowViewModel
 {
-    // ── Model A occupancy ──────────────────────────────────────────────────────
-    // Seats (SlotAssignment.SlotNumber) are FIXED accounts — their Label (main character),
+    // -- Model A occupancy --------------------------------------------------------
+    // Seats (SlotAssignment.SlotNumber) are FIXED accounts -- their Label (main character),
     // AssignedWindows, etc. never move. What changes is which seat occupies the centre rect and
     // which seat shows at each corner POSITION. A "position id" is the non-master profile slot
     // number whose rect defines that corner; positions are fixed for the session, occupants rotate.
+    //
+    // With multiple swap groups each group is an independent swap ring with its own centre slot and
+    // master seat. All per-group occupancy is keyed by groupId (SwapGroup.GroupId or "__single__").
+    // EffectiveGroups() synthesises a single all-slots group when no groups are defined so legacy
+    // behaviour is preserved automatically.
 
-    // Tiles + pills are keyed by POSITION id. The centre pill is stored under the master slot number.
+    // Tiles + pills are keyed by POSITION id. Centre pills are stored under the group's centre slot number.
     private readonly Dictionary<int, CornerOverlayWindow> _cornerOverlays = new();
     private readonly Dictionary<int, PillOverlay> _pills = new();
-    private readonly Dictionary<int, nint> _cornerSourceHandles = new();   // position id -> currently shown source HWND
-    private readonly Dictionary<int, WindowRect> _cornerRects = new();     // position id -> physical tile rect (for cursor polling)
-    private int _cursorOverPosition = -1;                                   // position currently under the cursor (-1 = none)
+    private readonly Dictionary<int, nint> _cornerSourceHandles = new();
+    private readonly Dictionary<int, WindowRect> _cornerRects = new();
+    private int _cursorOverPosition = -1;
 
-    // Flyout card currently showing a corner client's enlarged preview. Null = no flyout active.
-    private HoverFlyoutWindow? _hoverFlyout;
     // Corner position waiting for the debounce delay to fire. -1 = none pending.
     private int _pendingHoverPosition = -1;
 
-    private int _centeredSeat;                                             // seat currently at the centre rect
-    private readonly Dictionary<int, int> _cornerSeat = new();             // position id -> seat currently shown there
+    // Peek-swap state — a temporary move-swap that reverts when the cursor leaves.
+    private int _peekPosition = -1;       // corner position currently peeked; -1 = none
+    private int _peekSeat = -1;           // seat moved to master rect
+    private int _peekCenteredSeat = -1;   // seat displaced from master rect to corner
+    private string? _peekGroupId;
+    private WindowRect? _peekMasterRect;  // master rect at peek time (extends hover zone)
 
-    // The baseline ("home") arrangement, captured by ResetCornerOccupancy. Every non-master seat has a
-    // fixed home corner; the master seat has none (it lives in the centre). CenterSeat rebuilds the whole
-    // corner arrangement from these each switch, so a character always returns to its OWN home corner
-    // instead of drifting into whatever slot the last swap happened to vacate.
-    private readonly Dictionary<int, int> _homeOccupant = new();           // home position id -> seat
-    private readonly Dictionary<int, int> _homePosition = new();           // seat -> home position id
+    // Per-group occupancy. In legacy (single-group) mode all dicts have a single key "__single__".
+    private readonly Dictionary<string, int> _centeredSeatByGroup = new();
+    private readonly Dictionary<string, int> _baseMasterByGroup = new();
+    private readonly Dictionary<string, Dictionary<int, int>> _cornerSeatByGroup = new();
+    private readonly Dictionary<string, Dictionary<int, int>> _homeOccupantByGroup = new();
+    private readonly Dictionary<string, Dictionary<int, int>> _homePositionByGroup = new();
 
-    // The at-rest "home" arrangement of corner positions → seats. Honours each profile slot's user-set
-    // HomeSeat (drag a seat card onto a mini-map corner); any position left unset, or whose HomeSeat is
-    // the master seat / an already-placed seat, falls back to the legacy rule (seat number == position)
-    // and finally a deterministic zip of leftovers. The master seat is excluded — it lives in the centre.
-    // Fully determined by the profile + master setting, so the mini-map editor and runtime never diverge.
+    // -- Swap group helpers -------------------------------------------------------
+
+    private IReadOnlyList<SwapGroup> EffectiveGroups()
+    {
+        if (SelectedProfile is null) return Array.Empty<SwapGroup>();
+        if (SelectedProfile.SwapGroups.Count > 0) return SelectedProfile.SwapGroups;
+        var allSlots = SelectedProfile.Slots.Select(s => s.SlotNumber).ToList();
+        return new[] { new SwapGroup { GroupId = "__single__", Name = "Default", SlotNumbers = allSlots } };
+    }
+
+    private int CenterSlotForGroup(SwapGroup group)
+    {
+        if (SelectedProfile is null) return CenterSlotNumber;
+        IEnumerable<LayoutSlot> groupSlots = group.SlotNumbers.Count == 0
+            ? SelectedProfile.Slots
+            : SelectedProfile.Slots.Where(s => group.SlotNumbers.Contains(s.SlotNumber));
+        return groupSlots.MaxBy(s => (long)s.Width * s.Height)?.SlotNumber ?? CenterSlotNumber;
+    }
+
+    private int OccupantAtPosition(int position)
+    {
+        foreach (var (_, corners) in _cornerSeatByGroup)
+            if (corners.TryGetValue(position, out var s)) return s;
+        foreach (var group in EffectiveGroups())
+            if (CenterSlotForGroup(group) == position)
+                return _centeredSeatByGroup.GetValueOrDefault(group.GroupId, position);
+        return position;
+    }
+
+    private SwapGroup? FindGroupForSeat(int seat)
+    {
+        foreach (var group in EffectiveGroups())
+        {
+            var gid = group.GroupId;
+            if (_centeredSeatByGroup.TryGetValue(gid, out var c) && c == seat) return group;
+            if (_cornerSeatByGroup.TryGetValue(gid, out var cs) && cs.ContainsValue(seat)) return group;
+        }
+        foreach (var group in EffectiveGroups())
+        {
+            var gid = group.GroupId;
+            if (_homePositionByGroup.TryGetValue(gid, out var hp) && hp.ContainsKey(seat)) return group;
+        }
+        return EffectiveGroups().FirstOrDefault();
+    }
+
+    // -- Home arrangement --------------------------------------------------------
+
     internal Dictionary<int, int> ComputeHomeArrangement()
     {
         var result = new Dictionary<int, int>();
@@ -50,7 +99,6 @@ public sealed partial class MainWindowViewModel
         var remaining = SelectedProfile.Slots
             .Select(s => s.SlotNumber).Where(n => n != master).OrderBy(n => n).ToList();
 
-        // 1. Honour explicit, valid home corners first.
         var openPositions = new List<int>();
         foreach (var p in cornerPositions)
         {
@@ -61,45 +109,63 @@ public sealed partial class MainWindowViewModel
                 openPositions.Add(p);
         }
 
-        // 2. Legacy identity (seat number == position) for any still-open corner.
         foreach (var p in openPositions.ToList())
         {
             if (remaining.Remove(p)) { result[p] = p; openPositions.Remove(p); }
         }
 
-        // 3. Zip whatever is left.
         foreach (var (p, seat) in openPositions.Zip(remaining))
             result[p] = seat;
 
         return result;
     }
 
-    // Reset occupancy to the baseline computed by ComputeHomeArrangement: the master SEAT sits in the
-    // centre geometry; the remaining seats fill their (user-set or auto) home corners.
     internal void ResetCornerOccupancy()
     {
-        _centeredSeat = ActiveMasterSeat;
-        _cornerSeat.Clear();
+        _centeredSeatByGroup.Clear();
+        _baseMasterByGroup.Clear();
+        _cornerSeatByGroup.Clear();
+        _homeOccupantByGroup.Clear();
+        _homePositionByGroup.Clear();
         if (SelectedProfile is null) return;
 
-        foreach (var (p, seat) in ComputeHomeArrangement())
-            _cornerSeat[p] = seat;
-
-        // Snapshot this baseline as each seat's fixed home corner.
-        _homeOccupant.Clear();
-        _homePosition.Clear();
-        foreach (var (p, seat) in _cornerSeat)
-        {
-            _homeOccupant[p] = seat;
-            _homePosition[seat] = p;
-        }
+        var fullArrangement = ComputeHomeArrangement();
+        foreach (var group in EffectiveGroups())
+            ResetGroupOccupancy(group, fullArrangement);
     }
 
-    // ── Mini-map editor: assign a seat's home corner / master ───────────────────
+    private void ResetGroupOccupancy(SwapGroup group, Dictionary<int, int> fullArrangement)
+    {
+        var groupId = group.GroupId;
+        var groupCenter = CenterSlotForGroup(group);
 
-    // Drag-drop target from the Clients-tab mini-map. Drop a seat card on the CENTRE cell to make it
-    // master; drop on a CORNER cell to pin that seat there (swapping with whoever currently homes that
-    // corner so no corner is left empty). Per-profile (stored on LayoutSlot.HomeSeat).
+        int masterSeat;
+        if (groupCenter == CenterSlotNumber)
+            masterSeat = ActiveMasterSeat;
+        else
+            masterSeat = fullArrangement.GetValueOrDefault(groupCenter, groupCenter);
+
+        Dictionary<int, int> groupCorners;
+        if (group.SlotNumbers.Count == 0)
+        {
+            groupCorners = new Dictionary<int, int>(fullArrangement);
+        }
+        else
+        {
+            groupCorners = fullArrangement
+                .Where(kv => group.SlotNumbers.Contains(kv.Key) && kv.Key != groupCenter)
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+        }
+
+        _centeredSeatByGroup[groupId] = masterSeat;
+        _baseMasterByGroup[groupId] = masterSeat;
+        _cornerSeatByGroup[groupId] = groupCorners;
+        _homeOccupantByGroup[groupId] = new Dictionary<int, int>(groupCorners);
+        _homePositionByGroup[groupId] = groupCorners.ToDictionary(kv => kv.Value, kv => kv.Key);
+    }
+
+    // -- Mini-map editor ---------------------------------------------------------
+
     internal void SetSeatHomeCorner(int seat, int position)
     {
         if (SelectedProfile is null) return;
@@ -120,11 +186,9 @@ public sealed partial class MainWindowViewModel
         var targetSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == position);
         if (targetSlot is null) return;
 
-        // Clean 2-way swap based on the current at-rest arrangement: the seat already homed at `position`
-        // takes the dragged seat's old corner. Both written explicitly so the result is unambiguous.
         var arrangement = ComputeHomeArrangement();
-        if (arrangement.GetValueOrDefault(position) == seat) return;   // already there
-        var displaced = arrangement.GetValueOrDefault(position);       // seat currently homed at target
+        if (arrangement.GetValueOrDefault(position) == seat) return;
+        var displaced = arrangement.GetValueOrDefault(position);
         var oldPosition = arrangement.FirstOrDefault(kv => kv.Value == seat).Key;
 
         targetSlot.HomeSeat = seat;
@@ -139,8 +203,6 @@ public sealed partial class MainWindowViewModel
         Log.Info($"Set {SeatLabel(seat)} home corner to {CornerCode(position)}.");
     }
 
-    // Re-baseline corner occupancy after the home map changed, refreshing the mini-map and (if a corner
-    // overlay layout is live) the on-screen tiles/pills.
     private void ReapplyCornerHomes()
     {
         var overlaysLive = _cornerOverlays.Count > 0;
@@ -150,29 +212,26 @@ public sealed partial class MainWindowViewModel
         if (overlaysLive)
         {
             StopCornerOverlays();
-            _cornerSeat.Clear();   // force StartCornerOverlays to rebuild from the new baseline
             StartCornerOverlays();
         }
     }
 
-    // The home-based corner arrangement when `seat` is centred: every non-master seat sits in its own
-    // home corner; the master seat fills the home corner of whoever is centred. Fully determined by
-    // `seat` (no dependence on the current arrangement), so repeated switches never drift — a character
-    // always lands back in its OWN corner. Returns null if the home map can't place this seat.
-    private Dictionary<int, int>? BuildTargetOccupancy(int seat)
+    private Dictionary<int, int>? BuildGroupTargetOccupancy(string groupId, int seat)
     {
-        if (_homeOccupant.Count == 0) return null;
-        var masterSeat = ActiveMasterSeat;
+        if (!_homeOccupantByGroup.TryGetValue(groupId, out var homeOccupant) || homeOccupant.Count == 0) return null;
+        if (!_homePositionByGroup.TryGetValue(groupId, out var homePosition)) return null;
 
-        var target = new Dictionary<int, int>(_homeOccupant);   // baseline: everyone in their home corner
-        if (seat == masterSeat) return target;                  // re-centring the master seat = baseline
+        var masterSeat = _baseMasterByGroup.GetValueOrDefault(groupId, ActiveMasterSeat);
 
-        if (!_homePosition.TryGetValue(seat, out var seatHome)) return null;
-        target[seatHome] = masterSeat;                          // master seat fills the centred seat's corner
+        var target = new Dictionary<int, int>(homeOccupant);
+        if (seat == masterSeat) return target;
+
+        if (!homePosition.TryGetValue(seat, out var seatHome)) return null;
+        target[seatHome] = masterSeat;
         return target;
     }
 
-    // ── Seat lookups ───────────────────────────────────────────────────────────
+    // -- Seat lookups ------------------------------------------------------------
 
     private SlotAssignment? Seat(int seat) => Assignments.FirstOrDefault(a => a.SlotNumber == seat);
     private EveWindowInfo? FindSeatWindow(int seat)
@@ -182,7 +241,7 @@ public sealed partial class MainWindowViewModel
     }
     private string SeatLabel(int seat) => Seat(seat)?.Label ?? "";
 
-    // ── Create / show ──────────────────────────────────────────────────────────
+    // -- Create / show -----------------------------------------------------------
 
     internal void StartCornerOverlays()
     {
@@ -193,12 +252,7 @@ public sealed partial class MainWindowViewModel
 
         EnsureValidMasterSeat();
 
-        // Centre rect = the largest slot's geometry (never the drifting master-slot number).
-        var center = CenterSlotNumber;
-        var masterSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == center);
-        if (masterSlot is null) return;
-
-        if (_cornerSeat.Count == 0) ResetCornerOccupancy();
+        if (_centeredSeatByGroup.Count == 0) ResetCornerOccupancy();
         UpdatePositionCodes();
 
         var monitor = Monitors.FirstOrDefault(m => m.Id == LayoutTargetMonitorId)
@@ -206,15 +260,18 @@ public sealed partial class MainWindowViewModel
             ?? Monitors.FirstOrDefault();
         var dpiScale = monitor is null ? 1.0 : monitor.DpiX / 96.0;
 
-        var masterRect = ResolvePlacementRect(masterSlot);
-        var masterCenterY = masterRect.Y + masterRect.Height / 2.0;
+        var groupCenterSlots = EffectiveGroups()
+            .ToDictionary(g => g.GroupId, g => CenterSlotForGroup(g));
 
-        foreach (var slot in SelectedProfile.Slots.Where(s => s.SlotNumber != center))
+        var primaryCenter = groupCenterSlots.Values.FirstOrDefault(CenterSlotNumber);
+        var primaryMasterSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == primaryCenter);
+        var primaryMasterRect = primaryMasterSlot is not null ? ResolvePlacementRect(primaryMasterSlot) : new WindowRect();
+        var primaryMasterCenterY = primaryMasterRect.Y + primaryMasterRect.Height / 2.0;
+
+        var allGroupCenterSlotNums = groupCenterSlots.Values.ToHashSet();
+        foreach (var slot in SelectedProfile.Slots.Where(s => !allGroupCenterSlotNums.Contains(s.SlotNumber)))
         {
             var position = slot.SlotNumber;
-
-            // Position tiles with the same resolver the windows use, so corners line up with the
-            // real master/park geometry even when the monitor res differs from the preset.
             var rect = ResolvePlacementRect(slot);
 
             var overlay = new CornerOverlayWindow(rect.X, rect.Y, rect.Width, rect.Height, dpiScale, _settings);
@@ -223,12 +280,11 @@ public sealed partial class MainWindowViewModel
             _cornerOverlays[position] = overlay;
             _cornerRects[position] = rect;
 
-            // Top tiles get their pill at the top edge (their bottom edge is hidden by the master).
-            var pillAtTop = (rect.Y + rect.Height / 2.0) < masterCenterY;
+            var pillAtTop = (rect.Y + rect.Height / 2.0) < primaryMasterCenterY;
             CreatePill(position, rect, dpiScale, pillAtTop, PillTextForPosition(position),
-                SeatPortraitUrl(_cornerSeat.GetValueOrDefault(position, position)));
+                SeatPortraitUrl(OccupantAtPosition(position)));
 
-            var seat = _cornerSeat.GetValueOrDefault(position, position);
+            var seat = OccupantAtPosition(position);
             var window = FindSeatWindow(seat);
             if (window is not null)
             {
@@ -237,23 +293,26 @@ public sealed partial class MainWindowViewModel
             }
             else
             {
-                // No client running for this seat yet — hide tile and blank pill until one appears.
                 overlay.Visibility = System.Windows.Visibility.Hidden;
                 if (_pills.TryGetValue(position, out var emptyPill)) emptyPill.SetText("");
                 _cornerSourceHandles[position] = 0;
             }
         }
 
-        // Centre pill (stored under the centre-slot key — never collides with a corner position),
-        // at the top of the master rect.
-        var centerPillText = FindSeatWindow(_centeredSeat) is not null ? CenterPillText() : "";
-        CreatePill(center, masterRect, dpiScale, atTop: true, centerPillText, SeatPortraitUrl(_centeredSeat));
+        foreach (var group in EffectiveGroups())
+        {
+            var groupCenter = groupCenterSlots[group.GroupId];
+            var masterSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
+            if (masterSlot is null) continue;
+            var masterRect = ResolvePlacementRect(masterSlot);
+            var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
+            var centerPillText = FindSeatWindow(centeredSeat) is not null ? CenterPillTextForGroup(group.GroupId) : "";
+            CreatePill(groupCenter, masterRect, dpiScale, atTop: true, centerPillText, SeatPortraitUrl(centeredSeat));
+        }
 
-        // The frame timer drives corner-overlay maintenance (Z-order + dead-source refresh).
         if (_cornerOverlays.Count > 0) _frameTimer.Start();
     }
 
-    // Rounded portrait of the main character occupying a seat (empty when unlinked).
     private string SeatPortraitUrl(int seat) => Seat(seat)?.PortraitUrl ?? "";
 
     private void CreatePill(int key, WindowRect rect, double dpiScale, bool atTop, string text, string portraitUrl)
@@ -265,20 +324,16 @@ public sealed partial class MainWindowViewModel
         _pills[key] = pill;
     }
 
-    // ── Pill captions ──────────────────────────────────────────────────────────
+    // -- Pill captions -----------------------------------------------------------
 
-    // Corner pill: occupant's name, optionally prefixed by the (fixed) corner code (TL · Name).
     private string PillTextForPosition(int position)
     {
-        var occupant = _cornerSeat.GetValueOrDefault(position, position);
+        var occupant = OccupantAtPosition(position);
         var name = SeatLabel(occupant);
-        var code = CornerCode(position);   // geometric corner code (TL/TR/…), independent of the master-seat badge
+        var code = CornerCode(position);
         return _settings.CornerOverlayShowSlotNumber && !string.IsNullOrEmpty(code) ? $"{code} · {name}" : name;
     }
 
-    // The geometric location code (TL/TR/BL/BR/…) of a corner position, derived from slot geometry.
-    // Unlike SlotAssignment.PositionCode this never becomes "Master", so a corner whose home seat is the
-    // master seat still shows its true corner label.
     private string CornerCode(int position)
     {
         var profile = SelectedProfile;
@@ -293,21 +348,20 @@ public sealed partial class MainWindowViewModel
         return slot is null ? position.ToString() : GridCode(slot, minX, minY, totalW, totalH);
     }
 
-    // Centre pill: the centred seat's name, optionally prefixed with "Master".
-    private string CenterPillText()
+    private string CenterPillTextForGroup(string groupId)
     {
-        var name = SeatLabel(_centeredSeat);
+        var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(groupId, 0);
+        var name = SeatLabel(centeredSeat);
         return _settings.CornerOverlayShowSlotNumber ? $"Master · {name}" : name;
     }
 
-    // ── Stop / teardown ────────────────────────────────────────────────────────
+    // -- Stop / teardown ---------------------------------------------------------
 
     internal void StopCornerOverlays()
     {
-        // Discard any pending or active flyout without side-effects.
         _hoverPeekTimer.Stop();
         _pendingHoverPosition = -1;
-        CloseFlyout();
+        RevertPeekSwap();
         _cursorOverPosition = -1;
 
         foreach (var overlay in _cornerOverlays.Values)
@@ -324,41 +378,44 @@ public sealed partial class MainWindowViewModel
         }
         _pills.Clear();
 
-        // NB: occupancy (_cornerSeat / _centeredSeat) is intentionally preserved so a rebuild
-        // (label/WGC toggle) keeps the current arrangement; ApplyActiveProfile resets it.
-
         if (!_settings.ActiveFrameEnabled) _frameTimer.Stop();
     }
 
-    // ── Centre a seat (the core fast-switch) ───────────────────────────────────
+    // -- Centre a seat -----------------------------------------------------------
 
-    // Bring SEAT's account/client to the centre rect; send the previously-centred seat to the corner
-    // position SEAT vacated. Seats/labels never move — only window positions + tile sources change.
     internal void CenterSeat(int seat)
     {
         if (SelectedProfile is null) return;
 
-        // Single/stacked layouts have no centre to swap into — just focus the seat's client.
         if (!SelectedProfile.SupportsCornerGrid)
         {
             FocusSlot(seat);
             return;
         }
 
-        // Flat (tiled) grid: corner overlays disabled but the profile still grids. Physically swap the
-        // centre client with the target's corner client so the same master↔character switch works here.
+        var group = FindGroupForSeat(seat);
+        if (group is null) { Log.Warn($"Seat {seat} is not in any swap group."); return; }
+
         if (!_settings.CornerOverlaysEnabled)
         {
-            CenterSeatFlat(seat);
+            CenterSeatFlatInGroup(group, seat);
             return;
         }
 
-        var masterSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == CenterSlotNumber);
+        CenterSeatInGroup(group, seat);
+    }
+
+    private void CenterSeatInGroup(SwapGroup group, int seat)
+    {
+        var groupId = group.GroupId;
+        var groupCenter = CenterSlotForGroup(group);
+        var masterSlot = SelectedProfile!.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
         if (masterSlot is null) { Log.Warn("Corner mode requires a layout with a centre slot."); return; }
 
-        if (_cornerSeat.Count == 0) ResetCornerOccupancy();
+        if (_centeredSeatByGroup.Count == 0) ResetCornerOccupancy();
 
-        if (seat == _centeredSeat)
+        var currentCenteredSeat = _centeredSeatByGroup.GetValueOrDefault(groupId, 0);
+        if (seat == currentCenteredSeat)
         {
             var already = FindSeatWindow(seat);
             if (already is not null) { try { _windowService.FocusWindow(already.Handle); } catch { } }
@@ -366,24 +423,19 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
-        // Compute the full home-based target arrangement for "this seat centred". Determined purely by
-        // the seat (not the current layout), so characters always return to their own corners.
-        var target = BuildTargetOccupancy(seat);
+        var target = BuildGroupTargetOccupancy(groupId, seat);
         if (target is null)
         {
-            // Home map lost sync (e.g. profile changed) — rebuild from a clean apply.
-            Log.Warn($"Seat {seat} isn't in the current corner arrangement; re-applying layout.");
+            Log.Warn($"Seat {seat} is not in the current corner arrangement for group '{group.Name}'; re-applying layout.");
             ApplyActiveProfile();
             return;
         }
 
         var incoming = FindSeatWindow(seat);
-        var outgoing = FindSeatWindow(_centeredSeat);
+        var outgoing = FindSeatWindow(currentCenteredSeat);
         var masterRect = ResolvePlacementRect(masterSlot);
         var parkRect = ResolveParkRect(masterRect);
 
-        // Only two real windows ever move: the incoming client comes to the centre and the outgoing
-        // client parks off-screen. Every other corner client is already parked — only its tile re-points.
         if (incoming is not null && outgoing is not null)
         {
             try
@@ -399,64 +451,65 @@ public sealed partial class MainWindowViewModel
             try { if (incoming is not null) _windowService.MoveResizeWindow(incoming.Handle, masterRect); }
             catch (Exception ex) { Log.Error($"Could not centre seat {seat}: {ex.Message}"); }
             try { if (outgoing is not null) _windowService.MoveResizeWindow(outgoing.Handle, parkRect); }
-            catch (Exception ex) { Log.Error($"Could not park seat {_centeredSeat}: {ex.Message}"); }
+            catch (Exception ex) { Log.Error($"Could not park seat {currentCenteredSeat}: {ex.Message}"); }
         }
 
-        var outgoingSeat = _centeredSeat;
-        _centeredSeat = seat;
+        var outgoingSeat = currentCenteredSeat;
+        _centeredSeatByGroup[groupId] = seat;
 
-        // Apply the new occupancy, repointing every corner tile + pill whose occupant changed.
+        var cornerSeat = _cornerSeatByGroup.TryGetValue(groupId, out var cs) ? cs : new Dictionary<int, int>();
         foreach (var (position, newSeat) in target)
         {
-            if (_cornerSeat.GetValueOrDefault(position, int.MinValue) == newSeat) continue;
-            _cornerSeat[position] = newSeat;
+            if (cornerSeat.GetValueOrDefault(position, int.MinValue) == newSeat) continue;
+            cornerSeat[position] = newSeat;
+            _cornerSeatByGroup[groupId] = cornerSeat;
             var win = FindSeatWindow(newSeat);
             if (win is not null) UpdateCornerOverlay(position, win.Handle);
             else _cornerSourceHandles[position] = 0;
             RefreshPositionPill(position);
         }
-        RefreshCenterPill();
+        RefreshGroupCenterPill(group);
 
         RefreshCornerOverlayZOrder();
         if (incoming is not null) { try { _windowService.FocusWindow(incoming.Handle); } catch { } }
 
         ScheduleAutoSave();
-        Log.Info($"Centred seat {seat} ({SeatLabel(seat)}); seat {outgoingSeat} ({SeatLabel(outgoingSeat)}) returned to its home corner.");
+        Log.Info($"Centred seat {seat} ({SeatLabel(seat)}) in group '{group.Name}'; seat {outgoingSeat} ({SeatLabel(outgoingSeat)}) returned to its home corner.");
     }
 
-    // Flat-grid swap: no off-screen parking or thumbnails — every client occupies a visible tile. Bring
-    // SEAT's client into the centre rect and move whichever clients changed positions to their new tiles.
-    // Uses the same home-based occupancy bookkeeping as the overlay path, so a true 2-way master↔char
-    // swap behaves identically in both modes and characters always return to their own corners.
-    private void CenterSeatFlat(int seat)
+    private void CenterSeatFlatInGroup(SwapGroup group, int seat)
     {
-        var centerSlot = SelectedProfile!.Slots.FirstOrDefault(s => s.SlotNumber == CenterSlotNumber);
+        var groupId = group.GroupId;
+        var groupCenter = CenterSlotForGroup(group);
+        var centerSlot = SelectedProfile!.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
         if (centerSlot is null) { Log.Warn("Grid swap requires a layout with a centre slot."); return; }
 
-        if (_cornerSeat.Count == 0) ResetCornerOccupancy();
+        if (_centeredSeatByGroup.Count == 0) ResetCornerOccupancy();
 
-        if (seat == _centeredSeat)
+        var currentCenteredSeat = _centeredSeatByGroup.GetValueOrDefault(groupId, 0);
+        if (seat == currentCenteredSeat)
         {
             var already = FindSeatWindow(seat);
             if (already is not null) { try { _windowService.FocusWindow(already.Handle); } catch { } }
             return;
         }
 
-        var target = BuildTargetOccupancy(seat);
+        var target = BuildGroupTargetOccupancy(groupId, seat);
         if (target is null)
         {
-            Log.Warn($"Seat {seat} isn't in the current arrangement; re-applying layout.");
+            Log.Warn($"Seat {seat} is not in the current arrangement; re-applying layout.");
             ApplyActiveProfile();
             return;
         }
 
-        // Desired occupant per position (centre included), and where each currently sits.
-        int CurrentOccupant(int position) =>
-            position == CenterSlotNumber ? _centeredSeat : _cornerSeat.GetValueOrDefault(position, position);
+        var cornerSeat = _cornerSeatByGroup.TryGetValue(groupId, out var cs) ? cs : new Dictionary<int, int>();
 
-        foreach (var slot in SelectedProfile.Slots)
+        int CurrentOccupant(int position) =>
+            position == groupCenter ? currentCenteredSeat : cornerSeat.GetValueOrDefault(position, position);
+
+        foreach (var slot in SelectedProfile.Slots.Where(s => group.SlotNumbers.Count == 0 || group.SlotNumbers.Contains(s.SlotNumber)))
         {
-            var desired = slot.SlotNumber == CenterSlotNumber ? seat : target.GetValueOrDefault(slot.SlotNumber, slot.SlotNumber);
+            var desired = slot.SlotNumber == groupCenter ? seat : target.GetValueOrDefault(slot.SlotNumber, slot.SlotNumber);
             if (CurrentOccupant(slot.SlotNumber) == desired) continue;
 
             var window = FindSeatWindow(desired);
@@ -465,31 +518,29 @@ public sealed partial class MainWindowViewModel
             catch (Exception ex) { Log.Error($"Could not move seat {desired} to position {slot.SlotNumber}: {ex.Message}"); }
         }
 
-        var outgoingSeat = _centeredSeat;
-        _centeredSeat = seat;
-        _cornerSeat.Clear();
-        foreach (var (position, newSeat) in target) _cornerSeat[position] = newSeat;
+        var outgoingSeat = currentCenteredSeat;
+        _centeredSeatByGroup[groupId] = seat;
+        cornerSeat.Clear();
+        foreach (var (position, newSeat) in target) cornerSeat[position] = newSeat;
+        _cornerSeatByGroup[groupId] = cornerSeat;
 
         var incoming = FindSeatWindow(seat);
         if (incoming is not null) { try { _windowService.FocusWindow(incoming.Handle); } catch { } }
 
         UpdatePositionCodes();
         ScheduleAutoSave();
-        Log.Info($"Centred seat {seat} ({SeatLabel(seat)}); seat {outgoingSeat} ({SeatLabel(outgoingSeat)}) returned to its home corner.");
+        Log.Info($"Centred seat {seat} ({SeatLabel(seat)}) in group '{group.Name}'; seat {outgoingSeat} ({SeatLabel(outgoingSeat)}) returned to its home corner.");
     }
 
-    // Click-to-focus: bring the clicked corner tile's (or flyout's) occupant to the centre.
-    // EULA-compliant focus switch — never forwards the click into the EVE client (COMPLIANCE.md).
     private void OnCornerTileClicked(int position)
     {
         if (!_settings.FocusPreviewOnClick) return;
-        CloseFlyout();
-        var seat = _cornerSeat.GetValueOrDefault(position, position);
+        // Clear peek tracking without reverting — CenterSeat re-positions everything via HWNDs.
+        ClearPeekState();
+        var seat = OccupantAtPosition(position);
         CenterSeat(seat);
     }
 
-    // Hover-to-peek: start the debounce timer. The peek only triggers after the mouse has rested
-    // on the tile for HoverPreviewDelayMs — cursors passing over tiles do nothing.
     private void OnCornerTileHovered(int position)
     {
         if (!_settings.HoverPreviewEnabled) return;
@@ -499,7 +550,6 @@ public sealed partial class MainWindowViewModel
         var delay = _settings.HoverPreviewDelayMs;
         if (delay <= 0)
         {
-            // Instant mode — skip the timer.
             ExecuteHoverPeek(position);
             return;
         }
@@ -509,7 +559,6 @@ public sealed partial class MainWindowViewModel
         _hoverPeekTimer.Start();
     }
 
-    // Timer tick: the mouse has rested long enough — execute the peek.
     internal void OnHoverPeekTimerTick(object? sender, EventArgs e)
     {
         _hoverPeekTimer.Stop();
@@ -521,66 +570,113 @@ public sealed partial class MainWindowViewModel
     {
         if (SelectedProfile is null) return;
 
-        var seat = _cornerSeat.GetValueOrDefault(position, position);
-        if (seat == _centeredSeat) return;   // already centred — nothing to show
+        var seat = OccupantAtPosition(position);
+
+        var seatGroup = FindGroupForSeat(seat) ?? EffectiveGroups().FirstOrDefault();
+        if (seatGroup is null) return;
+        var groupId = seatGroup.GroupId;
+        var groupCenter = CenterSlotForGroup(seatGroup);
+
+        if (seat == _centeredSeatByGroup.GetValueOrDefault(groupId, 0)) return;
 
         var window = FindSeatWindow(seat);
         if (window is null) return;
 
-        var centerSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == CenterSlotNumber);
+        var centerSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
         if (centerSlot is null) return;
         var masterRect = ResolvePlacementRect(centerSlot);
 
+        // Gate: don't fire while cursor is already over the master rect.
+        if (Utilities.Win32Native.GetCursorPos(out var gateCur) &&
+            gateCur.X >= masterRect.X && gateCur.X < masterRect.X + masterRect.Width &&
+            gateCur.Y >= masterRect.Y && gateCur.Y < masterRect.Y + masterRect.Height)
+            return;
+
         if (!_cornerRects.TryGetValue(position, out var tileRect) || tileRect.Width == 0) return;
 
-        var (fx, fy, fw, fh) = ComputeFlyoutRect(tileRect, masterRect);
-        var monitor = Monitors.FirstOrDefault(m => m.Id == LayoutTargetMonitorId)
-            ?? Monitors.FirstOrDefault(m => m.IsPrimary)
-            ?? Monitors.FirstOrDefault();
-        var dpiScale = monitor is null ? 1.0 : monitor.DpiX / 96.0;
+        var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(groupId, 0);
+        var centeredWindow = FindSeatWindow(centeredSeat);
 
-        CloseFlyout();
-        var flyout = new HoverFlyoutWindow(fx, fy, fw, fh, dpiScale, window.Handle);
-        flyout.Clicked = () => OnCornerTileClicked(position);
-        flyout.Show();
-        _hoverFlyout = flyout;
+        RevertPeekSwap();
+
+        try
+        {
+            if (centeredWindow is not null)
+                _windowService.SwapWindowPositions(
+                    window.Handle, masterRect.X, masterRect.Y,
+                    centeredWindow.Handle, tileRect.X, tileRect.Y);
+            else
+                _windowService.MoveResizeWindow(window.Handle,
+                    new WindowRect { X = masterRect.X, Y = masterRect.Y, Width = masterRect.Width, Height = masterRect.Height });
+        }
+        catch (Exception ex) { Log.Error($"Hover peek swap failed: {ex.Message}"); return; }
+
+        // Show the displaced master client in the corner tile during the peek.
+        if (centeredWindow is not null)
+            UpdateCornerOverlay(position, centeredWindow.Handle);
+
+        _peekPosition = position;
+        _peekSeat = seat;
+        _peekCenteredSeat = centeredSeat;
+        _peekGroupId = groupId;
+        _peekMasterRect = masterRect;
     }
 
     private void OnCornerTileHoverLeft(int position)
     {
         _hoverPeekTimer.Stop();
         _pendingHoverPosition = -1;
-        CloseFlyout();
+        RevertPeekSwap();
     }
 
-    private void CloseFlyout()
+    private void RevertPeekSwap()
     {
-        if (_hoverFlyout is null) return;
-        try { _hoverFlyout.Close(); } catch { }
-        _hoverFlyout = null;
+        if (_peekPosition < 0) return;
+
+        var pos = _peekPosition;
+        var peekSeat = _peekSeat;
+        var centeredSeat = _peekCenteredSeat;
+        var mr = _peekMasterRect;
+        ClearPeekState();
+
+        if (mr is null) return;
+
+        var peekWindow = FindSeatWindow(peekSeat);
+        var centeredWindow = FindSeatWindow(centeredSeat);
+        _cornerRects.TryGetValue(pos, out var tileRect);
+
+        try
+        {
+            if (peekWindow is not null && centeredWindow is not null && tileRect is not null)
+                _windowService.SwapWindowPositions(
+                    centeredWindow.Handle, mr.X, mr.Y,
+                    peekWindow.Handle, tileRect.X, tileRect.Y);
+            else
+            {
+                if (centeredWindow is not null)
+                    _windowService.MoveResizeWindow(centeredWindow.Handle, mr);
+                if (peekWindow is not null && tileRect is not null)
+                    _windowService.MoveResizeWindow(peekWindow.Handle,
+                        new WindowRect { X = tileRect.X, Y = tileRect.Y, Width = mr.Width, Height = mr.Height });
+            }
+        }
+        catch (Exception ex) { Log.Error($"Hover peek revert failed: {ex.Message}"); }
+
+        if (peekWindow is not null)
+            UpdateCornerOverlay(pos, peekWindow.Handle);
     }
 
-    // Flyout rect: ~50% of master width (capped at 720 px), maintaining master aspect ratio.
-    // Anchored to the tile's inner corner (the edge facing the master centre).
-    private static (int x, int y, int w, int h) ComputeFlyoutRect(WindowRect tile, WindowRect master)
+    private void ClearPeekState()
     {
-        var fw = Math.Min(master.Width / 2, 720);
-        var fh = master.Width > 0 ? fw * master.Height / master.Width : fw * 9 / 16;
-
-        var tileCx = tile.X + tile.Width / 2;
-        var masterCx = master.X + master.Width / 2;
-        var tileCy = tile.Y + tile.Height / 2;
-        var masterCy = master.Y + master.Height / 2;
-
-        var fx = tileCx < masterCx ? tile.X + tile.Width : tile.X - fw;
-        var fy = tileCy < masterCy ? tile.Y + tile.Height : tile.Y - fh;
-
-        return (fx, fy, fw, fh);
+        _peekPosition = -1;
+        _peekSeat = -1;
+        _peekCenteredSeat = -1;
+        _peekGroupId = null;
+        _peekMasterRect = null;
     }
 
-    // ── Per-tile updates ───────────────────────────────────────────────────────
+    // -- Per-tile updates --------------------------------------------------------
 
-    // Repoint a corner tile at a new source HWND (called after a centre swap).
     internal void UpdateCornerOverlay(int position, nint sourceHwnd)
     {
         if (_cornerOverlays.TryGetValue(position, out var overlay))
@@ -593,21 +689,21 @@ public sealed partial class MainWindowViewModel
     private void RefreshPositionPill(int position)
     {
         if (_pills.TryGetValue(position, out var pill))
-            pill.SetContent(PillTextForPosition(position),
-                SeatPortraitUrl(_cornerSeat.GetValueOrDefault(position, position)));
+            pill.SetContent(PillTextForPosition(position), SeatPortraitUrl(OccupantAtPosition(position)));
     }
 
-    private void RefreshCenterPill()
+    private void RefreshGroupCenterPill(SwapGroup group)
     {
-        if (_pills.TryGetValue(CenterSlotNumber, out var pill))
-            pill.SetContent(CenterPillText(), SeatPortraitUrl(_centeredSeat));
+        var groupCenter = CenterSlotForGroup(group);
+        var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
+        if (_pills.TryGetValue(groupCenter, out var pill))
+            pill.SetContent(CenterPillTextForGroup(group.GroupId), SeatPortraitUrl(centeredSeat));
     }
 
-    // Refresh every pill's caption (used when a label-display setting changes).
     internal void RefreshAllPills()
     {
-        foreach (var position in _cornerSeat.Keys) RefreshPositionPill(position);
-        RefreshCenterPill();
+        foreach (var position in _cornerRects.Keys) RefreshPositionPill(position);
+        foreach (var group in EffectiveGroups()) RefreshGroupCenterPill(group);
     }
 
     internal void RefreshCornerOverlayZOrder()
@@ -616,30 +712,24 @@ public sealed partial class MainWindowViewModel
             overlay.RefreshZOrder();
     }
 
-    // ── Per-tick upkeep ────────────────────────────────────────────────────────
+    // -- Per-tick upkeep ---------------------------------------------------------
 
-    // Re-assert Z-order, refresh pills, and re-register any tile whose seat client was
-    // closed/restarted (handle gone or changed — e.g. a relog gives a new HWND).
     internal void MaintainCornerOverlays()
     {
         if (_cornerOverlays.Count == 0) return;
 
-        // Pills only float on top when EVE or EWC is in the foreground; hide behind everything else.
         var fg = _windowService.GetForegroundWindowHandle();
         var eveOrEwcFg = fg != 0 && (Windows.Any(w => w.Handle == fg) ||
             fg == new System.Windows.Interop.WindowInteropHelper(System.Windows.Application.Current.MainWindow).Handle);
         foreach (var pill in _pills.Values)
             pill.SetTopmost(eveOrEwcFg);
 
-        // Cancel any pending or active flyout when EVE/EWC loses focus.
-        if (!eveOrEwcFg && (_hoverFlyout is not null || _pendingHoverPosition >= 0 || _cursorOverPosition >= 0))
+        if (!eveOrEwcFg && (_peekPosition >= 0 || _pendingHoverPosition >= 0 || _cursorOverPosition >= 0))
         {
             if (_cursorOverPosition >= 0) OnCornerTileHoverLeft(_cursorOverPosition);
             _cursorOverPosition = -1;
         }
 
-        // Tiles sit at HWND_BOTTOM and never receive WM_MOUSEMOVE, so poll the cursor directly.
-        // Only trigger flyouts when EVE/EWC is in the foreground — avoids peek appearing while typing elsewhere.
         if (_settings.HoverPreviewEnabled && eveOrEwcFg && Utilities.Win32Native.GetCursorPos(out var cur))
         {
             int hitPos = -1;
@@ -647,6 +737,11 @@ public sealed partial class MainWindowViewModel
             {
                 if (cur.X >= r.X && cur.X < r.X + r.Width && cur.Y >= r.Y && cur.Y < r.Y + r.Height)
                 { hitPos = pos; break; }
+            }
+            if (hitPos < 0 && _peekPosition >= 0 && _cursorOverPosition >= 0 && _peekMasterRect is { } peekMr)
+            {
+                if (cur.X >= peekMr.X && cur.X < peekMr.X + peekMr.Width && cur.Y >= peekMr.Y && cur.Y < peekMr.Y + peekMr.Height)
+                    hitPos = _cursorOverPosition;
             }
             if (hitPos != _cursorOverPosition)
             {
@@ -658,11 +753,10 @@ public sealed partial class MainWindowViewModel
 
         foreach (var (position, overlay) in _cornerOverlays)
         {
-            var seat = _cornerSeat.GetValueOrDefault(position, position);
+            var seat = OccupantAtPosition(position);
             var window = FindSeatWindow(seat);
             if (window is null)
             {
-                // Seat's client closed — hide the stale tile + blank its pill.
                 if (_cornerSourceHandles.GetValueOrDefault(position) != 0)
                 {
                     overlay.SourceLost();
@@ -683,11 +777,17 @@ public sealed partial class MainWindowViewModel
             overlay.RefreshZOrder();
         }
 
-        // Centre pill: hide when the centred seat's client is gone, else keep its name current.
-        if (_pills.TryGetValue(CenterSlotNumber, out var masterPill))
+        foreach (var group in EffectiveGroups())
         {
-            var centeredWindow = FindSeatWindow(_centeredSeat);
-            masterPill.SetContent(centeredWindow is null ? "" : CenterPillText(), SeatPortraitUrl(_centeredSeat));
+            var groupCenter = CenterSlotForGroup(group);
+            var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
+            if (_pills.TryGetValue(groupCenter, out var masterPill))
+            {
+                var centeredWindow = FindSeatWindow(centeredSeat);
+                masterPill.SetContent(
+                    centeredWindow is null ? "" : CenterPillTextForGroup(group.GroupId),
+                    SeatPortraitUrl(centeredSeat));
+            }
         }
     }
 }

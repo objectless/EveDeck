@@ -31,6 +31,8 @@ public sealed class HotkeyService : IDisposable
     private WinEventDelegate? _winEventProc;   // kept alive to prevent GC of the callback
 
     public event EventHandler<HotkeyBinding>? HotkeyPressed;
+    // Fired whenever the OS foreground window changes. Carries the new foreground HWND.
+    public event EventHandler<nint>? ForegroundChanged;
 
     // FocusSlot and SwitchToCharacter are the primary ways to bring an EVE client to focus from
     // another app, so they're always registered even when EVE-focus gating is on.
@@ -59,7 +61,7 @@ public sealed class HotkeyService : IDisposable
                 var gestureKey = $"{binding.Modifiers}:{binding.VirtualKey}";
                 if (!seenGestures.Add(gestureKey))
                 {
-                    failures.Add($"{binding.DisplayName} ({binding.GestureText}) duplicates another EWC hotkey.");
+                    failures.Add($"{binding.DisplayName} ({binding.GestureText}) duplicates another EveDeck hotkey.");
                     continue;
                 }
 
@@ -87,7 +89,7 @@ public sealed class HotkeyService : IDisposable
 
         if (failures.Count > 0)
         {
-            log.Error($"{failures.Count} hotkey(s) were not registered. Another app or another EWC instance may already own them. First conflict: {failures[0]}");
+            log.Error($"{failures.Count} hotkey(s) were not registered. Another app or another EveDeck instance may already own them. First conflict: {failures[0]}");
         }
     }
 
@@ -180,7 +182,10 @@ public sealed class HotkeyService : IDisposable
 
     private void OnForegroundChanged(nint hWinEventHook, uint eventType, nint hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
-        => UpdateGatedState();
+    {
+        UpdateGatedState();
+        ForegroundChanged?.Invoke(this, hwnd);
+    }
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {

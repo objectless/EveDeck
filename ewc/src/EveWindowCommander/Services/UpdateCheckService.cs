@@ -1,38 +1,35 @@
 using System.Net.Http;
-using System.Net.Http.Json;
-using System.Reflection;
+using System.Text.Json;
 
 namespace EveWindowCommander.Services;
 
-public record VersionInfo(string Version, string DownloadUrl, string[]? WhatsNew);
-
-public static class UpdateCheckService
+public sealed class UpdateCheckService
 {
-    private static readonly HttpClient _http = new()
-    {
-        Timeout = TimeSpan.FromSeconds(8),
-        DefaultRequestHeaders = { { "User-Agent", "EveDeck-UpdateCheck/1.0" } }
-    };
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private const string ManifestUrl = "https://evedeck.space/api/version";
 
-    private const string VersionUrl = "https://evedeck.space/api/version";
+    public record UpdateInfo(string Version, string DownloadUrl);
 
-    public static async Task<VersionInfo?> CheckAsync(CancellationToken ct = default)
+    public async Task<UpdateInfo?> CheckAsync(string currentVersion)
     {
         try
         {
-            return await _http.GetFromJsonAsync<VersionInfo>(VersionUrl, ct).ConfigureAwait(false);
+            var json = await Http.GetStringAsync(ManifestUrl);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var remote = root.GetProperty("version").GetString() ?? "";
+            var url = root.GetProperty("downloadUrl").GetString() ?? "";
+            if (IsNewer(remote, currentVersion))
+                return new UpdateInfo(remote, url);
         }
-        catch
-        {
-            return null;
-        }
+        catch { }
+        return null;
     }
 
-    public static bool IsNewer(string remoteVersion)
+    private static bool IsNewer(string remote, string current)
     {
-        var local = Assembly.GetExecutingAssembly().GetName().Version;
-        return local is not null
-            && System.Version.TryParse(remoteVersion, out var remote)
-            && remote > local;
+        return Version.TryParse(remote, out var r) &&
+               Version.TryParse(current, out var c) &&
+               r > c;
     }
 }

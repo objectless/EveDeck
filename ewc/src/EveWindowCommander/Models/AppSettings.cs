@@ -13,6 +13,8 @@ public sealed class AppSettings
     public ObservableCollection<SlotAssignment> Assignments { get; set; } = new();
     public ObservableCollection<LayoutProfile> Profiles { get; set; } = new();
     public ObservableCollection<HotkeyBinding> Hotkeys { get; set; } = new();
+    public ObservableCollection<CharacterSet> CharacterSets { get; set; } = new();
+    public string ActiveCharacterSetId { get; set; } = "";
     public Dictionary<string, StyleSnapshot> StyleSnapshotsByTitle { get; set; } = new();
 
     public bool ActiveFrameEnabled { get; set; } = true;
@@ -70,6 +72,10 @@ public sealed class AppSettings
 
     // Only fire hotkeys when an EVE client is in the foreground.
     public bool RequireEveFocusForHotkeys { get; set; } = true;
+
+    // Throttle background EVE client processes to BELOW_NORMAL CPU priority while another is focused.
+    // Reduces GPU/CPU competition so the active client gets more frame budget.
+    public bool ThrottleBackgroundProcesses { get; set; } = true;
 
     // First-run setup wizard has been completed (controls whether it auto-shows on launch).
     public bool SetupCompleted { get; set; } = false;

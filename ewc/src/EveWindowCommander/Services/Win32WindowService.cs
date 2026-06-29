@@ -198,6 +198,32 @@ public sealed class Win32WindowService
 
     public nint GetForegroundWindowHandle() => GetForegroundWindow();
 
+    // Throttle or restore a process's OS scheduling priority. Open with minimum rights, operate, close.
+    // Dangerous API: changes OS CPU scheduling for another process; does not inject code or send input.
+    public bool SetProcessPriority(uint pid, bool background)
+    {
+        var handle = Utilities.Win32Native.OpenProcess(Utilities.Win32Native.ProcessSetInformation, false, pid);
+        if (handle == 0) return false;
+        try
+        {
+            return Utilities.Win32Native.SetPriorityClass(handle,
+                background ? Utilities.Win32Native.PriorityBelowNormal : Utilities.Win32Native.PriorityNormal);
+        }
+        finally { Utilities.Win32Native.CloseHandle(handle); }
+    }
+
+    // Set or clear HWND_TOPMOST on a window via SWP_NOMOVE|SWP_NOSIZE.
+    // Dangerous API: modifies Z-order of another process window at OS level only.
+    public void SetWindowTopmost(nint handle, bool topmost)
+    {
+        if (handle == 0 || !IsWindow(handle)) return;
+        var insertAfter = topmost
+            ? (nint)Utilities.Win32Native.HwndTopmost
+            : (nint)Utilities.Win32Native.HwndNotTopmost;
+        SetWindowPos(handle, insertAfter, 0, 0, 0, 0,
+            SwpNoMove | SwpNoSize | SwpNoActivate);
+    }
+
     // 3c — Set WS_EX_LAYERED + LWA_ALPHA to give a window partial transparency.
     public void SetWindowOpacity(nint handle, int percentOpacity)
     {

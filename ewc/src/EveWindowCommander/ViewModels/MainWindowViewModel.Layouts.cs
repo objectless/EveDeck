@@ -112,6 +112,8 @@ public sealed partial class MainWindowViewModel
             ResetCornerOccupancy();
             UpdatePositionCodes();
         }
+
+        ApplyTopmostState();
     }
 
     // Maps each seat (SlotAssignment.SlotNumber) to the profile POSITION slot it occupies at rest. Grid
@@ -258,6 +260,7 @@ public sealed partial class MainWindowViewModel
             try { _windowService.FocusWindow(masterWindow.Handle); } catch { }
         }
 
+        ApplyTopmostState();
         Log.Info("Corner overlay layout applied.");
     }
 

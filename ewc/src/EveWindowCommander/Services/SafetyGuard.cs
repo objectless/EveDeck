@@ -17,7 +17,9 @@ public static class SafetyGuard
         "SwapFocusedWithMaster",
         "SwapSlotWithMaster",
         "SwitchToCharacter",
-        "FocusDirection"
+        "FocusDirection",
+        "ToggleTopmost",
+        "SwitchCharacterSet"
     };
 
     public static bool AllowsHotkeyAction(string actionId)
@@ -28,7 +30,7 @@ public static class SafetyGuard
         var blockedWords = new[] { "SendKey", "KeyForward", "Click", "Broadcast", "Multiplex", "Automate", "Input" };
         if (!AllowsHotkeyAction(actionId) || blockedWords.Any(word => actionId.Contains(word, StringComparison.OrdinalIgnoreCase)))
         {
-            throw new InvalidOperationException("EVE Window Commander blocks keyboard/mouse input forwarding and broadcasting actions.");
+            throw new InvalidOperationException("EveDeck blocks keyboard/mouse input forwarding and broadcasting actions.");
         }
     }
 }

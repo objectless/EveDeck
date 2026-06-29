@@ -32,6 +32,7 @@ public partial class MainWindow : Window
         _viewModel = new MainWindowViewModel();
         DataContext = _viewModel;
         _hotkeyService.HotkeyPressed += (_, binding) => _viewModel.HandleHotkey(binding.ActionId);
+        _hotkeyService.ForegroundChanged += (_, hwnd) => _viewModel.ApplyProcessPriorities(hwnd);
         _viewModel.HotkeysChanged += ViewModel_HotkeysChanged;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
@@ -183,12 +184,12 @@ public partial class MainWindow : Window
         _notifyIcon = new System.Windows.Forms.NotifyIcon
         {
             Icon = LoadAppIcon(),
-            Text = "EVE Window Commander",
+            Text = "EveDeck",
             Visible = false
         };
 
         var contextMenu = new System.Windows.Forms.ContextMenuStrip();
-        contextMenu.Items.Add("Open EVE Window Commander", null, (_, _) => ShowFromTray());
+        contextMenu.Items.Add("Open EveDeck", null, (_, _) => ShowFromTray());
         contextMenu.Items.Add("Reload active profile", null, (_, _) => ReloadActiveProfileFromTray());
         contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         contextMenu.Items.Add("Exit", null, (_, _) => ExitFromTray());
@@ -454,13 +455,29 @@ public partial class MainWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e)
         => Close();
 
-    private void UpdateBanner_Click(object sender, RoutedEventArgs e)
-        => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://evedeck.space/releases") { UseShellExecute = true });
-
     private void FrameColorPreset_Click(object sender, RoutedEventArgs e)
     {
         if (sender is System.Windows.Controls.Button { Tag: string color })
             _viewModel.ActiveFrameColor = color;
+    }
+
+    private void RestoreBackup_Click(object sender, RoutedEventArgs e)
+    {
+        var backup = _viewModel.SelectedBackup;
+        if (backup is null) return;
+        var result = System.Windows.MessageBox.Show(
+            $"Restore settings from:\n{backup.DisplayName}\n\nEveDeck will restart. Current settings will be replaced.",
+            "Restore Settings Backup",
+            System.Windows.MessageBoxButton.OKCancel,
+            System.Windows.MessageBoxImage.Question);
+        if (result != System.Windows.MessageBoxResult.OK) return;
+        var error = _viewModel.RestoreSelectedBackup();
+        if (error is not null)
+            System.Windows.MessageBox.Show(
+                $"Restore failed:\n{error}",
+                "Restore Failed",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
     }
 
     private void CreateBackup_Click(object sender, RoutedEventArgs e)

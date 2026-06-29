@@ -140,4 +140,20 @@ internal static class Win32Native
         uint iModeNum,
         ref DEVMODE lpDevMode,
         uint dwFlags);
+
+    // Process priority constants for background throttling.
+    internal const uint ProcessSetInformation = 0x0200;
+    internal const uint PriorityNormal = 0x00000020;
+    internal const uint PriorityBelowNormal = 0x00004000;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern nint OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetPriorityClass(nint hProcess, uint dwPriorityClass);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool CloseHandle(nint hObject);
 }

@@ -14,6 +14,9 @@ public sealed class LayoutProfile
     // (mining vs. PvP) can centre different mains. 0 = unset; the view-model falls back to the centre slot.
     public int MasterSeat { get; set; }
 
+    // Swap groups partition profile slots into independent swap rings. Empty = single legacy group (all slots).
+    public ObservableCollection<SwapGroup> SwapGroups { get; set; } = new();
+
     // When true, this profile fits itself into the monitor WORK AREA (excluding the taskbar) instead of
     // the full monitor bounds at apply time — useful for centre-master grids so the bottom row clears the
     // taskbar. Per-profile so full-screen and taskbar-aware variants can coexist. See ResolveLayoutAnchor.
@@ -76,6 +79,8 @@ public sealed class LayoutProfile
                 HomeSeat = slot.HomeSeat
             });
         }
+        foreach (var g in SwapGroups)
+            clone.SwapGroups.Add(new SwapGroup { Name = g.Name, SlotNumbers = new List<int>(g.SlotNumbers) });
         return clone;
     }
 }

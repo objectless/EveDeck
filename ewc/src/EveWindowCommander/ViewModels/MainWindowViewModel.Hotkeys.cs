@@ -54,6 +54,15 @@ public sealed partial class MainWindowViewModel
                 var binding = Hotkeys.FirstOrDefault(h => h.ActionId.Equals(actionId, StringComparison.OrdinalIgnoreCase));
                 SwitchToCharacter(binding?.TargetCharacter);
             }
+            else if (actionId.Equals("ToggleTopmost", StringComparison.OrdinalIgnoreCase))
+            {
+                ToggleTopmostForActive();
+            }
+            else if (actionId.StartsWith("SwitchCharacterSet", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(actionId["SwitchCharacterSet".Length..], out var setIndex))
+            {
+                SwitchCharacterSet(setIndex);
+            }
         }
         catch (Exception ex)
         {
@@ -227,15 +236,8 @@ public sealed partial class MainWindowViewModel
         int seat;
         if (_settings.CornerOverlaysEnabled && profile.SupportsCornerGrid)
         {
-            if (targetRow == "M" && targetCol == "C")
-            {
-                seat = _centeredSeat > 0 ? _centeredSeat : positionId;
-            }
-            else
-            {
-                if (_cornerSeat.Count == 0) ResetCornerOccupancy();
-                seat = _cornerSeat.TryGetValue(positionId, out var occupant) ? occupant : positionId;
-            }
+            if (_centeredSeatByGroup.Count == 0) ResetCornerOccupancy();
+            seat = OccupantAtPosition(positionId);
         }
         else
         {

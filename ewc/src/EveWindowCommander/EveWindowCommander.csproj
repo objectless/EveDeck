@@ -10,7 +10,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>EveWindowCommander</AssemblyName>
     <RootNamespace>EveWindowCommander</RootNamespace>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>Assets\ewc.ico</ApplicationIcon>
   </PropertyGroup>

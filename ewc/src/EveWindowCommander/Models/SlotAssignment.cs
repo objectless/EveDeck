@@ -69,6 +69,14 @@ public sealed class SlotAssignment : ObservableObject
         set => SetProperty(ref _frameColor, value);
     }
 
+    // Keep this seat's EVE window pinned topmost (HWND_TOPMOST) at all times.
+    private bool _isTopmost;
+    public bool IsTopmost
+    {
+        get => _isTopmost;
+        set => SetProperty(ref _isTopmost, value);
+    }
+
     // UI-only drag-drop state — not persisted.
     private bool _isDragSwapTarget;
 

@@ -1,7 +1,7 @@
-<Window x:Class="EveWindowCommander.Views.SetupWizardWindow"
+﻿<Window x:Class="EveWindowCommander.Views.SetupWizardWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="EVE Window Commander — Setup"
+        Title="EveDeck — Setup"
         Width="600" Height="580"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
@@ -48,7 +48,7 @@
                    Margin="0,0,8,0" VerticalAlignment="Center"
                    RenderOptions.BitmapScalingMode="HighQuality"/>
             <TextBlock Text="Setup Wizard" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
-            <TextBlock Text="  EVE Window Commander"
+            <TextBlock Text="  EveDeck"
                        Foreground="{StaticResource MutedBrush}"
                        Margin="4,0,0,0"
                        VerticalAlignment="Center"/>

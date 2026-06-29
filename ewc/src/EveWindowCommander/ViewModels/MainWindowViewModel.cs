@@ -59,6 +59,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     // 3b — Window rects captured just before the last profile apply (for undo).
     private Dictionary<string, WindowRect>? _undoRects;
 
+    private UpdateCheckService.UpdateInfo? _availableUpdate;
+    private bool _updateBannerDismissed;
     private ActiveFrameOverlay? _frameOverlay;
     private Brush _frameBrush = Brushes.Orange;
     private EveWindowInfo? _selectedWindow;
@@ -68,8 +70,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private HotkeyBinding? _capturingHotkey;
     private string _status = "Ready.";
     private string _lastUpdatedText = "Not refreshed yet";
-    private bool _updateAvailable;
-    private string _updateVersion = "";
 
     public MainWindowViewModel()
     {
@@ -127,11 +127,40 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SetMasterSlotCommand = new RelayCommand(SetMasterSlot);
         AddEsiCharacterCommand = new RelayCommand(AddEsiCharacter);
         RemoveEsiCharacterCommand = new RelayCommand(RemoveEsiCharacter);
-        RestoreBackupCommand = new RelayCommand(RestoreSelectedBackup, () => SelectedBackup is not null);
+        RestoreBackupCommand = new RelayCommand(() => RestoreSelectedBackup(), () => SelectedBackup is not null);
+        DismissUpdateBannerCommand = new RelayCommand(() => { _updateBannerDismissed = true; OnPropertyChanged(nameof(ShowUpdateBanner)); });
+        OpenUpdateUrlCommand = new RelayCommand(() =>
+        {
+            if (_availableUpdate?.DownloadUrl is { } url)
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+        });
         SpawnTestWindowsCommand = new RelayCommand(SpawnTestWindows);
         AutoSelectBestProfileCommand = new RelayCommand(AutoSelectBestProfile);
         SetMasterResolutionCommand = new RelayCommand(ExecuteSetMasterResolution, () => SelectedMasterResolution is not null && SelectedProfile is not null);
         ClearMasterResolutionCommand = new RelayCommand(ExecuteClearMasterResolution, () => SelectedProfile is not null && SelectedProfile.MasterResolutionWidth > 0);
+        ToggleTopmostCommand = new RelayCommand(parameter =>
+        {
+            if (parameter is not SlotAssignment seat) return;
+            // IsTopmost is already updated by the TwoWay binding before this command fires.
+            foreach (var w in FindAssignedWindows(seat))
+                _windowService.SetWindowTopmost(w.Handle, seat.IsTopmost);
+            Save();
+            Log.Info($"Seat {seat.SlotNumber} ({seat.Label}) always-on-top: {seat.IsTopmost}.");
+        });
+
+        SwitchCharacterSetCommand = new RelayCommand(parameter =>
+        {
+            if (parameter is Models.CharacterSet set)
+                SwitchToCharacterSet(set.Id);
+        });
+
+        AddCharacterSetCommand = new RelayCommand(_ => AddCharacterSet());
+
+        DeleteCharacterSetCommand = new RelayCommand(parameter =>
+        {
+            var set = parameter as Models.CharacterSet ?? ActiveCharacterSet;
+            if (set is not null) DeleteCharacterSet(set);
+        }, _ => _settings.CharacterSets.Count > 1);
 
         // ── Views ─────────────────────────────────────────────────
         SelectedProfile = Profiles.FirstOrDefault(p => p.Id == _settings.ActiveProfileId) ?? Profiles.FirstOrDefault();
@@ -184,16 +213,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
             }
         }
 
-        Log.Info("EVE Window Commander started.");
+        Log.Info("EveDeck started.");
         _ = CheckForUpdateAsync();
     }
 
     private async Task CheckForUpdateAsync()
     {
-        var info = await UpdateCheckService.CheckAsync().ConfigureAwait(false);
-        if (info is null || !UpdateCheckService.IsNewer(info.Version)) return;
-        _updateVersion = info.Version;
-        UpdateAvailable = true;
+        var current = Assembly.GetExecutingAssembly().GetName().Version;
+        if (current is null) return;
+        var currentStr = $"{current.Major}.{current.Minor}.{current.Build}";
+        var info = await new UpdateCheckService().CheckAsync(currentStr);
+        if (info is null) return;
+        _availableUpdate = info;
+        App.Current.Dispatcher.Invoke(() => OnPropertyChanged(nameof(ShowUpdateBanner)));
     }
 
     // ── Observables ────────────────────────────────────────────────────────────
@@ -208,6 +240,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<HotkeyBinding> Hotkeys { get; }
     public ObservableCollection<LogEntry> Logs { get; }
     public ICollectionView LogsView { get; }  // 2h
+    public ObservableCollection<Models.CharacterSet> CharacterSets => _settings.CharacterSets;
     public ObservableCollection<LayoutSlotPreview> LayoutPreviewSlots { get; } = new();
     public ObservableCollection<MiniMapSlot> MiniMapSlots { get; } = new();
     public ObservableCollection<MonitorPreviewItem> MonitorPreviewItems { get; } = new();
@@ -248,6 +281,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public RelayCommand AutoSelectBestProfileCommand { get; }
     public RelayCommand SetMasterResolutionCommand { get; }
     public RelayCommand ClearMasterResolutionCommand { get; }
+    public RelayCommand ToggleTopmostCommand { get; }
+    public RelayCommand AddCharacterSetCommand { get; }
+    public RelayCommand DeleteCharacterSetCommand { get; }
+    public RelayCommand SwitchCharacterSetCommand { get; }
 
     // ── Master resolution picker (VSR/DSR supersampling) ───────────────────────
 
@@ -405,19 +442,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    public bool UpdateAvailable
-    {
-        get => _updateAvailable;
-        private set
-        {
-            if (!SetProperty(ref _updateAvailable, value)) return;
-            OnPropertyChanged(nameof(UpdateMessage));
-        }
-    }
-
-    public string UpdateMessage => _updateAvailable
-        ? $"Update available: v{_updateVersion} — evedeck.space/releases"
-        : "";
+    public bool ShowUpdateBanner => _availableUpdate is not null && !_updateBannerDismissed;
+    public string UpdateVersionText => _availableUpdate is not null ? $"EveDeck {_availableUpdate.Version} is available" : "";
+    public ICommand DismissUpdateBannerCommand { get; }
+    public ICommand OpenUpdateUrlCommand { get; }
 
     public int WindowCount => Windows.Count;
     public int MonitorCount => Monitors.Count;
@@ -470,6 +498,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     public bool IsCapturingHotkey => _capturingHotkey is not null;
+
+    public Models.CharacterSet? ActiveCharacterSet
+        => _settings.CharacterSets.FirstOrDefault(s => s.Id == _settings.ActiveCharacterSetId);
+
+    public string ActiveCharacterSetId => _settings.ActiveCharacterSetId;
 
     public string Status
     {
@@ -657,7 +690,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         get
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-            return key?.GetValue("EVEWindowCommander") is not null;
+            return key?.GetValue("EveDeck") is not null;
         }
         set
         {
@@ -666,14 +699,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
             if (value)
             {
                 var exePath = Environment.ProcessPath ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
-                key.SetValue("EVEWindowCommander", $"\"{exePath}\"");
+                key.SetValue("EveDeck", $"\"{exePath}\"");
             }
             else
             {
-                key.DeleteValue("EVEWindowCommander", throwOnMissingValue: false);
+                key.DeleteValue("EveDeck", throwOnMissingValue: false);
             }
             OnPropertyChanged();
-            Log.Info(value ? "Added EWC to Windows startup." : "Removed EWC from Windows startup.");
+            Log.Info(value ? "Added EveDeck to Windows startup." : "Removed EveDeck from Windows startup.");
         }
     }
 
@@ -839,6 +872,153 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    public bool ThrottleBackgroundProcesses
+    {
+        get => _settings.ThrottleBackgroundProcesses;
+        set
+        {
+            if (_settings.ThrottleBackgroundProcesses == value) return;
+            _settings.ThrottleBackgroundProcesses = value;
+            OnPropertyChanged();
+            if (!value) RestoreAllProcessPriorities();
+            Save();
+        }
+    }
+
+    internal void ApplyProcessPriorities(nint focusedHandle)
+    {
+        if (!_settings.ThrottleBackgroundProcesses) return;
+        foreach (var w in Windows)
+            _windowService.SetProcessPriority((uint)w.ProcessId, w.Handle != focusedHandle);
+    }
+
+    private void RestoreAllProcessPriorities()
+    {
+        foreach (var w in Windows)
+            _windowService.SetProcessPriority((uint)w.ProcessId, false);
+    }
+
+    internal void ApplyTopmostState()
+    {
+        foreach (var seat in Assignments)
+            foreach (var w in FindAssignedWindows(seat))
+                _windowService.SetWindowTopmost(w.Handle, seat.IsTopmost);
+    }
+
+    private void ToggleTopmostForActive()
+    {
+        var fg = _windowService.GetForegroundWindowHandle();
+        if (fg == 0) return;
+        var seat = Assignments.FirstOrDefault(a => FindAssignedWindows(a).Any(w => w.Handle == fg));
+        if (seat is null) return;
+        seat.IsTopmost = !seat.IsTopmost;
+        _windowService.SetWindowTopmost(fg, seat.IsTopmost);
+        Save();
+        Log.Info($"Seat {seat.SlotNumber} ({seat.Label}) always-on-top: {seat.IsTopmost}.");
+    }
+
+    // Called from hotkey dispatch (1-based index into CharacterSets).
+    internal void SwitchCharacterSet(int oneBasedIndex)
+    {
+        if (oneBasedIndex < 1 || oneBasedIndex > _settings.CharacterSets.Count) return;
+        SwitchToCharacterSet(_settings.CharacterSets[oneBasedIndex - 1].Id);
+    }
+
+    private void SwitchToCharacterSet(string targetId)
+    {
+        if (targetId == _settings.ActiveCharacterSetId) return;
+        var target = _settings.CharacterSets.FirstOrDefault(s => s.Id == targetId);
+        if (target is null) return;
+
+        // Snapshot the live collections back into the current set before leaving it.
+        SnapshotLiveToActiveSet();
+
+        // Update IsActive flag on all sets (used by UI toggle buttons).
+        foreach (var s in _settings.CharacterSets) s.IsActive = false;
+        target.IsActive = true;
+        _settings.ActiveCharacterSetId = targetId;
+
+        // Repopulate live collections from the target set.
+        Assignments.Clear();
+        foreach (var a in target.Assignments) Assignments.Add(a);
+        Hotkeys.Clear();
+        foreach (var h in target.Hotkeys) Hotkeys.Add(h);
+
+        HotkeysChanged?.Invoke(this, EventArgs.Empty);
+        SyncMasterSlot();
+        UpdatePositionCodes();
+        RaiseIdentityDependents();
+        OnPropertyChanged(nameof(ActiveCharacterSet));
+        OnPropertyChanged(nameof(ActiveCharacterSetId));
+        Save();
+        Log.Info($"Switched to character set '{target.Name}'.");
+    }
+
+    private void SnapshotLiveToActiveSet()
+    {
+        var active = ActiveCharacterSet;
+        if (active is null) return;
+        active.Assignments.Clear();
+        foreach (var a in Assignments) active.Assignments.Add(a);
+        active.Hotkeys.Clear();
+        foreach (var h in Hotkeys) active.Hotkeys.Add(h);
+    }
+
+    private void AddCharacterSet()
+    {
+        SnapshotLiveToActiveSet();
+
+        var newSet = new Models.CharacterSet
+        {
+            Name = $"Set {_settings.CharacterSets.Count + 1}"
+        };
+        // Clone seat structure (same slot numbers/labels) but clear window assignments.
+        foreach (var a in Assignments)
+        {
+            newSet.Assignments.Add(new SlotAssignment
+            {
+                SlotNumber = a.SlotNumber,
+                Label = a.Label,
+                IsMaster = a.IsMaster,
+                FrameColor = a.FrameColor
+            });
+        }
+        // Clone hotkey bindings unbound (user should configure them per set).
+        foreach (var h in Hotkeys)
+            newSet.Hotkeys.Add(new HotkeyBinding
+            {
+                ActionId = h.ActionId,
+                DisplayName = h.DisplayName,
+                Modifiers = h.Modifiers,
+                VirtualKey = h.VirtualKey,
+                GestureText = h.GestureText,
+                Enabled = h.Enabled,
+                TargetCharacter = h.TargetCharacter
+            });
+
+        _settings.CharacterSets.Add(newSet);
+        DeleteCharacterSetCommand.RaiseCanExecuteChanged();
+        SwitchToCharacterSet(newSet.Id);
+        Log.Info($"Added character set '{newSet.Name}'.");
+    }
+
+    private void DeleteCharacterSet(Models.CharacterSet set)
+    {
+        if (_settings.CharacterSets.Count <= 1) return;
+
+        var wasActive = set.Id == _settings.ActiveCharacterSetId;
+        _settings.CharacterSets.Remove(set);
+        DeleteCharacterSetCommand.RaiseCanExecuteChanged();
+
+        if (wasActive)
+            SwitchToCharacterSet(_settings.CharacterSets[0].Id);
+        else
+        {
+            Save();
+            Log.Info($"Deleted character set '{set.Name}'.");
+        }
+    }
+
     // True when a managed EVE (or test) window currently owns the foreground. Used by the hotkey
     // service to decide whether gated hotkeys should be registered with the OS right now.
     public bool IsEveWindowForeground()
@@ -942,13 +1122,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
         // In corner-overlay mode with live occupancy, each seat card shows WHERE THAT SEAT'S
         // WINDOW CURRENTLY IS on screen: "Master" if centred, or the corner's geometric arrow.
         // This is correct even after swaps (e.g. Seat 1 sent to BL still shows ↙, not ↖).
-        if (_settings.CornerOverlaysEnabled && _cornerSeat.Count > 0)
+        if (_settings.CornerOverlaysEnabled && _cornerSeatByGroup.Count > 0)
         {
-            // Reverse _cornerSeat: seat → its current corner position id.
-            var seatToPosition = _cornerSeat.ToDictionary(kv => kv.Value, kv => kv.Key);
+            // Build a merged seat->currentPosition map across all groups.
+            var seatToPosition = new Dictionary<int, int>();
+            foreach (var (_, corners) in _cornerSeatByGroup)
+                foreach (var (pos, seat) in corners)
+                    seatToPosition[seat] = pos;
+
+            // Determine which seats are centred in their respective group.
+            var centeredSeats = new HashSet<int>(_centeredSeatByGroup.Values);
+
             foreach (var a in Assignments)
             {
-                if (a.SlotNumber == _centeredSeat)
+                if (centeredSeats.Contains(a.SlotNumber))
                     a.PositionCode = "Master";
                 else if (!hasCollision
                          && seatToPosition.TryGetValue(a.SlotNumber, out var pos)
@@ -1096,7 +1283,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     spawned[i].Refresh();
                     var hwnd = spawned[i].MainWindowHandle;
                     if (hwnd != 0)
-                        Utilities.Win32Native.SetWindowText(hwnd, $"EWC TEST - Slot {i + 1}");
+                        Utilities.Win32Native.SetWindowText(hwnd, $"EveDeck TEST - Slot {i + 1}");
                 }
                 catch { /* process may have exited */ }
             }
@@ -1219,9 +1406,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _selectedBackup, value))
+            {
                 RestoreBackupCommand.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(HasSelectedBackup));
+            }
         }
     }
+
+    public bool HasSelectedBackup => _selectedBackup is not null;
 
     public void RefreshBackups() => OnPropertyChanged(nameof(AvailableBackups));
 
@@ -1233,12 +1425,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Status = "Backup created.";
     }
 
-    public void RestoreSelectedBackup()
+    // Returns null on success, or an error message to show the user.
+    public string? RestoreSelectedBackup()
     {
-        if (_selectedBackup is null) return;
-        _configService.RestoreBackup(_selectedBackup.Path);
-        Log.Info($"Restored settings from {_selectedBackup.DisplayName}. Restarting...");
-        RestartApp();
+        if (_selectedBackup is null) return null;
+        try
+        {
+            _configService.RestoreBackup(_selectedBackup.Path);
+            Log.Info($"Restored settings from {_selectedBackup.DisplayName}. Restarting...");
+            RestartApp();
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Restore failed: {ex.Message}");
+            return ex.Message;
+        }
     }
 
     public void ExportSettings(string destPath)

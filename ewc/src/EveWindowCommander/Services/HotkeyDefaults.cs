@@ -72,7 +72,12 @@ public static class HotkeyDefaults
         // brings a given character forward no matter which corner they've rotated into. Ship unbound
         // (assign each binding a target character in the Hotkeys tab).
         for (var i = 1; i <= 5; i++)
-            bindings.Add(new HotkeyBinding { ActionId = $"SwitchToCharacter{i}", DisplayName = $"Switch to character {i} (pick target →)", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+            bindings.Add(new HotkeyBinding { ActionId = $"SwitchToCharacter{i}", DisplayName = $"Switch to character {i} (pick target ->)", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+
+        bindings.Add(new HotkeyBinding { ActionId = "ToggleTopmost", DisplayName = "Toggle always-on-top for focused EVE window", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+
+        for (var i = 1; i <= 4; i++)
+            bindings.Add(new HotkeyBinding { ActionId = $"SwitchCharacterSet{i}", DisplayName = $"Switch to character set {i}", Modifiers = 0, VirtualKey = 0, GestureText = "" });
 
         return bindings;
     }

@@ -19,8 +19,8 @@ public partial class App : Application
         if (!isFirstInstance)
         {
             MessageBox.Show(
-                "EVE Window Commander is already running. Close the existing window before starting another copy.",
-                "EVE Window Commander",
+                "EveDeck is already running. Close the existing window before starting another copy.",
+                "EveDeck",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             Shutdown(0);
@@ -76,8 +76,8 @@ public partial class App : Application
     {
         WriteCrashLog(e.Exception);
         MessageBox.Show(
-            $"EVE Window Commander hit a startup error and wrote a crash log.\n\n{e.Exception.Message}",
-            "EVE Window Commander",
+            $"EveDeck hit a startup error and wrote a crash log.\n\n{e.Exception.Message}",
+            "EveDeck",
             MessageBoxButton.OK,
             MessageBoxImage.Error);
         e.Handled = true;
@@ -91,7 +91,7 @@ public partial class App : Application
         {
             var folder = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "EVE Window Commander",
+                "EveDeck",
                 "logs");
             Directory.CreateDirectory(folder);
             var path = Path.Combine(folder, $"crash-{DateTime.Now:yyyyMMdd-HHmmss}.log");

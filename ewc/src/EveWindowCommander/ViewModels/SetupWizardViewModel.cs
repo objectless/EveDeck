@@ -57,7 +57,7 @@ public sealed class SetupWizardViewModel : ObservableObject
 
     public string StepTitle => Step switch
     {
-        0 => "Welcome to EVE Window Commander",
+        0 => "Welcome to EveDeck",
         1 => "Choose your display",
         2 => "Link your characters",
         3 => "Ready to apply",

@@ -118,7 +118,7 @@ public sealed partial class MainWindowViewModel
     private void CopyDiagnostics()
     {
         var builder = new StringBuilder();
-        builder.AppendLine("EVE Window Commander diagnostics");
+        builder.AppendLine("EveDeck diagnostics");
         builder.AppendLine($"Config: {_configService.ConfigPath}");
         builder.AppendLine($"UsePhysicalPixels: {UsePhysicalPixels}");
         builder.AppendLine();
