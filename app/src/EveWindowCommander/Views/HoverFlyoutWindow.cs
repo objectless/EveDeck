@@ -12,8 +12,6 @@ internal sealed class HoverFlyoutWindow : Window
     private nint _thumbnailId;
     private readonly int _physX, _physY, _physW, _physH;
 
-    public Action? Clicked;
-
     public HoverFlyoutWindow(int physX, int physY, int physW, int physH, double dpiScale, nint sourceHwnd)
     {
         _physX = physX; _physY = physY; _physW = physW; _physH = physH;
@@ -64,7 +62,6 @@ internal sealed class HoverFlyoutWindow : Window
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
-        if (msg == 0x0201) { try { Clicked?.Invoke(); } catch { } } // WM_LBUTTONDOWN
         return nint.Zero;
     }
 

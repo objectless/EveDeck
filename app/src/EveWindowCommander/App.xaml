@@ -4,7 +4,7 @@
              StartupUri="Views/MainWindow.xaml">
   <Application.Resources>
     <!-- Color palette — EVE Online "captain's quarters" space aesthetic: deep void blue-blacks,
-         cool starlight text, and a holographic cyan accent (CCP's signature UI cyan). -->
+         cool starlight text, and a holographic cyan accent (CCP/Fenris Creations' signature UI cyan). -->
     <SolidColorBrush x:Key="BgBrush" Color="#070B11"/>
     <SolidColorBrush x:Key="PanelBrush" Color="#0F1620"/>
     <SolidColorBrush x:Key="PanelAltBrush" Color="#16202C"/>
