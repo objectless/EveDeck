@@ -1,0 +1,81 @@
+using System.Collections.ObjectModel;
+
+namespace EveWindowCommander.Models;
+
+public sealed class LayoutProfile
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "New Profile";
+    public bool IsBuiltIn { get; set; }
+    public string Category { get; set; } = "Custom";
+    public ObservableCollection<LayoutSlot> Slots { get; set; } = new();
+
+    // The master SEAT (SlotAssignment.SlotNumber) centred at rest for THIS profile — different activities
+    // (mining vs. PvP) can centre different mains. 0 = unset; the view-model falls back to the centre slot.
+    public int MasterSeat { get; set; }
+
+    // When true, this profile fits itself into the monitor WORK AREA (excluding the taskbar) instead of
+    // the full monitor bounds at apply time — useful for centre-master grids so the bottom row clears the
+    // taskbar. Per-profile so full-screen and taskbar-aware variants can coexist. See ResolveLayoutAnchor.
+    public bool AvoidTaskbar { get; set; }
+
+    // When non-zero, EWC places the master EVE window at exactly this size instead of whatever
+    // ResolvePlacementRect computes for the centre slot. Set this to match EVE's Fixed Window
+    // resolution when using VSR/DSR supersampling or a custom master size.
+    // 0/0 = auto (scale to fill the target monitor as usual).
+    public int MasterResolutionWidth { get; set; }
+    public int MasterResolutionHeight { get; set; }
+
+    // Physical bounds of the monitor this profile was captured on.
+    // Zero = legacy profile captured before this feature; no resolution scaling applied.
+    public int CaptureMonitorX { get; set; }
+    public int CaptureMonitorY { get; set; }
+    public int CaptureMonitorWidth { get; set; }
+    public int CaptureMonitorHeight { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int GroupOrder => Category switch
+    {
+        "Stacked"       => 0,
+        "2×2 Grid" => 1,
+        "3-Character"   => 2,
+        "Center Master" => 3,
+        "5-Character"   => 3,
+        "Overlap"       => 4,
+        _               => 99
+    };
+
+    // Corner-overlay (grid) mode needs distinct slot positions to surround a centre rect. Single-client
+    // and stacked layouts place every client at the same spot, so they "won't grid" — for those we fall
+    // back to plain window placement even when corner overlays are globally enabled.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool SupportsCornerGrid =>
+        Slots.Count >= 2 && Slots.Select(s => (s.X, s.Y)).Distinct().Count() >= 2;
+
+    public LayoutProfile Clone(string? name = null)
+    {
+        var clone = new LayoutProfile { Name = name ?? $"{Name} Copy", IsBuiltIn = false, Category = "Custom" };
+        clone.MasterSeat = MasterSeat;
+        clone.AvoidTaskbar = AvoidTaskbar;
+        clone.CaptureMonitorX = CaptureMonitorX;
+        clone.CaptureMonitorY = CaptureMonitorY;
+        clone.CaptureMonitorWidth = CaptureMonitorWidth;
+        clone.CaptureMonitorHeight = CaptureMonitorHeight;
+        foreach (var slot in Slots)
+        {
+            clone.Slots.Add(new LayoutSlot
+            {
+                SlotNumber = slot.SlotNumber,
+                Label = slot.Label,
+                MonitorId = slot.MonitorId,
+                X = slot.X,
+                Y = slot.Y,
+                Width = slot.Width,
+                Height = slot.Height,
+                Borderless = slot.Borderless,
+                HomeSeat = slot.HomeSeat
+            });
+        }
+        return clone;
+    }
+}
