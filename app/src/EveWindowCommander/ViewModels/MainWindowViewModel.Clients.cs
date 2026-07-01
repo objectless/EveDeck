@@ -331,7 +331,7 @@ public sealed partial class MainWindowViewModel
 
         // First refresh only seeds the baseline — clients already open at launch are left in place
         // (use "Apply a layout profile on startup" to position those). Auto-apply only fires for
-        // clients that appear *after* EWC is running.
+        // clients that appear *after* EveDeck is running.
         var firstRefresh = !_clientBaselineInitialized;
         _clientBaselineInitialized = true;
 

@@ -113,7 +113,7 @@ public partial class MainWindow : Window
             if (_viewModel.IsCapturingHotkey)
             {
                 _hotkeyService.UnregisterAll(_viewModel.Log);
-                // Ensure EWC window has keyboard focus so PreviewKeyDown fires when the user
+                // Ensure EveDeck window has keyboard focus so PreviewKeyDown fires when the user
                 // presses their key combo (clicking the Set button can leave focus ambiguous).
                 this.Activate();
                 Keyboard.Focus(HotkeyDataGrid);

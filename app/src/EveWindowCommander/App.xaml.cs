@@ -16,7 +16,13 @@ public partial class App : Application
     {
         _singleInstanceMutex = new Mutex(true, "EveDeck.SingleInstance", out var isFirstInstance);
         _ownsSingleInstanceMutex = isFirstInstance;
-        if (!isFirstInstance)
+
+        // Also block alongside pre-1.3.1 builds that used the old mutex name.
+        Mutex? legacyMutex = null;
+        var legacyRunning = isFirstInstance && Mutex.TryOpenExisting("EveWindowCommander.SingleInstance", out legacyMutex);
+        legacyMutex?.Dispose();
+
+        if (!isFirstInstance || legacyRunning)
         {
             MessageBox.Show(
                 "EveDeck is already running. Close the existing window before starting another copy.",

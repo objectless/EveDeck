@@ -22,7 +22,7 @@ public sealed class LayoutProfile
     // taskbar. Per-profile so full-screen and taskbar-aware variants can coexist. See ResolveLayoutAnchor.
     public bool AvoidTaskbar { get; set; }
 
-    // When non-zero, EWC places the master EVE window at exactly this size instead of whatever
+    // When non-zero, EveDeck places the master EVE window at exactly this size instead of whatever
     // ResolvePlacementRect computes for the centre slot. Set this to match EVE's Fixed Window
     // resolution when using VSR/DSR supersampling or a custom master size.
     // 0/0 = auto (scale to fill the target monitor as usual).

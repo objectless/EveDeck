@@ -381,7 +381,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 else
                 {
                     // Above desktop bounds: VSR/DSR virtual resolution — desktop must be switched to this
-                    // resolution in Windows Display Settings before EWC can place windows at that size.
+                    // resolution in Windows Display Settings before EveDeck can place windows at that size.
                     if (seenVsr.Add((w, h)))
                         modesVsr.Add(new DisplayModeOption($"{w}×{h} (switch desktop to use)", w, h));
                 }
@@ -687,7 +687,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    // 2j — Launch EWC with Windows via Run registry key.
+    // 2j — Launch EveDeck with Windows via Run registry key.
     public bool LaunchWithWindows
     {
         get
@@ -1254,7 +1254,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     // Spawn one Notepad window per slot so the user can test layouts without EVE running.
-    // Each window is titled "EWC TEST - Slot N" so it's visually distinct in the window list.
+    // Each window is titled "EveDeck TEST - Slot N" so it's visually distinct in the window list.
     public void SpawnTestWindows()
     {
         var count = Assignments.Count;
