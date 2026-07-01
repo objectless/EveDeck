@@ -228,7 +228,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var info = await new UpdateCheckService().CheckAsync(currentStr);
         if (info is null) return;
         _availableUpdate = info;
-        App.Current.Dispatcher.Invoke(() => OnPropertyChanged(nameof(ShowUpdateBanner)));
+        App.Current.Dispatcher.Invoke(() =>
+        {
+            OnPropertyChanged(nameof(ShowUpdateBanner));
+            OnPropertyChanged(nameof(UpdateVersionText));
+        });
     }
 
     // ── Observables ────────────────────────────────────────────────────────────
