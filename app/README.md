@@ -42,7 +42,7 @@ The hotkey layer has a hardcoded guard that permits only focus, cycle focus, lay
 Install locally for development:
 
 - Windows 10 or Windows 11.
-- .NET 8 SDK or newer with Windows Desktop workload.
+- .NET 10 SDK or newer with Windows Desktop workload.
 - Visual Studio 2022, JetBrains Rider, or VS Code with C# Dev Kit.
 - EVE Online for real use, or Notepad for the acceptance smoke test.
 
