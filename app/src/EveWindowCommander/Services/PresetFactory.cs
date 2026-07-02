@@ -4,21 +4,43 @@ namespace EveWindowCommander.Services;
 
 public static class PresetFactory
 {
-    private static readonly HashSet<string> DeprecatedBuiltInNames = BuildDeprecatedNames();
-
-    // (width, height, includeTaskbarVariant) — capped at 4K
+    // (width, height, includeTaskbarVariant) — curated to the handful of resolutions people actually
+    // run multibox setups on. Anything dropped here must be added to BuildDeprecatedNames so it's
+    // cleaned out of existing users' saved profiles.
     private static readonly (int W, int H, bool Taskbar)[] Resolutions =
     {
-        (1760,  990,  false),
         (1920, 1080,  true),
-        (1920, 1200,  false),
         (2560, 1440,  true),
-        (2816, 1584,  false),
-        (3072, 1728,  false),
         (3200, 1800,  false),
-        (3328, 1872,  false),
         (3840, 2160,  true),
     };
+
+    // Resolutions the Center Master family template offers in its dropdown (must mirror Resolutions).
+    private static readonly (int W, int H)[] CenterMasterResolutions =
+    {
+        (1920, 1080), (2560, 1440), (3200, 1800), (3840, 2160),
+    };
+
+    // Client counts the Grid family template offers in its dropdown.
+    private static readonly int[] GridCounts = { 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15 };
+
+    // Client counts the Center Master family template offers in its dropdown.
+    private static readonly int[] CenterMasterCounts = { 4, 5, 6, 7, 8, 9, 10, 12, 15 };
+
+    // Dropdown option lists for the UI (Grid/Center Master resolution + account-count pickers).
+    public static IReadOnlyList<DisplayModeOption> GridResolutionOptions { get; } =
+        Array.ConvertAll(Resolutions, r => new DisplayModeOption($"{r.W}×{r.H}", r.W, r.H));
+
+    public static IReadOnlyList<DisplayModeOption> CenterMasterResolutionOptions { get; } =
+        Array.ConvertAll(CenterMasterResolutions, r => new DisplayModeOption($"{r.W}×{r.H}", r.W, r.H));
+
+    public static IReadOnlyList<int> GridCountOptions => GridCounts;
+    public static IReadOnlyList<int> CenterMasterCountOptions => CenterMasterCounts;
+
+    // Declared last: BuildDeprecatedNames() reads Resolutions/CenterMasterResolutions above, and static
+    // field initializers run in declaration order, so this must come after them or those fields are
+    // still null when it runs (crashed on startup before this fix).
+    private static readonly HashSet<string> DeprecatedBuiltInNames = BuildDeprecatedNames();
 
     public static IReadOnlyList<LayoutProfile> CreateBuiltInProfiles()
     {
@@ -34,20 +56,208 @@ public static class PresetFactory
         foreach (var (w, h, _) in Resolutions)
             list.Add(Solo($"1-Char {w}x{h}", w, h));
 
-        for (var n = 2; n <= 15; n++)
-            foreach (var (w, h, _) in Resolutions)
-                list.Add(NCharGrid($"{n}-Char Grid {w}x{h}", n, w, h));
-
+        list.Add(CreateGridTemplate());
         list.Add(Overlap());
 
         // Center Master family: a square ring of corner/edge tiles + one larger master floating centred
         // on top. n=5 is the classic 2×2 corners + master; higher counts add perimeter tiles and grow the
         // master to fill the hollow centre (e.g. 9 = eight tiles in a 3×3 ring with the 9th centred).
-        foreach (var (w, h) in CenterMasterResolutions)
-            for (var n = 4; n <= 15; n++)
-                list.Add(CenterMasterGrid($"{n}-Char Center Master {w}x{h}", n, w, h));
+        list.Add(CreateCenterMasterTemplate());
 
         return list;
+    }
+
+    // A single "Grid" profile whose resolution and account count are picked via dropdowns in the UI
+    // (rather than one named preset per resolution×count combo) and whose slots regenerate on demand.
+    private static LayoutProfile CreateGridTemplate()
+    {
+        var profile = new LayoutProfile
+        {
+            Name = "Grid",
+            IsBuiltIn = true,
+            Category = "Grid",
+            IsFamilyTemplate = true,
+            TemplateWidth = 2560,
+            TemplateHeight = 1440,
+            TemplateCount = 4,
+        };
+        PopulateGridSlots(profile);
+        return profile;
+    }
+
+    private static LayoutProfile CreateCenterMasterTemplate()
+    {
+        var profile = new LayoutProfile
+        {
+            Name = "Center Master",
+            IsBuiltIn = true,
+            Category = "Center Master",
+            IsFamilyTemplate = true,
+            TemplateWidth = 2560,
+            TemplateHeight = 1440,
+            TemplateCount = 5,
+        };
+        PopulateCenterMasterSlots(profile);
+        return profile;
+    }
+
+    // Clamp a family template's TemplateWidth/Height/Count to the curated dropdown options (in case a
+    // saved profile predates a change to those options), then rebuild its Slots from scratch.
+    public static void RegenerateFamilySlots(LayoutProfile profile)
+    {
+        if (!profile.IsFamilyTemplate) return;
+
+        if (profile.Category == "Grid")
+        {
+            var (w, h) = NearestResolution(Array.ConvertAll(Resolutions, r => (r.W, r.H)), profile.TemplateWidth);
+            profile.TemplateWidth = w;
+            profile.TemplateHeight = h;
+            profile.TemplateCount = NearestCount(GridCounts, profile.TemplateCount);
+            PopulateGridSlots(profile);
+        }
+        else if (profile.Category == "Center Master")
+        {
+            var (w, h) = NearestResolution(CenterMasterResolutions, profile.TemplateWidth);
+            profile.TemplateWidth = w;
+            profile.TemplateHeight = h;
+            profile.TemplateCount = NearestCount(CenterMasterCounts, profile.TemplateCount);
+            PopulateCenterMasterSlots(profile);
+        }
+    }
+
+    private static void PopulateGridSlots(LayoutProfile profile)
+    {
+        var width = profile.TemplateWidth;
+        var height = profile.TemplateHeight;
+        var count = profile.TemplateCount;
+        var (cols, rows) = GridDimensions(count);
+
+        profile.Slots.Clear();
+        var baseW = width / cols;
+        var baseH = height / rows;
+        var slotNum = 1;
+        for (var r = 0; r < rows && slotNum <= count; r++)
+        {
+            var y = r * baseH;
+            var h = (r == rows - 1) ? height - y : baseH;
+            // Slots remaining for this and future rows; this row gets up to cols.
+            var slotsInRow = Math.Min(cols, count - slotNum + 1);
+            // If this is a partial last row, spread its slots evenly across the full width.
+            var rowBaseW = slotsInRow < cols ? width / slotsInRow : baseW;
+            for (var c = 0; c < slotsInRow; c++)
+            {
+                var x = c * rowBaseW;
+                var w = (c == slotsInRow - 1) ? width - x : rowBaseW;
+                profile.Slots.Add(Slot(slotNum, x, y, w, h));
+                slotNum++;
+            }
+        }
+    }
+
+    // A square ring of tiles surrounding one larger master floating centred on top. Generalises the
+    // original 5-Char design (2×2 corners + a 1.5-cell master) to any count: the ring is split into four
+    // sides (top/bottom/left/right) whose tile counts sum to n-1, and each side's tiles evenly partition
+    // that side's *entire* pixel length — so every perimeter side is fully covered with no dead cells,
+    // unlike the old design which dropped whole grid cells (visible gaps) whenever the count didn't divide
+    // the ring evenly. At the exact-fit counts (5 -> 2x2, 9 -> 3x3, ...) this produces byte-identical
+    // slots to before, since every side gets its maximum tile count. The master is slot n and is always
+    // the largest rect, so CenterSlotNumber auto-detects it. On a 16:9 monitor every rect stays 16:9.
+    private static void PopulateCenterMasterSlots(LayoutProfile profile)
+    {
+        var n = profile.TemplateCount;
+        var sw = profile.TemplateWidth;
+        var sh = profile.TemplateHeight;
+
+        var tiles = n - 1;
+        var s = 2;
+        while (4 * s - 4 < tiles) s++;          // smallest ring whose perimeter cell count holds every tile
+
+        var cellW = sw / s;
+        var cellH = sh / s;
+
+        // Max tiles each side could hold if the ring were fully populated (corners belong to top/bottom).
+        var topMax = s;
+        var bottomMax = s;
+        var sideMax = s - 2;                    // left/right middle cells; 0 when s == 2 (no side column)
+
+        var topN = topMax;
+        var bottomN = bottomMax;
+        var leftN = sideMax;
+        var rightN = sideMax;
+
+        // Shrink side tile-counts (never dropping a side to 0 tiles if it started non-zero) until they sum
+        // to `tiles`. Always shrinking the current largest side keeps counts balanced and, per construction,
+        // never needs to push an existing side below 1 (proven by the s-selection loop above).
+        var deficit = (topMax + bottomMax + sideMax + sideMax) - tiles;
+        while (deficit > 0)
+        {
+            var pick = 0; // 0=top,1=bottom,2=left,3=right
+            var best = -1;
+            if (topN > 1 && topN > best) { best = topN; pick = 0; }
+            if (bottomN > 1 && bottomN > best) { best = bottomN; pick = 1; }
+            if (leftN > 1 && leftN > best) { best = leftN; pick = 2; }
+            if (rightN > 1 && rightN > best) { best = rightN; pick = 3; }
+            switch (pick)
+            {
+                case 0: topN--; break;
+                case 1: bottomN--; break;
+                case 2: leftN--; break;
+                case 3: rightN--; break;
+            }
+            deficit--;
+        }
+
+        profile.Slots.Clear();
+        var slotNum = 1;
+
+        var bottomY = (s - 1) * cellH;
+        var bottomH = sh - bottomY;              // absorb rounding remainder in the last row
+        var rightX = (s - 1) * cellW;
+        var rightW = sw - rightX;                // absorb rounding remainder in the last column
+        var stripY = cellH;
+        var stripH = (s - 2) * cellH;             // vertical extent of the left/right middle strip
+
+        foreach (var (offset, size) in EvenSplit(sw, topN))
+        {
+            var label = topN == 1 ? "Top" : offset == 0 ? "Top Left" : offset + size >= sw ? "Top Right" : "Top";
+            profile.Slots.Add(Slot(slotNum++, offset, 0, size, cellH, label));
+        }
+        var leftIdx = 0;
+        foreach (var (offset, size) in EvenSplit(stripH, leftN))
+            profile.Slots.Add(Slot(slotNum++, 0, stripY + offset, cellW, size, leftN == 1 ? "Left" : $"Left {++leftIdx}"));
+        var rightIdx = 0;
+        foreach (var (offset, size) in EvenSplit(stripH, rightN))
+            profile.Slots.Add(Slot(slotNum++, rightX, stripY + offset, rightW, size, rightN == 1 ? "Right" : $"Right {++rightIdx}"));
+        foreach (var (offset, size) in EvenSplit(sw, bottomN))
+        {
+            var label = bottomN == 1 ? "Bottom" : offset == 0 ? "Bottom Left" : offset + size >= sw ? "Bottom Right" : "Bottom";
+            profile.Slots.Add(Slot(slotNum++, offset, bottomY, size, bottomH, label));
+        }
+
+        // Master spans the hollow centre plus a half-cell overlap on each side: 1.5 cells for the 2×2 ring
+        // (matches the legacy 5-Char master exactly), otherwise (s-1) cells so it scales with the ring.
+        // Numerator is doubled to keep integer math (1.5 cells -> 3/2).
+        var masterCellsX2 = (s == 2) ? 3 : 2 * (s - 1);
+        var masterW = masterCellsX2 * cellW / 2;
+        var masterH = masterCellsX2 * cellH / 2;
+        profile.Slots.Add(Slot(n, (sw - masterW) / 2, (sh - masterH) / 2, masterW, masterH, "Master"));
+    }
+
+    // Evenly partitions `total` pixels into `count` contiguous, non-overlapping spans (last absorbs the
+    // rounding remainder) so a side of the ring is always fully covered with no dead space between tiles.
+    private static List<(int offset, int size)> EvenSplit(int total, int count)
+    {
+        var result = new List<(int offset, int size)>();
+        if (count <= 0) return result;
+        var baseSize = total / count;
+        var offset = 0;
+        for (var i = 0; i < count; i++)
+        {
+            var size = (i == count - 1) ? total - offset : baseSize;
+            result.Add((offset, size));
+            offset += size;
+        }
+        return result;
     }
 
     public static bool EnsureBuiltInProfiles(IList<LayoutProfile> profiles)
@@ -67,6 +277,27 @@ public static class PresetFactory
             var existing = profiles.FirstOrDefault(p => p.Name.Equals(builtIn.Name, StringComparison.OrdinalIgnoreCase));
             if (existing is not null)
             {
+                if (builtIn.IsFamilyTemplate)
+                {
+                    // Preserve the user's chosen resolution/count across app updates instead of stomping
+                    // it back to the default template — only regenerate slots from whatever they last set.
+                    existing.IsBuiltIn = true;
+                    existing.IsFamilyTemplate = true;
+                    if (existing.Category != builtIn.Category) { existing.Category = builtIn.Category; changed = true; }
+                    if (existing.TemplateWidth == 0 || existing.TemplateHeight == 0 || existing.TemplateCount == 0)
+                    {
+                        existing.TemplateWidth = builtIn.TemplateWidth;
+                        existing.TemplateHeight = builtIn.TemplateHeight;
+                        existing.TemplateCount = builtIn.TemplateCount;
+                    }
+
+                    var (beforeW, beforeH, beforeC) = (existing.TemplateWidth, existing.TemplateHeight, existing.TemplateCount);
+                    RegenerateFamilySlots(existing);
+                    if (existing.TemplateWidth != beforeW || existing.TemplateHeight != beforeH || existing.TemplateCount != beforeC)
+                        changed = true;
+                    continue;
+                }
+
                 changed |= RepairBuiltInProfile(existing, builtIn);
                 continue;
             }
@@ -78,16 +309,28 @@ public static class PresetFactory
         return changed;
     }
 
-    // Resolutions that ship a 5-Char Center Master preset (must mirror CreateBuiltInProfiles).
-    private static readonly (int W, int H)[] CenterMasterResolutions =
+    // Pick the built-in family + resolution + account count that best fits a given client count on a
+    // monitor of the given size. Built-in profiles scale to the target monitor at apply time, so an exact
+    // resolution match isn't required — we choose the nearest-by-width option to minimise aspect distortion.
+    // Returns null for 0 or 1 clients (1-Char is a fixed per-resolution profile, not a family template).
+    public static (string Category, int Width, int Height, int Count)? ResolveFamilySelection(int clientCount, int monitorWidth, int monitorHeight)
     {
-        (2560, 1440), (3200, 1800), (3840, 2160),
-    };
+        if (clientCount <= 1) return null;
 
-    // Pick the built-in profile that best fits a given client count on a monitor of the given size.
-    // Built-in profiles scale to the target monitor at apply time, so an exact resolution match isn't
-    // required — we choose the nearest-by-width preset to minimise aspect distortion. Returns null
-    // only if no suitable family exists (it never should for counts >= 1).
+        // 4–15 : the Center Master family (big centred master + ring of tiles, fast hotkey swapping).
+        if (clientCount >= 4 && clientCount <= 15)
+        {
+            var (w, h) = NearestResolution(CenterMasterResolutions, monitorWidth);
+            return ("Center Master", w, h, NearestCount(CenterMasterCounts, clientCount));
+        }
+
+        // 2–3 and >15 : the Grid family (clamped to the 2..15 counts that exist).
+        var clamped = Math.Clamp(clientCount, 2, 15);
+        var (gw, gh) = NearestResolution(Array.ConvertAll(Resolutions, r => (r.W, r.H)), monitorWidth);
+        return ("Grid", gw, gh, NearestCount(GridCounts, clamped));
+    }
+
+    // Human-readable description of the best fit, for status/summary text (not a profile lookup key).
     public static string? BestProfileName(int clientCount, int monitorWidth, int monitorHeight)
     {
         if (clientCount <= 0) return null;
@@ -98,17 +341,8 @@ public static class PresetFactory
             return $"1-Char {w}x{h}";
         }
 
-        // 4–15 : the Center Master family (big centred master + ring of tiles, fast hotkey swapping).
-        if (clientCount >= 4 && clientCount <= 15)
-        {
-            var (w, h) = NearestResolution(CenterMasterResolutions, monitorWidth);
-            return $"{clientCount}-Char Center Master {w}x{h}";
-        }
-
-        // 2–3 and >15 : the N-Char grid family (clamped to the 2..15 presets that exist).
-        var count = Math.Clamp(clientCount, 2, 15);
-        var (gw, gh) = NearestResolution(Array.ConvertAll(Resolutions, r => (r.W, r.H)), monitorWidth);
-        return $"{count}-Char Grid {gw}x{gh}";
+        var sel = ResolveFamilySelection(clientCount, monitorWidth, monitorHeight)!.Value;
+        return $"{sel.Category} ({sel.Count} accounts, {sel.Width}x{sel.Height})";
     }
 
     private static (int W, int H) NearestResolution((int W, int H)[] options, int targetWidth)
@@ -119,6 +353,19 @@ public static class PresetFactory
         {
             var delta = Math.Abs(opt.W - targetWidth);
             if (delta < bestDelta) { bestDelta = delta; best = opt; }
+        }
+        return best;
+    }
+
+    // Nearest value in a curated count set; ties favor the larger count so nobody loses a seat.
+    private static int NearestCount(int[] counts, int target)
+    {
+        var best = counts[0];
+        var bestDelta = int.MaxValue;
+        foreach (var c in counts)
+        {
+            var delta = Math.Abs(c - target);
+            if (delta < bestDelta || (delta == bestDelta && c > best)) { bestDelta = delta; best = c; }
         }
         return best;
     }
@@ -180,32 +427,6 @@ public static class PresetFactory
         return profile;
     }
 
-    private static LayoutProfile NCharGrid(string name, int count, int width, int height)
-    {
-        var (cols, rows) = GridDimensions(count);
-        var profile = new LayoutProfile { Name = name, IsBuiltIn = true, Category = $"{count}-Char Grid" };
-        var baseW = width / cols;
-        var baseH = height / rows;
-        var slotNum = 1;
-        for (var r = 0; r < rows && slotNum <= count; r++)
-        {
-            var y = r * baseH;
-            var h = (r == rows - 1) ? height - y : baseH;
-            // Slots remaining for this and future rows; this row gets up to cols.
-            var slotsInRow = Math.Min(cols, count - slotNum + 1);
-            // If this is a partial last row, spread its slots evenly across the full width.
-            var rowBaseW = slotsInRow < cols ? width / slotsInRow : baseW;
-            for (var c = 0; c < slotsInRow; c++)
-            {
-                var x = c * rowBaseW;
-                var w = (c == slotsInRow - 1) ? width - x : rowBaseW;
-                profile.Slots.Add(Slot(slotNum, x, y, w, h));
-                slotNum++;
-            }
-        }
-        return profile;
-    }
-
     // Optimal grid dimensions for 2–15 simultaneous characters on a landscape monitor.
     private static (int cols, int rows) GridDimensions(int count) => count switch
     {
@@ -224,94 +445,6 @@ public static class PresetFactory
         14 => (5, 3),
         _  => (5, 3), // 15
     };
-
-    // A square ring of (s×s) equal tiles surrounding one larger master floating centred on top.
-    // Generalises the original 5-Char design (2×2 corners + a 1.5-cell master) to any count: each extra
-    // client adds a perimeter tile and the master grows to fill the hollow centre. Tiles are slots 1..n-1
-    // (reading order: top row L→R, side cells, bottom row L→R); the master is slot n. The master is the
-    // largest rect, so CenterSlotNumber auto-detects it. On a 16:9 monitor every rect stays 16:9.
-    private static LayoutProfile CenterMasterGrid(string name, int n, int sw, int sh)
-    {
-        var tiles = n - 1;
-        var s = 2;
-        while (4 * s - 4 < tiles) s++;          // smallest ring whose perimeter holds every tile
-
-        var cellW = sw / s;
-        var cellH = sh / s;
-
-        var perimeter = PerimeterCells(s);                       // reading-order (col,row), length 4s-4
-        var keep = EvenlySpacedIndices(perimeter.Count, tiles);  // spread any gaps when tiles < perimeter
-
-        var profile = new LayoutProfile { Name = name, IsBuiltIn = true, Category = "Center Master" };
-
-        var slotNum = 1;
-        foreach (var i in keep)
-        {
-            var (col, row) = perimeter[i];
-            var x = col * cellW;
-            var y = row * cellH;
-            var wpx = (col == s - 1) ? sw - x : cellW;           // last col/row absorbs rounding remainder
-            var hpx = (row == s - 1) ? sh - y : cellH;
-            profile.Slots.Add(Slot(slotNum, x, y, wpx, hpx, RingLabel(col, row, s)));
-            slotNum++;
-        }
-
-        // Master spans the hollow centre plus a half-cell overlap on each side: 1.5 cells for the 2×2 ring
-        // (matches the legacy 5-Char master exactly), otherwise (s-1) cells so it scales with the ring.
-        // Numerator is doubled to keep integer math (1.5 cells -> 3/2).
-        var masterCellsX2 = (s == 2) ? 3 : 2 * (s - 1);
-        var masterW = masterCellsX2 * cellW / 2;
-        var masterH = masterCellsX2 * cellH / 2;
-        profile.Slots.Add(Slot(n, (sw - masterW) / 2, (sh - masterH) / 2, masterW, masterH, "Master"));
-        return profile;
-    }
-
-    // Cells on the border of an s×s grid, in reading order (top row L→R, then each middle row's left &
-    // right cells, then bottom row L→R). Length is 4s-4 for s>=2 (matches the legacy TL,TR,BL,BR order at s=2).
-    private static List<(int col, int row)> PerimeterCells(int s)
-    {
-        var cells = new List<(int, int)>();
-        for (var r = 0; r < s; r++)
-            for (var c = 0; c < s; c++)
-                if (r == 0 || r == s - 1 || c == 0 || c == s - 1)
-                    cells.Add((c, r));
-        return cells;
-    }
-
-    // Pick `take` indices spread as evenly as possible across [0, total); strictly increasing and in range.
-    private static List<int> EvenlySpacedIndices(int total, int take)
-    {
-        var result = new List<int>();
-        if (take <= 0 || total <= 0) return result;
-        if (take >= total) { for (var i = 0; i < total; i++) result.Add(i); return result; }
-
-        var last = -1;
-        for (var i = 0; i < take; i++)
-        {
-            var idx = (int)Math.Round((double)i * total / take);
-            if (idx <= last) idx = last + 1;
-            if (idx > total - 1) idx = total - 1;
-            last = idx;
-            result.Add(idx);
-        }
-        return result;
-    }
-
-    private static string RingLabel(int col, int row, int s)
-    {
-        var top = row == 0;
-        var bottom = row == s - 1;
-        var left = col == 0;
-        var right = col == s - 1;
-        if (top && left) return "Top Left";
-        if (top && right) return "Top Right";
-        if (bottom && left) return "Bottom Left";
-        if (bottom && right) return "Bottom Right";
-        if (top) return "Top";
-        if (bottom) return "Bottom";
-        if (left) return "Left";
-        return "Right";
-    }
 
     private static LayoutProfile Overlap()
     {
@@ -396,6 +529,28 @@ public static class PresetFactory
         // Stacked profiles for the removed >4K resolutions
         foreach (var (w, h) in new[] { (4352, 2448), (5120, 2880), (5760, 3240), (7680, 4320) })
             set.Add($"Stacked {w}x{h}");
+
+        // 2026-07-01: curated Resolutions/GridCounts/CenterMasterCounts down to a smaller matrix —
+        // drop the resolutions and grid counts no longer generated.
+        var droppedResolutions = new[] { (1760, 990), (1920, 1200), (2816, 1584), (3072, 1728), (3328, 1872) };
+        foreach (var (w, h) in droppedResolutions)
+        {
+            set.Add($"Stacked {w}x{h}");
+            set.Add($"1-Char {w}x{h}");
+            for (var n = 2; n <= 15; n++)
+                set.Add($"{n}-Char Grid {w}x{h}");
+        }
+
+        // 2026-07-02: Grid and Center Master collapsed from one named profile per resolution×count combo
+        // into a single "Grid" / "Center Master" family template with resolution+count dropdowns — every
+        // previously-generated combo name is now dead and must be pruned from existing users' settings.
+        foreach (var (w, h) in allResolutions)
+        {
+            for (var n = 2; n <= 15; n++)
+                set.Add($"{n}-Char Grid {w}x{h}");
+            for (var n = 4; n <= 15; n++)
+                set.Add($"{n}-Char Center Master {w}x{h}");
+        }
 
         return set;
     }

@@ -856,6 +856,29 @@
                                   Margin="10,0,0,0"/>
                       </StackPanel>
                       <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <StackPanel.Style>
+                          <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding SelectedProfileIsFamilyTemplate}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Resolution" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                        <ComboBox ItemsSource="{Binding AvailableFamilyResolutions}"
+                                  SelectedItem="{Binding SelectedFamilyResolution}"
+                                  DisplayMemberPath="Label"
+                                  Width="120" Margin="8,0,10,0"
+                                  ToolTip="Monitor resolution this Grid/Center Master layout is built for."/>
+                        <TextBlock Text="Accounts" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                        <ComboBox ItemsSource="{Binding AvailableFamilyCounts}"
+                                  SelectedItem="{Binding SelectedFamilyCount}"
+                                  Width="70" Margin="8,0,0,0"
+                                  ToolTip="Number of accounts this layout arranges."/>
+                      </StackPanel>
+                      <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                         <TextBlock Text="Master resolution" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
                                    ToolTip="Override where EveDeck places the master window. Match this to EVE's Fixed Window resolution when using AMD VSR or Nvidia DSR. Auto = fill the target monitor."/>
                         <ComboBox ItemsSource="{Binding AvailableMasterResolutions}"

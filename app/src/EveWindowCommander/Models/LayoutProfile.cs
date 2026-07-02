@@ -10,6 +10,13 @@ public sealed class LayoutProfile
     public string Category { get; set; } = "Custom";
     public ObservableCollection<LayoutSlot> Slots { get; set; } = new();
 
+    // Family templates (Grid, Center Master) regenerate their Slots from these three fields instead of
+    // storing one fixed LayoutProfile per resolution/count combo — see PresetFactory.RegenerateFamilySlots.
+    public bool IsFamilyTemplate { get; set; }
+    public int TemplateWidth { get; set; }
+    public int TemplateHeight { get; set; }
+    public int TemplateCount { get; set; }
+
     // The master SEAT (SlotAssignment.SlotNumber) centred at rest for THIS profile — different activities
     // (mining vs. PvP) can centre different mains. 0 = unset; the view-model falls back to the centre slot.
     public int MasterSeat { get; set; }
@@ -40,10 +47,9 @@ public sealed class LayoutProfile
     public int GroupOrder => Category switch
     {
         "Stacked"       => 0,
-        "2×2 Grid" => 1,
-        "3-Character"   => 2,
+        "1-Char"        => 1,
+        "Grid"          => 2,
         "Center Master" => 3,
-        "5-Character"   => 3,
         "Overlap"       => 4,
         _               => 99
     };
@@ -57,7 +63,7 @@ public sealed class LayoutProfile
 
     public LayoutProfile Clone(string? name = null)
     {
-        var clone = new LayoutProfile { Name = name ?? $"{Name} Copy", IsBuiltIn = false, Category = "Custom" };
+        var clone = new LayoutProfile { Name = name ?? $"{Name} Copy", IsBuiltIn = false, Category = "Custom", IsFamilyTemplate = false };
         clone.MasterSeat = MasterSeat;
         clone.AvoidTaskbar = AvoidTaskbar;
         clone.CaptureMonitorX = CaptureMonitorX;

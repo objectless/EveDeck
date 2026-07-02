@@ -488,6 +488,57 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<LayoutSlot>? ActiveProfileSlots => SelectedProfile?.Slots;
     public bool SelectedProfileIsBuiltIn => SelectedProfile?.IsBuiltIn == true;
+    public bool SelectedProfileIsFamilyTemplate => SelectedProfile?.IsFamilyTemplate == true;
+
+    // Resolution/account-count dropdown options for whichever family (Grid or Center Master) is selected.
+    public IReadOnlyList<DisplayModeOption> AvailableFamilyResolutions => SelectedProfile?.Category switch
+    {
+        "Grid" => PresetFactory.GridResolutionOptions,
+        "Center Master" => PresetFactory.CenterMasterResolutionOptions,
+        _ => Array.Empty<DisplayModeOption>(),
+    };
+
+    public IReadOnlyList<int> AvailableFamilyCounts => SelectedProfile?.Category switch
+    {
+        "Grid" => PresetFactory.GridCountOptions,
+        "Center Master" => PresetFactory.CenterMasterCountOptions,
+        _ => Array.Empty<int>(),
+    };
+
+    public DisplayModeOption? SelectedFamilyResolution
+    {
+        get => SelectedProfile is null ? null
+            : AvailableFamilyResolutions.FirstOrDefault(o => o.Width == SelectedProfile.TemplateWidth && o.Height == SelectedProfile.TemplateHeight);
+        set
+        {
+            if (SelectedProfile is null || value is null) return;
+            if (SelectedProfile.TemplateWidth == value.Width && SelectedProfile.TemplateHeight == value.Height) return;
+            SelectedProfile.TemplateWidth = value.Width;
+            SelectedProfile.TemplateHeight = value.Height;
+            PresetFactory.RegenerateFamilySlots(SelectedProfile);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ActiveProfileSlots));
+            UpdatePositionCodes();
+            RebuildLayoutPreview();
+            Save();
+        }
+    }
+
+    public int SelectedFamilyCount
+    {
+        get => SelectedProfile?.TemplateCount ?? 0;
+        set
+        {
+            if (SelectedProfile is null || SelectedProfile.TemplateCount == value) return;
+            SelectedProfile.TemplateCount = value;
+            PresetFactory.RegenerateFamilySlots(SelectedProfile);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ActiveProfileSlots));
+            UpdatePositionCodes();
+            RebuildLayoutPreview();
+            Save();
+        }
+    }
 
     // Per-profile "Avoid taskbar" — fits THIS profile into the monitor work area at apply time.
     // Persisted on the profile itself so full-screen and taskbar-aware variants can coexist.
@@ -1079,6 +1130,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 _settings.ActiveProfileId = value.Id;
                 OnPropertyChanged(nameof(ActiveProfileSlots));
                 OnPropertyChanged(nameof(SelectedProfileIsBuiltIn));
+                OnPropertyChanged(nameof(SelectedProfileIsFamilyTemplate));
+                OnPropertyChanged(nameof(AvailableFamilyResolutions));
+                OnPropertyChanged(nameof(AvailableFamilyCounts));
+                OnPropertyChanged(nameof(SelectedFamilyResolution));
+                OnPropertyChanged(nameof(SelectedFamilyCount));
                 OnPropertyChanged(nameof(SelectedProfileAvoidTaskbar));
                 OnPropertyChanged(nameof(MasterResolutionStatus));
                 OnPropertyChanged(nameof(MasterResolutionStatusSeverity));
@@ -1220,10 +1276,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var width = mon?.Bounds.Width ?? 2560;
         var height = mon?.Bounds.Height ?? 1440;
 
-        var profileName = PresetFactory.BestProfileName(clientCount, width, height);
-        var profile = profileName is null ? null
-            : Profiles.FirstOrDefault(p => p.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase));
-        if (profile is not null) SelectedProfile = profile;
+        var profile = ResolveAndApplyBestProfile(clientCount, width, height);
 
         if (clientCount == 5)
         {
@@ -1246,7 +1299,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _settings.SetupCompleted = true;
         Save();
         OnPropertyChanged(nameof(NeedsSetup));
-        Log.Info($"Setup complete: {clientCount} client(s) on '{mon?.DeviceName ?? "?"}', profile '{profile?.Name ?? profileName ?? "none"}'.");
+        Log.Info($"Setup complete: {clientCount} client(s) on '{mon?.DeviceName ?? "?"}', profile '{profile?.Name ?? "none"}'.");
 
         // Rebuild corner occupancy with the new master and restart overlays so hover-peek works immediately.
         if (_settings.CornerOverlaysEnabled)
@@ -1313,16 +1366,45 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ?? Monitors.FirstOrDefault();
         var w = mon?.Bounds.Width ?? 2560;
         var h = mon?.Bounds.Height ?? 1440;
-        var name = PresetFactory.BestProfileName(count, w, h);
-        var profile = name is null ? null : Profiles.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+        var profile = ResolveAndApplyBestProfile(count, w, h);
         if (profile is null)
         {
             Status = $"No built-in profile found for {count} slot(s) at {w}x{h}.";
             return;
         }
-        SelectedProfile = profile;
         Status = $"Auto-selected profile: {profile.Name}";
         Log.Info($"Auto-selected profile '{profile.Name}' for {count} slot(s) on {w}x{h}.");
+    }
+
+    // Shared by AutoSelectBestProfile and RunInitialSetup: for 1 client, pick the fixed "1-Char {res}"
+    // profile by name; for 2+, point the Grid/Center Master family template at the nearest curated
+    // resolution+count and regenerate its slots, then select it. Returns null if nothing suitable exists.
+    private LayoutProfile? ResolveAndApplyBestProfile(int clientCount, int monitorWidth, int monitorHeight)
+    {
+        if (clientCount == 1)
+        {
+            var name = PresetFactory.BestProfileName(clientCount, monitorWidth, monitorHeight);
+            var solo = name is null ? null : Profiles.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (solo is not null) SelectedProfile = solo;
+            return solo;
+        }
+
+        var sel = PresetFactory.ResolveFamilySelection(clientCount, monitorWidth, monitorHeight);
+        if (sel is null) return null;
+
+        var family = Profiles.FirstOrDefault(p => p.IsFamilyTemplate && p.Category == sel.Value.Category);
+        if (family is null) return null;
+
+        family.TemplateWidth = sel.Value.Width;
+        family.TemplateHeight = sel.Value.Height;
+        family.TemplateCount = sel.Value.Count;
+        PresetFactory.RegenerateFamilySlots(family);
+        SelectedProfile = family;
+        OnPropertyChanged(nameof(SelectedFamilyResolution));
+        OnPropertyChanged(nameof(SelectedFamilyCount));
+        Save();
+        return family;
     }
 
     public HotkeyBinding? SelectedHotkey
