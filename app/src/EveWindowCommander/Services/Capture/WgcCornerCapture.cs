@@ -267,6 +267,7 @@ float4 PSMain(VSOut i) : SV_TARGET { return tex.Sample(smp, i.uv); }";
             if (_disposed) return;
             _disposed = true;
 
+            // best-effort teardown; WinRT capture objects can already be torn down by the OS on disconnect
             try { if (_framePool is not null) _framePool.FrameArrived -= OnFrameArrived; } catch { }
             try { _session?.Dispose(); } catch { }
             try { _framePool?.Dispose(); } catch { }

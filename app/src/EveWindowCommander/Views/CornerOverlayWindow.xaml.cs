@@ -116,7 +116,7 @@ public partial class CornerOverlayWindow : Window
     {
         if (msg == WmLButtonDown)
         {
-            try { Clicked?.Invoke(); } catch { }
+            try { Clicked?.Invoke(); } catch { } // subscriber exceptions must not kill the overlay input loop
         }
         else if (msg == Win32Native.WmMouseMove)
         {
@@ -133,13 +133,13 @@ public partial class CornerOverlayWindow : Window
             if (!_mouseTracking)
             {
                 _mouseTracking = true;
-                try { Hovered?.Invoke(); } catch { }
+                try { Hovered?.Invoke(); } catch { } // subscriber exceptions must not kill the overlay input loop
             }
         }
         else if (msg == Win32Native.WmMouseLeave)
         {
             _mouseTracking = false;
-            try { HoverLeft?.Invoke(); } catch { }
+            try { HoverLeft?.Invoke(); } catch { } // subscriber exceptions must not kill the overlay input loop
         }
         return nint.Zero;
     }
@@ -170,7 +170,7 @@ public partial class CornerOverlayWindow : Window
         _pendingSource = 0;
         if (Visibility == Visibility.Visible) Visibility = Visibility.Hidden;
         UnregisterThumbnail();
-        try { _capture?.Dispose(); } catch { }
+        try { _capture?.Dispose(); } catch { } // best-effort capture teardown
         _capture = null;
     }
 
@@ -212,7 +212,7 @@ public partial class CornerOverlayWindow : Window
     private void FallbackToDwm(nint sourceHwnd)
     {
         _useWgc = false;
-        try { _capture?.Dispose(); } catch { }
+        try { _capture?.Dispose(); } catch { } // best-effort capture teardown
         _capture = null;
         if (_captureHost is not null) CaptureHostContainer.Child = null;
         _captureHost = null;
@@ -281,7 +281,7 @@ public partial class CornerOverlayWindow : Window
     {
         base.OnClosed(e);
         UnregisterThumbnail();
-        try { _capture?.Dispose(); } catch { }
+        try { _capture?.Dispose(); } catch { } // best-effort capture teardown
         _capture = null;
     }
 }

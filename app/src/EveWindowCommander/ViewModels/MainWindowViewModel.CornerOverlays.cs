@@ -366,7 +366,7 @@ public sealed partial class MainWindowViewModel
 
         foreach (var overlay in _cornerOverlays.Values)
         {
-            try { overlay.Close(); } catch { }
+            try { overlay.Close(); } catch { } // window may already be closed
         }
         _cornerOverlays.Clear();
         _cornerSourceHandles.Clear();
@@ -374,7 +374,7 @@ public sealed partial class MainWindowViewModel
 
         foreach (var pill in _pills.Values)
         {
-            try { pill.Close(); } catch { }
+            try { pill.Close(); } catch { } // window may already be closed
         }
         _pills.Clear();
 
@@ -418,7 +418,7 @@ public sealed partial class MainWindowViewModel
         if (seat == currentCenteredSeat)
         {
             var already = FindSeatWindow(seat);
-            if (already is not null) { try { _windowService.FocusWindow(already.Handle); } catch { } }
+            if (already is not null) { try { _windowService.FocusWindow(already.Handle); } catch { /* best-effort focus */ } }
             Log.Info($"Seat {seat} ({SeatLabel(seat)}) is already centred.");
             return;
         }
@@ -471,7 +471,7 @@ public sealed partial class MainWindowViewModel
         RefreshGroupCenterPill(group);
 
         RefreshCornerOverlayZOrder();
-        if (incoming is not null) { try { _windowService.FocusWindow(incoming.Handle); } catch { } }
+        if (incoming is not null) { try { _windowService.FocusWindow(incoming.Handle); } catch { /* best-effort focus */ } }
 
         ScheduleAutoSave();
         Log.Info($"Centred seat {seat} ({SeatLabel(seat)}) in group '{group.Name}'; seat {outgoingSeat} ({SeatLabel(outgoingSeat)}) returned to its home corner.");
@@ -490,7 +490,7 @@ public sealed partial class MainWindowViewModel
         if (seat == currentCenteredSeat)
         {
             var already = FindSeatWindow(seat);
-            if (already is not null) { try { _windowService.FocusWindow(already.Handle); } catch { } }
+            if (already is not null) { try { _windowService.FocusWindow(already.Handle); } catch { /* best-effort focus */ } }
             return;
         }
 
@@ -525,7 +525,7 @@ public sealed partial class MainWindowViewModel
         _cornerSeatByGroup[groupId] = cornerSeat;
 
         var incoming = FindSeatWindow(seat);
-        if (incoming is not null) { try { _windowService.FocusWindow(incoming.Handle); } catch { } }
+        if (incoming is not null) { try { _windowService.FocusWindow(incoming.Handle); } catch { /* best-effort focus */ } }
 
         UpdatePositionCodes();
         ScheduleAutoSave();

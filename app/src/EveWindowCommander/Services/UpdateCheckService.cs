@@ -8,6 +8,13 @@ public sealed class UpdateCheckService
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
     private const string ManifestUrl = "https://evedeck.space/api/version";
 
+    private readonly LogService? _log;
+
+    public UpdateCheckService(LogService? log = null)
+    {
+        _log = log;
+    }
+
     public record UpdateInfo(string Version, string DownloadUrl);
 
     public async Task<UpdateInfo?> CheckAsync(string currentVersion)
@@ -22,7 +29,10 @@ public sealed class UpdateCheckService
             if (IsNewer(remote, currentVersion))
                 return new UpdateInfo(remote, url);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _log?.Warn($"Update check failed: {ex.Message}");
+        }
         return null;
     }
 

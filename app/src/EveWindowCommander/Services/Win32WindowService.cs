@@ -92,7 +92,7 @@ public sealed class Win32WindowService
             {
                 var dpiX = 96u;
                 var dpiY = 96u;
-                try { GetDpiForMonitor(monitor, 0, out dpiX, out dpiY); } catch { }
+                try { GetDpiForMonitor(monitor, 0, out dpiX, out dpiY); } catch { } // API absent pre-8.1, default DPI fallback
 
                 monitors.Add(new MonitorInfo
                 {

@@ -122,7 +122,7 @@ internal static class DpiBootstrap
         }
         catch
         {
-            try { SetProcessDPIAware(); } catch { }
+            try { SetProcessDPIAware(); } catch { } // best-effort DPI fallback
         }
     }
 

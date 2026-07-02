@@ -132,7 +132,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OpenUpdateUrlCommand = new RelayCommand(() =>
         {
             if (_availableUpdate?.DownloadUrl is { } url)
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+                catch (Exception ex) { Log.Error($"Could not open link: {ex.Message}"); }
         });
         SpawnTestWindowsCommand = new RelayCommand(SpawnTestWindows);
         AutoSelectBestProfileCommand = new RelayCommand(AutoSelectBestProfile);
@@ -225,7 +226,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var current = Assembly.GetExecutingAssembly().GetName().Version;
         if (current is null) return;
         var currentStr = $"{current.Major}.{current.Minor}.{current.Build}";
-        var info = await new UpdateCheckService().CheckAsync(currentStr);
+        var info = await new UpdateCheckService(Log).CheckAsync(currentStr);
         if (info is null) return;
         _availableUpdate = info;
         App.Current.Dispatcher.Invoke(() =>

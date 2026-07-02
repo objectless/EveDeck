@@ -98,7 +98,7 @@ public sealed partial class MainWindowViewModel
             foreach (var (window, _, targetRect, _) in workItems)
             {
                 try { _windowService.MoveResizeWindow(window.Handle, targetRect); }
-                catch { }
+                catch { } // best-effort second pass; window may have closed mid-apply
             }
         });
 
@@ -239,7 +239,7 @@ public sealed partial class MainWindowViewModel
             await System.Threading.Tasks.Task.Delay(300);
             foreach (var (window, rect, _, _) in moves)
             {
-                try { _windowService.MoveResizeWindow(window.Handle, rect); } catch { }
+                try { _windowService.MoveResizeWindow(window.Handle, rect); } catch { } // best-effort second pass; window may have closed mid-apply
             }
         });
 
@@ -257,7 +257,7 @@ public sealed partial class MainWindowViewModel
         var masterWindow = masterAssignment is null ? null : FindAssignedWindows(masterAssignment).FirstOrDefault();
         if (masterWindow is not null)
         {
-            try { _windowService.FocusWindow(masterWindow.Handle); } catch { }
+            try { _windowService.FocusWindow(masterWindow.Handle); } catch { } // best-effort focus; window may have closed mid-apply
         }
 
         ApplyTopmostState();

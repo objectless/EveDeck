@@ -28,6 +28,6 @@ public partial class SplashWindow : Window
             bmp.Freeze();
             BgImage.Source = bmp;
         }
-        catch { }
+        catch { } // cosmetic background image; splash still works without it
     }
 }
