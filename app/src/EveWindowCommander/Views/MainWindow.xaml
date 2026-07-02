@@ -566,7 +566,7 @@
                                                 CommandParameter="{Binding}"
                                                 Content="&#8868;" FontSize="11"
                                                 Padding="4,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0"
-                                                ToolTip="Pin window always-on-top (HWND_TOPMOST). Use when a corner overlay tile needs to float above other windows."
+                                                ToolTip="Pin window always-on-top (HWND_TOPMOST). Use when a preview tile needs to float above other windows."
                                                 Style="{StaticResource {x:Type ToggleButton}}"/>
                                   <TextBox Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}"
                                            Style="{StaticResource InlineSlotLabel}"
@@ -1331,30 +1331,30 @@ Re-run the guided setup to pick your client count and target monitor and apply a
               <Button Content="Run setup wizard" Click="RunSetupWizard_Click"
                       HorizontalAlignment="Left" MinWidth="150" Margin="0,0,0,4"/>
 
-              <!-- ── Corner Overlays ─────────────────────────────────── -->
-              <TextBlock Text="Corner Overlays" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+              <!-- ── Previews ─────────────────────────────────── -->
+              <TextBlock Text="Previews" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,14">
 Shows your background clients as live mini-previews in the screen corners while the master client fills the center. The previews are real-time video of each client, so you can keep an eye on all of them at once. Switching between clients is instant because the windows don't actually move or resize.
               </TextBlock>
-              <CheckBox Content="Enable corner overlay mode"
+              <CheckBox Content="Enable live previews"
                         IsChecked="{Binding CornerOverlaysEnabled}"
                         Margin="0,0,0,10"/>
               <CheckBox Content="High-quality previews (GPU capture)"
                         IsChecked="{Binding CornerOverlayUseWgc}"
                         Margin="0,0,0,2"/>
-              <TextBlock Text="Sharper corner previews using the GPU. Costs a little more performance, and automatically falls back to standard previews on systems that don't support it."
+              <TextBlock Text="Sharper previews using the GPU. Costs a little more performance, and automatically falls back to standard previews on systems that don't support it."
                          TextWrapping="Wrap" FontSize="11" Margin="20,0,0,10"
                          Foreground="{StaticResource MutedBrush}"/>
               <CheckBox Content="Click a preview to bring that client to the center"
                         IsChecked="{Binding FocusPreviewOnClick}"
                         Margin="0,0,0,2"/>
-              <TextBlock Text="Clicking a corner preview switches focus to that client — the same as the center-seat hotkey. The click only moves windows; it is never sent into the EVE client."
+              <TextBlock Text="Clicking a preview switches focus to that client — the same as the center-seat hotkey. The click only moves windows; it is never sent into the EVE client."
                          TextWrapping="Wrap" FontSize="11" Margin="20,0,0,10"
                          Foreground="{StaticResource MutedBrush}"/>
               <CheckBox Content="Hover a preview to peek at that client over the master"
                         IsChecked="{Binding HoverPreviewEnabled}"
                         Margin="0,0,0,2"/>
-              <TextBlock Text="Moving your mouse over a corner preview temporarily raises that client over the master so you can see it at a glance. It returns to its parked position when you move away."
+              <TextBlock Text="Moving your mouse over a preview temporarily raises that client over the master so you can see it at a glance. It returns to its parked position when you move away."
                          TextWrapping="Wrap" FontSize="11" Margin="20,0,0,6"
                          Foreground="{StaticResource MutedBrush}"/>
               <StackPanel Orientation="Horizontal" Margin="20,0,0,10" VerticalAlignment="Center"
@@ -1789,7 +1789,7 @@ EveDeck arranges your EVE clients into tidy on-screen layouts and lets you jump 
                 <TextBlock Grid.Row="2" Grid.Column="0" Text="Hotkeys" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
                 <TextBlock Grid.Row="2" Grid.Column="1" Text="Bind keys to focus a client, cycle, or swap one into the master slot." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
                 <TextBlock Grid.Row="3" Grid.Column="0" Text="Options" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
-                <TextBlock Grid.Row="3" Grid.Column="1" Text="Tune the active frame, dimming, corner thumbnails, scaling, and startup." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" Text="Tune the active frame, dimming, previews, scaling, and startup." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Monitors" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
                 <TextBlock Grid.Row="4" Grid.Column="1" Text="See your displays and their exact coordinates for placing layouts." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
                 <TextBlock Grid.Row="5" Grid.Column="0" Text="Display Tips" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>

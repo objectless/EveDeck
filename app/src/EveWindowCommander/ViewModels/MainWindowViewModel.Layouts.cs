@@ -187,7 +187,7 @@ public sealed partial class MainWindowViewModel
         var centerSlot = SelectedProfile!.Slots.FirstOrDefault(s => s.SlotNumber == CenterSlotNumber);
         if (centerSlot is null)
         {
-            Log.Warn("Corner overlay mode requires a layout with a centre slot.");
+            Log.Warn("Preview mode requires a layout with a centre slot.");
             return;
         }
 
@@ -212,7 +212,7 @@ public sealed partial class MainWindowViewModel
             }
         }
 
-        if (moves.Count == 0) { Log.Warn("No assigned windows found for corner overlay layout."); return; }
+        if (moves.Count == 0) { Log.Warn("No assigned windows found for preview mode layout."); return; }
 
         _applyInProgress = true;
         UndoLastApplyCommand.RaiseCanExecuteChanged();
@@ -232,7 +232,7 @@ public sealed partial class MainWindowViewModel
                 catch (Exception ex)
                 {
                     WpfApp.Current.Dispatcher.Invoke(() =>
-                        Log.Error($"Corner apply failed for {window.Title}: {ex.Message}"));
+                        Log.Error($"Preview apply failed for {window.Title}: {ex.Message}"));
                 }
             }
 
@@ -261,7 +261,7 @@ public sealed partial class MainWindowViewModel
         }
 
         ApplyTopmostState();
-        Log.Info("Corner overlay layout applied.");
+        Log.Info("Preview mode layout applied.");
     }
 
     // Park position for non-master clients: fully off-screen to the left of the target

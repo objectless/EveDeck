@@ -146,7 +146,7 @@ public sealed class SetupWizardViewModel : ObservableObject
         get
         {
             if (ClientCount == 1) return "A single client filling the chosen monitor.";
-            if (IsCenterMaster) return ClientCount.ToString() + " clients: a ring of corner/edge tiles with a larger master client floating centered on top. Corner-overlay layout with fast hotkey swapping.";
+            if (IsCenterMaster) return ClientCount.ToString() + " clients: a ring of corner/edge tiles with a larger master client floating centered on top. Preview mode with fast hotkey swapping.";
             if (ClientCount <= 15) return ClientCount.ToString() + " clients arranged in an even grid across the monitor.";
             return ClientCount.ToString() + " clients. Each slot maps to one EVE account. Use the Layouts tab to design a custom grid.";
         }
@@ -199,7 +199,7 @@ public sealed class SetupWizardViewModel : ObservableObject
             };
             if (IsCenterMaster)
             {
-                lines.Add($"• Corner-overlay mode ON, master = center slot {ClientCount}");
+                lines.Add($"• Preview mode ON, master = center slot {ClientCount}");
                 lines.Add($"• High-quality GPU previews: {(UseWgc ? "on" : "off")}");
                 lines.Add($"• Click a preview to center that client: {(FocusPreviewOnClick ? "on" : "off")}");
             }

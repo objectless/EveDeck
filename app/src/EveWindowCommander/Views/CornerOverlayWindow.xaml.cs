@@ -104,7 +104,7 @@ public partial class CornerOverlayWindow : Window
             var ch = cr.Bottom - cr.Top;
             if (cw > 0 && ch > 0) { _clientWidth = cw; _clientHeight = ch; }
         }
-        Log?.Invoke($"Corner tile at ({_physX},{_physY}) {_physWidth}x{_physHeight} phys; client {_clientWidth}x{_clientHeight}; dpiScale {_dpiScale:0.##}.");
+        Log?.Invoke($"Preview tile at ({_physX},{_physY}) {_physWidth}x{_physHeight} phys; client {_clientWidth}x{_clientHeight}; dpiScale {_dpiScale:0.##}.");
 
         _captureHost?.ResizePhysical(_clientWidth, _clientHeight);
 

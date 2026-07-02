@@ -200,7 +200,7 @@ Press "+ Add via ESI" on a slot to sign in with EVE SSO and attach a character. 
                     BorderThickness="1" CornerRadius="6" Padding="14">
               <TextBlock Text="{Binding SummaryText}" TextWrapping="Wrap" LineHeight="22"/>
             </Border>
-            <CheckBox Content="Use high-quality GPU previews for the corner tiles"
+            <CheckBox Content="Use high-quality GPU previews"
                       IsChecked="{Binding UseWgc}" Margin="0,14,0,0"
                       Visibility="{Binding IsCenterMaster, Converter={StaticResource BoolToVis}}"/>
             <CheckBox Content="Click a preview tile to bring that client to the center"
