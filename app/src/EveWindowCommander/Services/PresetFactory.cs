@@ -245,7 +245,7 @@ public static class PresetFactory
 
     // Evenly partitions `total` pixels into `count` contiguous, non-overlapping spans (last absorbs the
     // rounding remainder) so a side of the ring is always fully covered with no dead space between tiles.
-    private static List<(int offset, int size)> EvenSplit(int total, int count)
+    internal static List<(int offset, int size)> EvenSplit(int total, int count)
     {
         var result = new List<(int offset, int size)>();
         if (count <= 0) return result;

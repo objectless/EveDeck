@@ -9,9 +9,17 @@ public sealed class ConfigService
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public string AppDataFolder { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "EveDeck");
+    private readonly bool _isDefaultFolder;
+
+    public string AppDataFolder { get; }
+
+    public ConfigService(string? appDataFolder = null)
+    {
+        _isDefaultFolder = appDataFolder is null;
+        AppDataFolder = appDataFolder ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "EveDeck");
+    }
 
     public string ConfigPath => Path.Combine(AppDataFolder, "settings.json");
     public string LogsFolder => Path.Combine(AppDataFolder, "logs");
@@ -23,9 +31,9 @@ public sealed class ConfigService
         var oldFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "EVE Window Commander");
-        if (Directory.Exists(oldFolder) && !Directory.Exists(AppDataFolder))
+        if (_isDefaultFolder && Directory.Exists(oldFolder) && !Directory.Exists(AppDataFolder))
         {
-            try { Directory.Move(oldFolder, AppDataFolder); } catch { }
+            try { Directory.Move(oldFolder, AppDataFolder); } catch { } // best-effort migration; LogService not alive during Load
         }
 
         Directory.CreateDirectory(AppDataFolder);
@@ -45,7 +53,7 @@ public sealed class ConfigService
             {
                 // Corrupt settings file — back it up and start fresh.
                 var bakPath = ConfigPath + ".bak";
-                try { File.Move(ConfigPath, bakPath, overwrite: true); } catch { }
+                try { File.Move(ConfigPath, bakPath, overwrite: true); } catch { } // best-effort backup; LogService not alive during Load
             }
         }
 
@@ -61,7 +69,13 @@ public sealed class ConfigService
         // Write to a temp file then atomically replace — prevents zero-filled settings.json on crash.
         var tmp = ConfigPath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(settings, JsonOptions));
-        File.Replace(tmp, ConfigPath, destinationBackupFileName: null);
+        // File.Replace requires the destination to already exist (throws FileNotFoundException
+        // otherwise) — falls back to a plain move on first-ever launch or right after Load() moves
+        // a corrupt settings.json out of the way.
+        if (File.Exists(ConfigPath))
+            File.Replace(tmp, ConfigPath, destinationBackupFileName: null);
+        else
+            File.Move(tmp, ConfigPath);
     }
 
     // ── Backup ────────────────────────────────────────────────────────────────
@@ -85,7 +99,7 @@ public sealed class ConfigService
         if (!File.Exists(ConfigPath)) return;
         var raw = File.ReadAllText(ConfigPath);
         AppSettings? s = null;
-        try { s = JsonSerializer.Deserialize<AppSettings>(raw, JsonOptions); } catch { }
+        try { s = JsonSerializer.Deserialize<AppSettings>(raw, JsonOptions); } catch { } // best-effort backup; LogService not alive during Load
         if (s is null) return; // corrupt — don't overwrite good backups
         Directory.CreateDirectory(BackupsFolder);
         var slots = s.CharacterSets.Sum(cs => cs.Assignments.Count);
@@ -93,7 +107,7 @@ public sealed class ConfigService
         var now = DateTime.Now;
         var dest = Path.Combine(BackupsFolder, SettingsBackup.BuildFileName(now, slots, chars));
         if (!File.Exists(dest))
-            try { File.Copy(ConfigPath, dest); } catch { }
+            try { File.Copy(ConfigPath, dest); } catch { } // best-effort backup; LogService not alive during Load
         PruneBackups();
     }
 
@@ -132,7 +146,7 @@ public sealed class ConfigService
             .Select(b => b.Path)
             .ToHashSet();
         foreach (var b in all.Where(b => !keep.Contains(b.Path)))
-            try { File.Delete(b.Path); } catch { }
+            try { File.Delete(b.Path); } catch { } // best-effort prune; LogService not alive during Load
     }
 
     public void ExportProfile(LayoutProfile profile, string path)
