@@ -319,13 +319,19 @@ public sealed partial class MainWindowViewModel
         }
     }
 
+    // PID → character name seen on the previous refresh, for assigned windows. Lets us tell a plain
+    // client relaunch (title disappears, new PID appears) apart from a character switch on the same
+    // running client (same PID, title's character name changes after logging off and picking another).
+    private readonly Dictionary<int, string> _lastKnownCharacterByPid = new();
+
     // Compare the set of detected, slot-assigned EVE windows against the previous refresh. When a
-    // client that was absent reappears (e.g. the user closed all clients and relaunched them), arm
-    // the debounce timer so the active profile is re-applied automatically once the clients settle.
+    // client that was absent reappears (e.g. the user closed all clients and relaunched them), or an
+    // already-assigned client's character changes (logged off and picked a different one), arm the
+    // debounce timer so the active profile is re-applied automatically once the clients settle.
     private void DetectNewlyLaunchedClients()
     {
-        var currentAssigned = Windows
-            .Where(IsWindowAssigned)
+        var assignedWindows = Windows.Where(IsWindowAssigned).ToList();
+        var currentAssigned = assignedWindows
             .Select(w => w.Title)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -341,11 +347,42 @@ public sealed partial class MainWindowViewModel
         _knownAssignedTitles.Clear();
         foreach (var title in currentAssigned) _knownAssignedTitles.Add(title);
 
-        if (firstRefresh) return;
-        if (!_settings.AutoApplyOnClientLaunch) return;
-        if (newlyAppeared.Count == 0 || _applyInProgress || SelectedProfile is null) return;
+        // Detect a character switch on a window that never closed (same PID, title's character changed).
+        var characterSwitched = false;
+        var currentCharacterByPid = new Dictionary<int, string>();
+        foreach (var window in assignedWindows)
+        {
+            if (window.ProcessId <= 0) continue;
+            var character = CharacterNameFromTitle(window.Title);
+            currentCharacterByPid[window.ProcessId] = character;
 
-        // (Re)start the debounce; further launches within the window push the apply back.
+            if (!firstRefresh
+                && _lastKnownCharacterByPid.TryGetValue(window.ProcessId, out var previousCharacter)
+                && !previousCharacter.Equals(character, StringComparison.OrdinalIgnoreCase))
+            {
+                characterSwitched = true;
+                Log.Info($"Detected character switch on PID {window.ProcessId}: '{previousCharacter}' -> '{character}'.");
+
+                // Keep the slot's stored title/label current so future window lookups and the UI
+                // reflect the new character rather than the one that logged off.
+                var slot = Assignments.FirstOrDefault(a => a.AssignedWindows.Any(e => e.LastProcessId == window.ProcessId));
+                var entry = slot?.AssignedWindows.FirstOrDefault(e => e.LastProcessId == window.ProcessId);
+                if (entry is not null) entry.Title = window.Title;
+                if (slot is not null) TryAutoLabelSlot(slot, window);
+            }
+        }
+        _lastKnownCharacterByPid.Clear();
+        foreach (var (pid, character) in currentCharacterByPid) _lastKnownCharacterByPid[pid] = character;
+
+        // Note: we deliberately do NOT skip auto-apply on the first refresh anymore. If a client is
+        // already logged into a character by the time EveDeck's very first scan runs (common when the
+        // user mass-launches clients right around EveDeck starting), it used to be silently absorbed
+        // into the baseline and left un-positioned until a manual Refresh. Reusing the same debounce
+        // path here means "first launch" and "later launch" behave identically.
+        if (!_settings.AutoApplyOnClientLaunch) return;
+        if ((newlyAppeared.Count == 0 && !characterSwitched) || _applyInProgress || SelectedProfile is null) return;
+
+        // (Re)start the debounce; further launches/switches within the window push the apply back.
         _autoApplyTimer.Stop();
         _autoApplyTimer.Start();
     }

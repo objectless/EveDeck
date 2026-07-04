@@ -13,8 +13,29 @@ public sealed class SlotAssignment : ObservableObject
 
     public SlotAssignment()
     {
-        AssignedWindows.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsAssigned));
+        AssignedWindows.CollectionChanged += (_, e) =>
+        {
+            OnPropertyChanged(nameof(IsAssigned));
+            RaiseRunningNameDependents();
+            if (e.OldItems is not null)
+                foreach (SlotWindowEntry entry in e.OldItems)
+                    entry.PropertyChanged -= OnAssignedWindowEntryChanged;
+            if (e.NewItems is not null)
+                foreach (SlotWindowEntry entry in e.NewItems)
+                    entry.PropertyChanged += OnAssignedWindowEntryChanged;
+        };
         _esiCharacters.CollectionChanged += (_, _) => RaiseCharacterDependents();
+    }
+
+    private void OnAssignedWindowEntryChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SlotWindowEntry.Title)) RaiseRunningNameDependents();
+    }
+
+    private void RaiseRunningNameDependents()
+    {
+        OnPropertyChanged(nameof(RunningCharacterName));
+        OnPropertyChanged(nameof(DisplayLabel));
     }
 
     private void RaiseCharacterDependents()
@@ -86,6 +107,17 @@ public sealed class SlotAssignment : ObservableObject
         set => SetProperty(ref _isDragSwapTarget, value);
     }
 
+    // UI-only chat-alert flash state — not persisted. Set true on a keyword match, auto-reset to
+    // false a couple seconds later by the ViewModel (see MainWindowViewModel.ChatAlerts.cs).
+    private bool _isAlerting;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsAlerting
+    {
+        get => _isAlerting;
+        set => SetProperty(ref _isAlerting, value);
+    }
+
     // Legacy migration fields — kept for backward-compat JSON reading; null after first migration save.
     public string? AssignedWindowTitle { get; set; }
     public int? LastProcessId { get; set; }
@@ -124,6 +156,27 @@ public sealed class SlotAssignment : ObservableObject
     public bool HasPortrait => MainCharacter is not null;
 
     public bool IsAssigned => AssignedWindows.Count > 0;
+
+    // The character actually logged into this seat's window right now (from the live "EVE - Name"
+    // window title), independent of the seat's stable configured Label. Empty when unassigned.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string RunningCharacterName
+    {
+        get
+        {
+            if (AssignedWindows.Count == 0) return "";
+            const string prefix = "EVE - ";
+            var title = AssignedWindows[0].Title;
+            return title.StartsWith(prefix, System.StringComparison.OrdinalIgnoreCase)
+                ? title[prefix.Length..].Trim()
+                : "";
+        }
+    }
+
+    // Read-only display name for read-only surfaces (minimap, corner-overlay pills): shows the
+    // character actually running in the seat when known, else falls back to the seat's stable Label.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayLabel => string.IsNullOrEmpty(RunningCharacterName) ? Label : RunningCharacterName;
 
     public string Display => $"{(string.IsNullOrEmpty(PositionCode) ? SlotNumber.ToString() : PositionCode)}. {Label}";
 }

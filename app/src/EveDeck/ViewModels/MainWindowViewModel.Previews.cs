@@ -77,7 +77,7 @@ public sealed partial class MainWindowViewModel
                 Width = Math.Max(30, slot.Width * scale),
                 Height = Math.Max(22, slot.Height * scale),
                 PositionCode = isCenter ? "Master" : (grid ? CornerCode(slot.SlotNumber) : assignment?.PositionCode ?? slot.SlotNumber.ToString()),
-                AssignedLabel = assignment?.Label ?? $"Slot {slot.SlotNumber}",
+                AssignedLabel = assignment?.DisplayLabel ?? $"Slot {slot.SlotNumber}",
                 IsAssigned = assignment?.IsAssigned ?? false,
                 OccupantSeat = occupantSeat,
                 IsCenter = isCenter,

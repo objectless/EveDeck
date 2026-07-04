@@ -27,6 +27,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly ConfigService _configService = new();
     private readonly Win32WindowService _windowService = new();
     private readonly AppSettings _settings;
+    private readonly ClientLaunchService _clientLaunchService = new();
+    private readonly ChatLogWatcherService _chatLogWatcherService = new();
+    private CancellationTokenSource? _launchGroupCts;
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _frameTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -164,6 +167,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
             if (set is not null) DeleteCharacterSet(set);
         }, _ => _settings.CharacterSets.Count > 1);
 
+        LaunchGroupCommand = new RelayCommand(LaunchGroup, parameter => parameter is Models.CharacterSet);
+        AddChatAlertRuleCommand = new RelayCommand(AddChatAlertRule);
+        RemoveChatAlertRuleCommand = new RelayCommand(RemoveChatAlertRule, parameter => parameter is ChatAlertRule);
+
         // ── Views ─────────────────────────────────────────────────
         SelectedProfile = Profiles.FirstOrDefault(p => p.Id == _settings.ActiveProfileId) ?? Profiles.FirstOrDefault();
 
@@ -212,8 +219,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 SelectedProfile = startupProfile;
                 ApplyActiveProfile();
                 Log.Info($"Applied startup profile: {startupProfile.Name}.");
+
+                // The Refresh() above already armed the auto-apply debounce timer, since it saw
+                // these already-running clients as "newly appeared" on the first scan. We just
+                // applied for them directly above, so cancel the pending re-apply to avoid doing
+                // it twice.
+                _autoApplyTimer.Stop();
             }
         }
+
+        InitLaunchGroups();
+        InitChatAlerts();
 
         Log.Info("EveDeck started.");
         _ = CheckForUpdateAsync();
@@ -295,6 +311,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public RelayCommand AddCharacterSetCommand { get; }
     public RelayCommand DeleteCharacterSetCommand { get; }
     public RelayCommand SwitchCharacterSetCommand { get; }
+    public RelayCommand LaunchGroupCommand { get; }
+    public RelayCommand AddChatAlertRuleCommand { get; }
+    public RelayCommand RemoveChatAlertRuleCommand { get; }
 
     // ── Master resolution picker (VSR/DSR supersampling) ───────────────────────
 
@@ -716,9 +735,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
             _settings.ActiveFrameColor = value;
             _frameBrush = ParseFrameBrush(value);
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ActiveFrameBrush));
             Save();
         }
     }
+
+    // Swatch preview for the Options-tab color picker button.
+    public Brush ActiveFrameBrush => ParseFrameBrush(ActiveFrameColor);
 
     // 2a — Minimize to system tray instead of taskbar.
     public bool MinimizeToTray
@@ -1507,6 +1530,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         _frameTimer.Stop();
         _autoApplyTimer.Stop();
+        _launchGroupCts?.Cancel();
+        StopChatAlerts();
         StopCornerOverlays();
         if (_frameOverlay is not null)
         {

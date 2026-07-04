@@ -163,14 +163,26 @@ public sealed partial class MainWindowViewModel
     // master is centred at rest and is the F-key "home". Independent of geometry, so setting a corner
     // seat (e.g. a corner seat in slot 1) as master simply centres that account — it never demotes
     // the real centre rect into an overlapping thumbnail. If the stored master seat is invalid (e.g. a
-    // slot was deleted), fall back to the seat whose home is the centre slot.
+    // slot was deleted) OR isn't currently logged in (no running assigned window — e.g. only some alts
+    // are up), promote the lowest-numbered seat number (= priority order) that IS running. This only
+    // ever fires when the current master is unusable; it never demotes a master that's still logged in.
     private void EnsureValidMasterSeat()
     {
         if (SelectedProfile is null || SelectedProfile.Slots.Count == 0) return;
-        if (Assignments.Any(a => a.SlotNumber == ActiveMasterSeat)) return;
 
-        var fallback = CenterSlotNumber;
-        Log.Warn($"Master seat {ActiveMasterSeat} no longer exists; defaulting to seat {fallback}.");
+        var master = Assignments.FirstOrDefault(a => a.SlotNumber == ActiveMasterSeat);
+        if (master is not null && master.AssignedWindows.Count > 0) return;
+
+        var promoted = Assignments
+            .Where(a => a.AssignedWindows.Count > 0)
+            .OrderBy(a => a.SlotNumber)
+            .FirstOrDefault();
+        var fallback = promoted?.SlotNumber ?? CenterSlotNumber;
+        if (fallback == ActiveMasterSeat) return;
+
+        Log.Warn(master is null
+            ? $"Master seat {ActiveMasterSeat} no longer exists; defaulting to seat {fallback}."
+            : $"Master seat {ActiveMasterSeat} ({master.Label}) has no running window; promoting seat {fallback} ({promoted?.Label}).");
         ActiveMasterSeat = fallback;
         SyncMasterSlot();
         UpdatePositionCodes();

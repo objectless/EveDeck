@@ -449,6 +449,28 @@
       </Setter>
     </Style>
 
+    <!-- ToolTip is unstyled by default and inherits the window's light Foreground while its
+         Background stays the system-default pale "Info" color — white text on a white box. -->
+    <Style TargetType="{x:Type ToolTip}">
+      <Setter Property="Background" Value="{StaticResource PanelAltBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+      <Setter Property="Padding" Value="8,5"/>
+      <Setter Property="HasDropShadow" Value="True"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type ToolTip}">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <Style TargetType="{x:Type CheckBox}">
       <Setter Property="Margin" Value="4"/>
       <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>

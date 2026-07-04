@@ -26,4 +26,8 @@ public sealed class CharacterSet : ObservableObject
 
     public ObservableCollection<SlotAssignment> Assignments { get; set; } = new();
     public ObservableCollection<HotkeyBinding> Hotkeys { get; set; } = new();
+
+    // Delay (ms) between launching successive clients via LaunchGroupCommand, so Windows/network
+    // isn't hammered by launching every EVE Launcher instance at once.
+    public int LaunchDelayMs { get; set; } = 3000;
 }

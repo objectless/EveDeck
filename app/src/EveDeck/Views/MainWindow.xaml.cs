@@ -472,6 +472,21 @@ public partial class MainWindow : Window
             _viewModel.ActiveFrameColor = color;
     }
 
+    private void FrameColorPick_Click(object sender, RoutedEventArgs e)
+    {
+        using var dialog = new System.Windows.Forms.ColorDialog { FullOpen = true };
+        try
+        {
+            var current = (Color)System.Windows.Media.ColorConverter.ConvertFromString(_viewModel.ActiveFrameColor);
+            dialog.Color = System.Drawing.Color.FromArgb(current.A, current.R, current.G, current.B);
+        }
+        catch { /* keep dialog's default color if the stored hex fails to parse */ }
+
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+        var c = dialog.Color;
+        _viewModel.ActiveFrameColor = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+    }
+
     private void RestoreBackup_Click(object sender, RoutedEventArgs e)
     {
         var backup = _viewModel.SelectedBackup;

@@ -360,11 +360,17 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                           <DataTemplate>
-                            <ToggleButton Margin="0,0,4,0" Padding="10,3" FontSize="11" MinHeight="0"
-                                          Content="{Binding Name}"
-                                          IsChecked="{Binding IsActive, Mode=OneWay}"
-                                          Command="{Binding DataContext.SwitchCharacterSetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                          CommandParameter="{Binding}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,4,4">
+                              <ToggleButton Padding="10,3" FontSize="11" MinHeight="0"
+                                            Content="{Binding Name}"
+                                            IsChecked="{Binding IsActive, Mode=OneWay}"
+                                            Command="{Binding DataContext.SwitchCharacterSetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"/>
+                              <Button Content="Launch" Padding="7,3" FontSize="11" MinHeight="0" Margin="2,0,0,0"
+                                      Command="{Binding DataContext.LaunchGroupCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      CommandParameter="{Binding}"
+                                      ToolTip="Launch the EVE Launcher once per named seat in this group, spaced out by its launch delay"/>
+                            </StackPanel>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
@@ -489,6 +495,16 @@
                                     <Setter Property="BorderThickness" Value="2"/>
                                     <Setter Property="Background" Value="#18000000"/>
                                   </DataTrigger>
+                                  <DataTrigger Binding="{Binding IsAlerting}" Value="True">
+                                    <DataTrigger.EnterActions>
+                                      <BeginStoryboard>
+                                        <Storyboard>
+                                          <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                          To="#7A5B10" Duration="0:0:0.15" AutoReverse="True" RepeatBehavior="3x"/>
+                                        </Storyboard>
+                                      </BeginStoryboard>
+                                    </DataTrigger.EnterActions>
+                                  </DataTrigger>
                                 </Style.Triggers>
                               </Style>
                             </Border.Style>
@@ -573,6 +589,26 @@
                                            FontSize="14" FontWeight="SemiBold"
                                            ToolTip="Slot label — auto-filled from 'EVE - Name'. Also editable in Options &gt; Character Names."/>
                                 </DockPanel>
+
+                                <!-- Live indicator: who's actually logged into this seat right now, when
+                                     it differs from the seat's stable configured Label (e.g. an alt). -->
+                                <TextBlock Text="{Binding RunningCharacterName, StringFormat='Running: {0}'}"
+                                           FontSize="10" Foreground="{StaticResource MutedBrush}"
+                                           ToolTip="Character currently logged into this seat's window.">
+                                  <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                      <Setter Property="Visibility" Value="Collapsed"/>
+                                      <Style.Triggers>
+                                        <MultiDataTrigger>
+                                          <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsAssigned}" Value="True"/>
+                                          </MultiDataTrigger.Conditions>
+                                          <Setter Property="Visibility" Value="Visible"/>
+                                        </MultiDataTrigger>
+                                      </Style.Triggers>
+                                    </Style>
+                                  </TextBlock.Style>
+                                </TextBlock>
 
                                 <!-- ESI characters -->
                                 <ItemsControl ItemsSource="{Binding EsiCharacters}" Margin="0,3,0,0">
@@ -1279,8 +1315,10 @@ Draws a soft glowing outline around whichever EVE client you're currently using,
 
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="Color" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}"/>
-                <TextBox Text="{Binding ActiveFrameColor, UpdateSourceTrigger=PropertyChanged}"
-                         Width="100" Margin="0,0,10,0" FontFamily="Consolas"/>
+                <Border Width="26" Height="26" Margin="0,0,8,0" CornerRadius="4"
+                        Background="{Binding ActiveFrameBrush}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"/>
+                <Button Content="Pick Color..." Click="FrameColorPick_Click" Padding="7,4" Margin="0,0,10,0"/>
                 <Button Content="Amber" Tag="#F59E0B" Click="FrameColorPreset_Click" Padding="7,4"/>
                 <Button Content="Cyan"  Tag="#22D3EE" Click="FrameColorPreset_Click" Padding="7,4"/>
                 <Button Content="Green" Tag="#22C55E" Click="FrameColorPreset_Click" Padding="7,4"/>
@@ -1442,6 +1480,41 @@ When on, swap/cycle/apply-layout hotkeys only work while an EVE client is the ac
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
 EveDeck lowers the OS scheduling priority of inactive EVE clients whenever another client is in the foreground, so the active one gets more CPU and GPU headroom. Tip: also set Options &gt; Display &amp; Graphics &gt; Limit background framerate to 1-5 FPS inside EVE itself for the biggest gain -- EVE handles its own render loop; EveDeck handles OS scheduling.
               </TextBlock>
+
+              <!-- ── EVE Launcher path ───────────────────────────────── -->
+              <TextBlock Text="EVE Launcher" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+              <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,8">
+Used by each character set's "Launch" button. EveDeck checks the common install locations automatically; only set a path here if it isn't found there.
+              </TextBlock>
+              <TextBox Text="{Binding EveLauncherPathOverride, UpdateSourceTrigger=PropertyChanged}"
+                       Padding="6,4" FontSize="12"
+                       ToolTip="Custom path to eveLauncher.exe, e.g. D:\Games\EVE Online\eveLauncher.exe"/>
+
+              <!-- ── Chat Alerts ──────────────────────────────────────── -->
+              <TextBlock Text="Chat Alerts" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+              <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
+Watches EVE's chatlog files (Documents\EVE\logs\Chatlogs) for a keyword and plays a sound + flashes the matching seat. Passive log reading only -- never sends anything into an EVE client. Leave Character blank to match any character's logs.
+              </TextBlock>
+              <ItemsControl ItemsSource="{Binding ChatAlertRules}" Margin="0,0,0,6">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <DockPanel Margin="0,3">
+                      <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
+                                VerticalAlignment="Center" Margin="0,0,8,0"/>
+                      <Button DockPanel.Dock="Right" Content="Remove" Padding="7,3" FontSize="11" Margin="6,0,0,0"
+                              Command="{Binding DataContext.RemoveChatAlertRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding}"/>
+                      <TextBox Text="{Binding Keyword, UpdateSourceTrigger=PropertyChanged}"
+                               Width="180" Padding="6,4" FontSize="12" Margin="0,0,8,0"
+                               ToolTip="Keyword to match (case-insensitive)"/>
+                      <TextBox Text="{Binding CharacterName, UpdateSourceTrigger=PropertyChanged}"
+                               Width="140" Padding="6,4" FontSize="12"
+                               ToolTip="Optional: only match this character's chatlogs (blank = any)"/>
+                    </DockPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Button Content="+ Add Rule" Command="{Binding AddChatAlertRuleCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
 
             </StackPanel>
           </ScrollViewer>

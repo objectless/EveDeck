@@ -84,4 +84,11 @@ public sealed class AppSettings
     // restored on launch when still within the visible virtual screen.
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }
+
+    // User-supplied override for the EVE Launcher executable path, used when it isn't found at
+    // either of the common install locations ClientLaunchService checks first.
+    public string? EveLauncherPathOverride { get; set; }
+
+    // Chat/event keyword alert rules watched by ChatLogWatcherService.
+    public ObservableCollection<ChatAlertRule> ChatAlertRules { get; set; } = new();
 }

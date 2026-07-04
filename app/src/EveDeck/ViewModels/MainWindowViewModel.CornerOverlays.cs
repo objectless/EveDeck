@@ -27,11 +27,15 @@ public sealed partial class MainWindowViewModel
     private int _pendingHoverPosition = -1;
 
     // Peek-swap state — a temporary move-swap that reverts when the cursor leaves.
+    // Corner seats always live parked off-screen (ResolveParkRect), never at their tile's rect —
+    // the tile only ever shows a DWM/WGC thumbnail. So a peek is just master <-> park, independent
+    // of the tile's own geometry.
     private int _peekPosition = -1;       // corner position currently peeked; -1 = none
     private int _peekSeat = -1;           // seat moved to master rect
-    private int _peekCenteredSeat = -1;   // seat displaced from master rect to corner
+    private int _peekCenteredSeat = -1;   // seat displaced from master rect to park
     private string? _peekGroupId;
     private WindowRect? _peekMasterRect;  // master rect at peek time (extends hover zone)
+    private WindowRect? _peekParkRect;    // park rect the displaced master seat was sent to
 
     // Per-group occupancy. In legacy (single-group) mode all dicts have a single key "__single__".
     private readonly Dictionary<string, int> _centeredSeatByGroup = new();
@@ -239,7 +243,7 @@ public sealed partial class MainWindowViewModel
         var a = Seat(seat);
         return a is null ? null : FindAssignedWindows(a).FirstOrDefault();
     }
-    private string SeatLabel(int seat) => Seat(seat)?.Label ?? "";
+    private string SeatLabel(int seat) => Seat(seat)?.DisplayLabel ?? "";
 
     // -- Create / show -----------------------------------------------------------
 
@@ -585,6 +589,7 @@ public sealed partial class MainWindowViewModel
         var centerSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
         if (centerSlot is null) return;
         var masterRect = ResolvePlacementRect(centerSlot);
+        var parkRect = ResolveParkRect(masterRect);
 
         // Gate: don't fire while cursor is already over the master rect.
         if (Utilities.Win32Native.GetCursorPos(out var gateCur) &&
@@ -592,34 +597,33 @@ public sealed partial class MainWindowViewModel
             gateCur.Y >= masterRect.Y && gateCur.Y < masterRect.Y + masterRect.Height)
             return;
 
-        if (!_cornerRects.TryGetValue(position, out var tileRect) || tileRect.Width == 0) return;
-
         var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(groupId, 0);
         var centeredWindow = FindSeatWindow(centeredSeat);
 
         RevertPeekSwap();
 
+        // The peeked seat's real window always lives parked off-screen (never at the tile rect —
+        // the tile is only ever a thumbnail), so the swap is master <-> park, not master <-> tile.
         try
         {
             if (centeredWindow is not null)
                 _windowService.SwapWindowPositions(
                     window.Handle, masterRect.X, masterRect.Y,
-                    centeredWindow.Handle, tileRect.X, tileRect.Y);
+                    centeredWindow.Handle, parkRect.X, parkRect.Y);
             else
-                _windowService.MoveResizeWindow(window.Handle,
-                    new WindowRect { X = masterRect.X, Y = masterRect.Y, Width = masterRect.Width, Height = masterRect.Height });
+                _windowService.MoveResizeWindow(window.Handle, masterRect);
         }
         catch (Exception ex) { Log.Error($"Hover peek swap failed: {ex.Message}"); return; }
 
-        // Show the displaced master client in the corner tile during the peek.
-        if (centeredWindow is not null)
-            UpdateCornerOverlay(position, centeredWindow.Handle);
+        // The corner tile keeps rendering the same live thumbnail regardless (it captures by
+        // window handle, not by physical position), so no overlay update is needed here.
 
         _peekPosition = position;
         _peekSeat = seat;
         _peekCenteredSeat = centeredSeat;
         _peekGroupId = groupId;
         _peekMasterRect = masterRect;
+        _peekParkRect = parkRect;
     }
 
     private void OnCornerTileHoverLeft(int position)
@@ -633,37 +637,32 @@ public sealed partial class MainWindowViewModel
     {
         if (_peekPosition < 0) return;
 
-        var pos = _peekPosition;
         var peekSeat = _peekSeat;
         var centeredSeat = _peekCenteredSeat;
         var mr = _peekMasterRect;
+        var pr = _peekParkRect;
         ClearPeekState();
 
-        if (mr is null) return;
+        if (mr is null || pr is null) return;
 
         var peekWindow = FindSeatWindow(peekSeat);
         var centeredWindow = FindSeatWindow(centeredSeat);
-        _cornerRects.TryGetValue(pos, out var tileRect);
 
         try
         {
-            if (peekWindow is not null && centeredWindow is not null && tileRect is not null)
+            if (peekWindow is not null && centeredWindow is not null)
                 _windowService.SwapWindowPositions(
                     centeredWindow.Handle, mr.X, mr.Y,
-                    peekWindow.Handle, tileRect.X, tileRect.Y);
+                    peekWindow.Handle, pr.X, pr.Y);
             else
             {
                 if (centeredWindow is not null)
                     _windowService.MoveResizeWindow(centeredWindow.Handle, mr);
-                if (peekWindow is not null && tileRect is not null)
-                    _windowService.MoveResizeWindow(peekWindow.Handle,
-                        new WindowRect { X = tileRect.X, Y = tileRect.Y, Width = mr.Width, Height = mr.Height });
+                if (peekWindow is not null)
+                    _windowService.MoveResizeWindow(peekWindow.Handle, pr);
             }
         }
         catch (Exception ex) { Log.Error($"Hover peek revert failed: {ex.Message}"); }
-
-        if (peekWindow is not null)
-            UpdateCornerOverlay(pos, peekWindow.Handle);
     }
 
     private void ClearPeekState()
@@ -673,6 +672,7 @@ public sealed partial class MainWindowViewModel
         _peekCenteredSeat = -1;
         _peekGroupId = null;
         _peekMasterRect = null;
+        _peekParkRect = null;
     }
 
     // -- Per-tile updates --------------------------------------------------------
