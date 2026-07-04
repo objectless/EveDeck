@@ -116,6 +116,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         RestoreSelectedStyleCommand = new RelayCommand(RestoreSelectedStyle, () => SelectedWindow is not null);
         ToggleSelectedBorderlessCommand = new RelayCommand(ToggleSelectedBorderless, () => SelectedWindow is not null);
         NewProfileCommand = new RelayCommand(NewProfile);
+        EditLayoutCommand = new RelayCommand(EditLayoutOnMonitor);
         DuplicateProfileCommand = new RelayCommand(DuplicateProfile, () => SelectedProfile is not null);
         DeleteProfileCommand = new RelayCommand(DeleteProfile, () => SelectedProfile is not null && !SelectedProfile.IsBuiltIn && Profiles.Count > 1);
         ImportProfileCommand = new RelayCommand(ImportProfile);
@@ -273,6 +274,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public RelayCommand RestoreSelectedStyleCommand { get; }
     public RelayCommand ToggleSelectedBorderlessCommand { get; }
     public RelayCommand NewProfileCommand { get; }
+    public RelayCommand EditLayoutCommand { get; }
     public RelayCommand DuplicateProfileCommand { get; }
     public RelayCommand DeleteProfileCommand { get; }
     public RelayCommand ImportProfileCommand { get; }
@@ -491,11 +493,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool SelectedProfileIsBuiltIn => SelectedProfile?.IsBuiltIn == true;
     public bool SelectedProfileIsFamilyTemplate => SelectedProfile?.IsFamilyTemplate == true;
 
-    // Resolution/account-count dropdown options for whichever family (Grid or Center Master) is selected.
+    // Resolution/account-count dropdown options for whichever family is selected.
     public IReadOnlyList<DisplayModeOption> AvailableFamilyResolutions => SelectedProfile?.Category switch
     {
         "Grid" => PresetFactory.GridResolutionOptions,
         "Center Master" => PresetFactory.CenterMasterResolutionOptions,
+        "Whammy Board" => PresetFactory.WhammyResolutionOptions,
+        "Side Stack" => PresetFactory.SideStackResolutionOptions,
         _ => Array.Empty<DisplayModeOption>(),
     };
 
@@ -503,8 +507,33 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         "Grid" => PresetFactory.GridCountOptions,
         "Center Master" => PresetFactory.CenterMasterCountOptions,
+        "Whammy Board" => PresetFactory.WhammyCountOptions,
+        "Side Stack" => PresetFactory.SideStackCountOptions,
         _ => Array.Empty<int>(),
     };
+
+    // Side (Left/Right) dropdown — only the Side Stack family has one.
+    public bool SelectedProfileHasFamilySide =>
+        SelectedProfile?.IsFamilyTemplate == true && SelectedProfile.Category == "Side Stack";
+
+    public IReadOnlyList<string> AvailableFamilySides => PresetFactory.SideStackSideOptions;
+
+    public string? SelectedFamilySide
+    {
+        get => SelectedProfile is null ? null
+            : AvailableFamilySides.FirstOrDefault(s => s == SelectedProfile.TemplateSide) ?? AvailableFamilySides[0];
+        set
+        {
+            if (SelectedProfile is null || value is null || SelectedProfile.TemplateSide == value) return;
+            SelectedProfile.TemplateSide = value;
+            PresetFactory.RegenerateFamilySlots(SelectedProfile);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ActiveProfileSlots));
+            UpdatePositionCodes();
+            RebuildLayoutPreview();
+            Save();
+        }
+    }
 
     public DisplayModeOption? SelectedFamilyResolution
     {
@@ -1136,6 +1165,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(AvailableFamilyCounts));
                 OnPropertyChanged(nameof(SelectedFamilyResolution));
                 OnPropertyChanged(nameof(SelectedFamilyCount));
+                OnPropertyChanged(nameof(SelectedProfileHasFamilySide));
+                OnPropertyChanged(nameof(SelectedFamilySide));
                 OnPropertyChanged(nameof(SelectedProfileAvoidTaskbar));
                 OnPropertyChanged(nameof(MasterResolutionStatus));
                 OnPropertyChanged(nameof(MasterResolutionStatusSeverity));

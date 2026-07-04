@@ -17,6 +17,10 @@ public sealed class LayoutProfile
     public int TemplateHeight { get; set; }
     public int TemplateCount { get; set; }
 
+    // Which edge the Side Stack family stacks its tiles on ("Left" or "Right"). Empty for families
+    // without a side option; PresetFactory defaults/clamps it when regenerating slots.
+    public string TemplateSide { get; set; } = "";
+
     // The master SEAT (SlotAssignment.SlotNumber) centred at rest for THIS profile — different activities
     // (mining vs. PvP) can centre different mains. 0 = unset; the view-model falls back to the centre slot.
     public int MasterSeat { get; set; }
@@ -50,7 +54,9 @@ public sealed class LayoutProfile
         "1-Char"        => 1,
         "Grid"          => 2,
         "Center Master" => 3,
-        "Overlap"       => 4,
+        "Whammy Board"  => 4,
+        "Side Stack"    => 5,
+        "Overlap"       => 6,
         _               => 99
     };
 

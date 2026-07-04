@@ -36,6 +36,9 @@ public partial class MainWindow : Window
         _viewModel.HotkeysChanged += ViewModel_HotkeysChanged;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+        // A pending hotkey capture keeps ALL global hotkeys unregistered; abandon it if the user
+        // clicks away to another app so the hotkeys come back (re-registered via IsCapturingHotkey).
+        Deactivated += (_, _) => _viewModel.CancelHotkeyCapture();
         InitTrayIcon();
         SyncUiScaleComboBox(_viewModel.UiScale);
         ApplyUiScale(_viewModel.UiScale);
@@ -265,6 +268,14 @@ public partial class MainWindow : Window
     }
 
     private void ViewModel_HotkeysChanged(object? sender, EventArgs e) => RegisterHotkeys();
+
+    // Leaving the Hotkeys tab with a capture still armed would strand every global hotkey
+    // unregistered - abandon the capture instead.
+    private void MainTabControl_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (ReferenceEquals(e.OriginalSource, sender))
+            _viewModel.CancelHotkeyCapture();
+    }
 
     private void Window_SourceInitialized(object sender, EventArgs e) => RegisterHotkeys();
 

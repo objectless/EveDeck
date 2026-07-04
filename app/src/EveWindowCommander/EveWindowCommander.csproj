@@ -11,6 +11,12 @@
     <AssemblyName>EveDeck</AssemblyName>
     <RootNamespace>EveWindowCommander</RootNamespace>
     <Version>1.3.2</Version>
+    <Copyright>Copyright © 2026 EveDeck</Copyright>
+    <Authors>EveDeck</Authors>
+    <Company>EveDeck</Company>
+    <!-- Framework-dependent builds accept any installed .NET 10+ runtime instead of demanding an
+         exact major match, so users don't hit the "install .NET" popup after a runtime upgrade. -->
+    <RollForward>LatestMajor</RollForward>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>Assets\ewc.ico</ApplicationIcon>
   </PropertyGroup>

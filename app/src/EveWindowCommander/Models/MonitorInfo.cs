@@ -11,4 +11,8 @@ public sealed class MonitorInfo
     public uint DpiY { get; set; } = 96;
     public double ScalePercent => DpiX <= 0 ? 100 : Math.Round(DpiX / 96.0 * 100, 0);
     public string Summary => $"{DeviceName} {Bounds} work {WorkArea} scale {ScalePercent}%";
+
+    // WPF ComboBox selection boxes fall back to ToString() in some template paths even with
+    // DisplayMemberPath set - show the summary instead of the type name.
+    public override string ToString() => Summary;
 }

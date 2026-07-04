@@ -182,7 +182,7 @@
       </Border>
 
       <!-- ═══ Tab Control ═══ -->
-      <TabControl BorderThickness="0">
+      <TabControl BorderThickness="0" SelectionChanged="MainTabControl_SelectionChanged">
 
         <!-- ──────────────────── CLIENTS TAB ──────────────────── -->
         <TabItem>
@@ -808,6 +808,8 @@
                     <Button Content="Auto-select" Command="{Binding AutoSelectBestProfileCommand}"
                             ToolTip="Pick the best built-in profile for your current slot count and target monitor (prefers Center Master for 4-15 accounts)."/>
                     <Button Content="New" Command="{Binding NewProfileCommand}"/>
+                    <Button Content="Edit on Monitor" Command="{Binding EditLayoutCommand}"
+                            ToolTip="Open a full-screen editor on the target monitor: drag slots to move them, drag edges to resize, add or remove slots. Editing a built-in preset saves a custom copy."/>
                     <Button Content="Duplicate" Command="{Binding DuplicateProfileCommand}"/>
                     <Button Content="Delete" Command="{Binding DeleteProfileCommand}" Style="{StaticResource DangerButton}"/>
                     <Button Content="Import" Command="{Binding ImportProfileCommand}"/>
@@ -877,6 +879,23 @@
                                   SelectedItem="{Binding SelectedFamilyCount}"
                                   Width="70" Margin="8,0,0,0"
                                   ToolTip="Number of accounts this layout arranges."/>
+                        <StackPanel Orientation="Horizontal">
+                          <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                              <Setter Property="Visibility" Value="Collapsed"/>
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedProfileHasFamilySide}" Value="True">
+                                  <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </StackPanel.Style>
+                          <TextBlock Text="Side" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                          <ComboBox ItemsSource="{Binding AvailableFamilySides}"
+                                    SelectedItem="{Binding SelectedFamilySide}"
+                                    Width="80" Margin="8,0,0,0"
+                                    ToolTip="Which edge of the monitor the preview stack sits on."/>
+                        </StackPanel>
                       </StackPanel>
                       <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                         <TextBlock Text="Master resolution" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"

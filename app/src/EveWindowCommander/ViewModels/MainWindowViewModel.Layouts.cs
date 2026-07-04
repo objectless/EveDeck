@@ -355,12 +355,29 @@ public sealed partial class MainWindowViewModel
 
     // ── Profile CRUD ───────────────────────────────────────────────────────────
 
+    // New custom profile: ask for the account count, seed a grid of that many slots, then open the
+    // on-monitor editor so the user places them visually right away.
     private void NewProfile()
     {
-        var profile = PresetFactory.CreateBuiltInProfiles().First().Clone("New Profile");
+        var defaultCount = Windows.Count > 0 ? Math.Clamp(Windows.Count, 1, 15) : 4;
+        var dialog = new Views.NewProfileDialog(defaultCount)
+        {
+            Owner = System.Windows.Application.Current.MainWindow,
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var monitor = Monitors.FirstOrDefault(m => m.Id == LayoutTargetMonitorId)
+            ?? Monitors.FirstOrDefault(m => m.IsPrimary)
+            ?? Monitors.FirstOrDefault();
+        var profile = PresetFactory.CreateCustomProfile(
+            UniqueProfileName("Custom Layout"),
+            monitor?.Bounds.Width ?? 2560,
+            monitor?.Bounds.Height ?? 1440,
+            dialog.AccountCount);
         Profiles.Add(profile);
         SelectedProfile = profile;
         Save();
+        EditLayoutOnMonitor();
     }
 
     private void DuplicateProfile()
@@ -412,6 +429,126 @@ public sealed partial class MainWindowViewModel
         if (dialog.ShowDialog() != true) return;
         try { _configService.ExportProfile(SelectedProfile, dialog.FileName); Log.Info($"Exported profile to {dialog.FileName}."); }
         catch (Exception ex) { Log.Error($"Export failed: {ex.Message}"); }
+    }
+
+    // ── On-monitor layout editor ───────────────────────────────────────────────
+
+    // Open the full-screen WYSIWYG slot editor on the target monitor. Slots are shown where layout
+    // apply would actually place them (via ResolvePlacementRect), edited in physical pixels, and
+    // saved back as a monitor-absolute custom profile. Editing a built-in silently edits a
+    // "<Name> (Custom)" copy so presets stay pristine.
+    private void EditLayoutOnMonitor()
+    {
+        if (SelectedProfile is null || SelectedProfile.Slots.Count == 0)
+        {
+            Log.Warn("Select a profile with at least one slot to edit.");
+            return;
+        }
+
+        var monitor = Monitors.FirstOrDefault(m => m.Id == LayoutTargetMonitorId)
+            ?? Monitors.FirstOrDefault(m => m.IsPrimary)
+            ?? Monitors.FirstOrDefault();
+        if (monitor is null)
+        {
+            Log.Warn("No monitor detected - cannot open the layout editor.");
+            return;
+        }
+
+        var items = SelectedProfile.Slots
+            .OrderBy(s => s.SlotNumber)
+            .Select(s =>
+            {
+                var r = ResolvePlacementRect(s);
+                return new Views.LayoutEditorSlot
+                {
+                    SlotNumber = s.SlotNumber,
+                    Label = s.Label,
+                    X = r.X, Y = r.Y, Width = r.Width, Height = r.Height,
+                };
+            })
+            .ToList();
+
+        var editor = new Views.LayoutEditorWindow(Monitors.ToList(), monitor, items);
+        if (editor.ShowDialog() != true) return;
+        ApplyEditedSlots(monitor, editor.ResultSlots);
+    }
+
+    private void ApplyEditedSlots(MonitorInfo monitor, IReadOnlyList<Views.LayoutEditorSlot> edited)
+    {
+        if (SelectedProfile is null || edited.Count == 0) return;
+
+        var source = SelectedProfile;
+        var target = source;
+        if (source.IsBuiltIn)
+        {
+            target = source.Clone(UniqueProfileName($"{source.Name} (Custom)"));
+            Profiles.Add(target);
+        }
+
+        // Carry per-slot Borderless over from the pre-edit slots where numbers still line up.
+        var borderlessByNumber = source.Slots.ToDictionary(s => s.SlotNumber, s => s.Borderless);
+
+        target.Slots.Clear();
+        foreach (var s in edited.OrderBy(x => x.SlotNumber))
+        {
+            // Tag each slot with the monitor its centre landed on (editor spans all monitors).
+            var cx = s.X + s.Width / 2;
+            var cy = s.Y + s.Height / 2;
+            var slotMonitor = Monitors.FirstOrDefault(m =>
+                    cx >= m.Bounds.X && cx < m.Bounds.X + m.Bounds.Width
+                    && cy >= m.Bounds.Y && cy < m.Bounds.Y + m.Bounds.Height)
+                ?? monitor;
+
+            target.Slots.Add(new LayoutSlot
+            {
+                SlotNumber = s.SlotNumber,
+                Label = string.IsNullOrWhiteSpace(s.Label) ? $"Slot {s.SlotNumber}" : s.Label,
+                MonitorId = slotMonitor.Id,
+                X = s.X, Y = s.Y, Width = s.Width, Height = s.Height,
+                Borderless = borderlessByNumber.GetValueOrDefault(s.SlotNumber, true),
+            });
+        }
+
+        // The saved coordinates are literal physical rects on THIS monitor: store its bounds so
+        // ResolvePlacementRect path 1 reproduces (and later rescales) exactly what was drawn, and
+        // disable AvoidTaskbar so the work-area anchor doesn't shift the drawn rects a second time.
+        target.CaptureMonitorX = monitor.Bounds.X;
+        target.CaptureMonitorY = monitor.Bounds.Y;
+        target.CaptureMonitorWidth = monitor.Bounds.Width;
+        target.CaptureMonitorHeight = monitor.Bounds.Height;
+        target.AvoidTaskbar = false;
+        target.IsFamilyTemplate = false;
+
+        // Slots may have been removed/renumbered: drop dangling swap-group members and master seat.
+        var count = target.Slots.Count;
+        for (var i = target.SwapGroups.Count - 1; i >= 0; i--)
+        {
+            target.SwapGroups[i].SlotNumbers.RemoveAll(n => n > count);
+            if (target.SwapGroups[i].SlotNumbers.Count < 2) target.SwapGroups.RemoveAt(i);
+        }
+        if (target.MasterSeat > count) target.MasterSeat = 0;
+
+        if (!ReferenceEquals(SelectedProfile, target))
+        {
+            SelectedProfile = target; // raises all profile-dependent state itself
+        }
+        else
+        {
+            OnPropertyChanged(nameof(ActiveProfileSlots));
+            UpdatePositionCodes();
+            RebuildLayoutPreview();
+        }
+        Save();
+        Log.Info($"Saved edited layout '{target.Name}' ({count} slots on {monitor.Id}).");
+    }
+
+    private string UniqueProfileName(string baseName)
+    {
+        var name = baseName;
+        var i = 2;
+        while (Profiles.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            name = $"{baseName} {i++}";
+        return name;
     }
 
     // ── Move / Swap ────────────────────────────────────────────────────────────

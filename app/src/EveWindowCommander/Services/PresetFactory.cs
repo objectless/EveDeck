@@ -27,6 +27,15 @@ public static class PresetFactory
     // Client counts the Center Master family template offers in its dropdown.
     private static readonly int[] CenterMasterCounts = { 4, 5, 6, 7, 8, 9, 10, 12, 15 };
 
+    // Client counts the Whammy Board family template offers in its dropdown.
+    private static readonly int[] WhammyCounts = { 4, 5, 6, 7, 8, 9, 10, 12, 15 };
+
+    // Client counts the Side Stack family template offers in its dropdown (master + 2..8 stacked tiles).
+    private static readonly int[] SideStackCounts = { 3, 4, 5, 6, 7, 8, 9 };
+
+    // Edges the Side Stack family can stack its tiles on.
+    private static readonly string[] SideStackSides = { "Left", "Right" };
+
     // Dropdown option lists for the UI (Grid/Center Master resolution + account-count pickers).
     public static IReadOnlyList<DisplayModeOption> GridResolutionOptions { get; } =
         Array.ConvertAll(Resolutions, r => new DisplayModeOption($"{r.W}×{r.H}", r.W, r.H));
@@ -34,8 +43,17 @@ public static class PresetFactory
     public static IReadOnlyList<DisplayModeOption> CenterMasterResolutionOptions { get; } =
         Array.ConvertAll(CenterMasterResolutions, r => new DisplayModeOption($"{r.W}×{r.H}", r.W, r.H));
 
+    public static IReadOnlyList<DisplayModeOption> WhammyResolutionOptions { get; } =
+        Array.ConvertAll(CenterMasterResolutions, r => new DisplayModeOption($"{r.W}×{r.H}", r.W, r.H));
+
+    public static IReadOnlyList<DisplayModeOption> SideStackResolutionOptions { get; } =
+        Array.ConvertAll(CenterMasterResolutions, r => new DisplayModeOption($"{r.W}×{r.H}", r.W, r.H));
+
     public static IReadOnlyList<int> GridCountOptions => GridCounts;
     public static IReadOnlyList<int> CenterMasterCountOptions => CenterMasterCounts;
+    public static IReadOnlyList<int> WhammyCountOptions => WhammyCounts;
+    public static IReadOnlyList<int> SideStackCountOptions => SideStackCounts;
+    public static IReadOnlyList<string> SideStackSideOptions => SideStackSides;
 
     // Declared last: BuildDeprecatedNames() reads Resolutions/CenterMasterResolutions above, and static
     // field initializers run in declaration order, so this must come after them or those fields are
@@ -63,6 +81,14 @@ public static class PresetFactory
         // on top. n=5 is the classic 2×2 corners + master; higher counts add perimeter tiles and grow the
         // master to fill the hollow centre (e.g. 9 = eight tiles in a 3×3 ring with the 9th centred).
         list.Add(CreateCenterMasterTemplate());
+
+        // Whammy Board family: like Center Master but with NO side columns - alt tiles split into a top
+        // row and a bottom row (Press Your Luck style) with the master floating centred between them.
+        list.Add(CreateWhammyTemplate());
+
+        // Side Stack family: a vertical stack of small tiles down one edge (Left/Right dropdown) with
+        // the master filling the rest of the monitor.
+        list.Add(CreateSideStackTemplate());
 
         return list;
     }
@@ -101,6 +127,58 @@ public static class PresetFactory
         return profile;
     }
 
+    private static LayoutProfile CreateWhammyTemplate()
+    {
+        var profile = new LayoutProfile
+        {
+            Name = "Whammy Board",
+            IsBuiltIn = true,
+            Category = "Whammy Board",
+            IsFamilyTemplate = true,
+            TemplateWidth = 2560,
+            TemplateHeight = 1440,
+            TemplateCount = 5,
+        };
+        PopulateWhammySlots(profile);
+        return profile;
+    }
+
+    private static LayoutProfile CreateSideStackTemplate()
+    {
+        var profile = new LayoutProfile
+        {
+            Name = "Side Stack",
+            IsBuiltIn = true,
+            Category = "Side Stack",
+            IsFamilyTemplate = true,
+            TemplateWidth = 2560,
+            TemplateHeight = 1440,
+            TemplateCount = 5,
+            TemplateSide = "Left",
+        };
+        PopulateSideStackSlots(profile);
+        return profile;
+    }
+
+    // A starter custom profile: `count` slots arranged as a simple grid at the given resolution
+    // (0,0-based, scaled to the target monitor at apply time). Used by the New Profile flow before
+    // the on-monitor editor opens so the user has sensibly-placed slots to drag around.
+    public static LayoutProfile CreateCustomProfile(string name, int width, int height, int count)
+    {
+        count = Math.Clamp(count, 1, 15);
+        var profile = new LayoutProfile { Name = name, Category = "Custom" };
+        if (count == 1)
+        {
+            profile.Slots.Add(Slot(1, 0, 0, width, height));
+            return profile;
+        }
+        var temp = new LayoutProfile { TemplateWidth = width, TemplateHeight = height, TemplateCount = count };
+        PopulateGridSlots(temp);
+        foreach (var slot in temp.Slots)
+            profile.Slots.Add(slot);
+        return profile;
+    }
+
     // Clamp a family template's TemplateWidth/Height/Count to the curated dropdown options (in case a
     // saved profile predates a change to those options), then rebuild its Slots from scratch.
     public static void RegenerateFamilySlots(LayoutProfile profile)
@@ -122,6 +200,23 @@ public static class PresetFactory
             profile.TemplateHeight = h;
             profile.TemplateCount = NearestCount(CenterMasterCounts, profile.TemplateCount);
             PopulateCenterMasterSlots(profile);
+        }
+        else if (profile.Category == "Whammy Board")
+        {
+            var (w, h) = NearestResolution(CenterMasterResolutions, profile.TemplateWidth);
+            profile.TemplateWidth = w;
+            profile.TemplateHeight = h;
+            profile.TemplateCount = NearestCount(WhammyCounts, profile.TemplateCount);
+            PopulateWhammySlots(profile);
+        }
+        else if (profile.Category == "Side Stack")
+        {
+            var (w, h) = NearestResolution(CenterMasterResolutions, profile.TemplateWidth);
+            profile.TemplateWidth = w;
+            profile.TemplateHeight = h;
+            profile.TemplateCount = NearestCount(SideStackCounts, profile.TemplateCount);
+            if (profile.TemplateSide != "Right") profile.TemplateSide = "Left";
+            PopulateSideStackSlots(profile);
         }
     }
 
@@ -243,6 +338,72 @@ public static class PresetFactory
         profile.Slots.Add(Slot(n, (sw - masterW) / 2, (sh - masterH) / 2, masterW, masterH, "Master"));
     }
 
+    // Press Your Luck board: a full-width row of tiles across the top and bottom (extra tile goes top
+    // when odd) with the master filling the ENTIRE band between them, edge to edge - like the show's
+    // big centre screen filling the hole in the tile ring. Rows always span the whole width via
+    // EvenSplit. rowH = sh/(rowN+2) makes the fuller row's tiles EXACTLY the master's aspect ratio
+    // (tile (sw/rowN) x rowH vs master sw x (rowN*rowH)), so live previews fill their tiles with no
+    // black bars (odd counts leave the sparser row slightly wider than the master aspect). Master is
+    // slot n and always the largest rect so CenterSlotNumber auto-detects it.
+    private static void PopulateWhammySlots(LayoutProfile profile)
+    {
+        var n = profile.TemplateCount;
+        var sw = profile.TemplateWidth;
+        var sh = profile.TemplateHeight;
+
+        var tiles = n - 1;
+        var topN = (tiles + 1) / 2;
+        var bottomN = tiles / 2;
+        var rowH = sh / (Math.Max(topN, bottomN) + 2);
+
+        profile.Slots.Clear();
+        var slotNum = 1;
+
+        foreach (var (offset, size) in EvenSplit(sw, topN))
+        {
+            var label = topN == 1 ? "Top" : offset == 0 ? "Top Left" : offset + size >= sw ? "Top Right" : "Top";
+            profile.Slots.Add(Slot(slotNum++, offset, 0, size, rowH, label));
+        }
+        foreach (var (offset, size) in EvenSplit(sw, bottomN))
+        {
+            var label = bottomN == 1 ? "Bottom" : offset == 0 ? "Bottom Left" : offset + size >= sw ? "Bottom Right" : "Bottom";
+            profile.Slots.Add(Slot(slotNum++, offset, sh - rowH, size, rowH, label));
+        }
+
+        profile.Slots.Add(Slot(n, 0, rowH, sw, sh - 2 * rowH, "Master"));
+    }
+
+    // A vertical stack of k = n-1 tiles down one edge (TemplateSide) with the master filling ALL the
+    // remaining space (full height, edge to edge). tileW = sw/(k+1) makes every tile EXACTLY the same
+    // aspect ratio as the master (tile (sw/(k+1)) x (sh/k) vs master (sw*k/(k+1)) x sh) - clients run
+    // at the master rect's size, so aspect-matched tiles mean the live previews fill their tiles with
+    // no black bars. The stack always spans the full edge via EvenSplit. Master is slot n and always
+    // the largest rect.
+    private static void PopulateSideStackSlots(LayoutProfile profile)
+    {
+        var n = profile.TemplateCount;
+        var sw = profile.TemplateWidth;
+        var sh = profile.TemplateHeight;
+        var right = profile.TemplateSide == "Right";
+
+        var tiles = n - 1;
+        var tileW = sw / (tiles + 1);
+        var tileX = right ? sw - tileW : 0;
+        var sideName = right ? "Right" : "Left";
+
+        profile.Slots.Clear();
+        var slotNum = 1;
+
+        foreach (var (offset, size) in EvenSplit(sh, tiles))
+        {
+            profile.Slots.Add(Slot(slotNum, tileX, offset, tileW, size, $"{sideName} {slotNum}"));
+            slotNum++;
+        }
+
+        // Master fills ALL remaining space - full height, edge to edge against the tile column.
+        profile.Slots.Add(Slot(n, right ? 0 : tileW, 0, sw - tileW, sh, "Master"));
+    }
+
     // Evenly partitions `total` pixels into `count` contiguous, non-overlapping spans (last absorbs the
     // rounding remainder) so a side of the ring is always fully covered with no dead space between tiles.
     internal static List<(int offset, int size)> EvenSplit(int total, int count)
@@ -291,9 +452,9 @@ public static class PresetFactory
                         existing.TemplateCount = builtIn.TemplateCount;
                     }
 
-                    var (beforeW, beforeH, beforeC) = (existing.TemplateWidth, existing.TemplateHeight, existing.TemplateCount);
+                    var (beforeW, beforeH, beforeC, beforeS) = (existing.TemplateWidth, existing.TemplateHeight, existing.TemplateCount, existing.TemplateSide);
                     RegenerateFamilySlots(existing);
-                    if (existing.TemplateWidth != beforeW || existing.TemplateHeight != beforeH || existing.TemplateCount != beforeC)
+                    if (existing.TemplateWidth != beforeW || existing.TemplateHeight != beforeH || existing.TemplateCount != beforeC || existing.TemplateSide != beforeS)
                         changed = true;
                     continue;
                 }

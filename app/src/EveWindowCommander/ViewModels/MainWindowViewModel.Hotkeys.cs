@@ -78,10 +78,7 @@ public sealed partial class MainWindowViewModel
 
         if (key == Key.Escape)
         {
-            Status = "Hotkey capture cancelled.";
-            _capturingHotkey.IsCapturing = false;
-            _capturingHotkey = null;
-            OnPropertyChanged(nameof(IsCapturingHotkey));
+            CancelHotkeyCapture();
             return true;
         }
 
@@ -126,6 +123,19 @@ public sealed partial class MainWindowViewModel
         Save();
         HotkeysChanged?.Invoke(this, EventArgs.Empty);
         return true;
+    }
+
+    // Abandon a pending hotkey capture. CRITICAL: while a capture is pending ALL global hotkeys are
+    // unregistered (so the pressed combo reaches WPF instead of firing an action) - if the capture is
+    // never completed or cancelled, every hotkey in the app stays dead. The main window calls this on
+    // Deactivated/tab-switch so clicking away from an armed capture can't strand the hotkeys.
+    public void CancelHotkeyCapture()
+    {
+        if (_capturingHotkey is null) return;
+        Status = "Hotkey capture cancelled.";
+        _capturingHotkey.IsCapturing = false;
+        _capturingHotkey = null;
+        OnPropertyChanged(nameof(IsCapturingHotkey));
     }
 
     private void BeginHotkeyCapture(object? parameter)
