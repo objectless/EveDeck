@@ -60,14 +60,8 @@ dotnet publish .\app\src\EveWindowCommander\EveWindowCommander.csproj `
   -c Release --self-contained -r win-x64 -o .\app\publish
 ```
 
-The website (`site/`) is a Next.js 16 app — `cd site && npm install && npm run dev`.
-
-## Repository layout
-
-```
-app/    C# / WPF desktop application (EwcEve.sln)
-site/   evedeck.space website (Next.js)
-```
+The [evedeck.space](https://evedeck.space) website lives in its own repository:
+[EveDeck-site](https://github.com/objectless/EveDeck-site).
 
 ## License
 

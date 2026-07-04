@@ -74,9 +74,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # The website lives in its own repo (EveDeck-site); check it out to record the
+      # release and deploy. RELEASES_REPO_TOKEN must have write access to EveDeck-site.
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: objectless/EveDeck-site
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
           ref: main
 
       - name: Setup Node 22
@@ -88,14 +91,14 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.build-and-release.outputs.version }}
-        run: node site/scripts/add-release.mjs "$VERSION" "https://github.com/objectless/evedeck-releases/releases/download/v$VERSION/EveDeck-v$VERSION.zip"
+        run: node scripts/add-release.mjs "$VERSION" "https://github.com/objectless/evedeck-releases/releases/download/v$VERSION/EveDeck-v$VERSION.zip"
 
       - name: Commit content.ts update
         shell: bash
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add site/src/lib/content.ts
+          git add src/lib/content.ts
           if git diff --cached --quiet; then
             echo "content.ts unchanged — nothing to commit"
           else
@@ -116,12 +119,12 @@ jobs:
           printf '%s' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
           chmod 600 "$HOME/.ssh/deploy_key"
           ssh-keyscan -H "$DEPLOY_REMOTE_HOST" >> "$HOME/.ssh/known_hosts"
-          chmod +x site/deploy/deploy.sh site/deploy/deploy-rsync.sh
-          export EVEDECK_LOCAL_PATH="${{ github.workspace }}/site/"
+          chmod +x deploy/deploy.sh deploy/deploy-rsync.sh
+          export EVEDECK_LOCAL_PATH="${{ github.workspace }}/"
           export EVEDECK_KEY_SSH="$HOME/.ssh/deploy_key"
           export EVEDECK_REMOTE_HOST="$DEPLOY_REMOTE_HOST"
           export EVEDECK_REMOTE_USER="$DEPLOY_REMOTE_USER"
           export EVEDECK_REMOTE_PATH="$DEPLOY_REMOTE_PATH"
           export EVEDECK_APP_NAME="evedeck"
           export EVEDECK_HEALTHCHECK_URL="https://evedeck.space/health"
-          bash site/deploy/deploy.sh
+          bash deploy/deploy.sh
