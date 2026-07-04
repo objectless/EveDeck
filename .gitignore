@@ -16,3 +16,10 @@ publish/
 sc-winx64/
 settings.local.json
 *.tsbuildinfo
+
+# Local agent tooling and machine-specific credentials — never commit
+.claude/
+site/deploy/deploy.local.env
+CLAUDE.local.md
+CLAUDE.md
+AGENTS.md
