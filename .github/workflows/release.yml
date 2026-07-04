@@ -54,8 +54,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          repository: objectless/evedeck-releases
-          token: ${{ secrets.RELEASES_REPO_TOKEN }}
           tag_name: v${{ steps.ver.outputs.version }}
           name: EveDeck v${{ steps.ver.outputs.version }}
           body: |
@@ -91,7 +89,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.build-and-release.outputs.version }}
-        run: node scripts/add-release.mjs "$VERSION" "https://github.com/objectless/evedeck-releases/releases/download/v$VERSION/EveDeck-v$VERSION.zip"
+        run: node scripts/add-release.mjs "$VERSION" "https://github.com/objectless/EveDeck/releases/download/v$VERSION/EveDeck-v$VERSION.zip"
 
       - name: Commit content.ts update
         shell: bash
