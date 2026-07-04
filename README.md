@@ -52,11 +52,11 @@ safety guard that blocks input-forwarding behaviour by construction. See
 Requirements: Windows 10 19041+, .NET 10 SDK.
 
 ```powershell
-dotnet build .\app\EwcEve.sln          # build
-dotnet test  .\app\EwcEve.sln          # run the test suite
+dotnet build .\app\EveDeck.sln          # build
+dotnet test  .\app\EveDeck.sln          # run the test suite
 
 # self-contained publish (what releases ship)
-dotnet publish .\app\src\EveWindowCommander\EveWindowCommander.csproj `
+dotnet publish .\app\src\EveDeck\EveDeck.csproj `
   -c Release --self-contained -r win-x64 -o .\app\publish
 ```
 

@@ -35,14 +35,14 @@ jobs:
         shell: pwsh
         run: |
           $ver = "${{ steps.ver.outputs.version }}"
-          $proj = "app/src/EveWindowCommander/EveWindowCommander.csproj"
+          $proj = "app/src/EveDeck/EveDeck.csproj"
           (Get-Content $proj) -replace '<Version>[^<]+</Version>', "<Version>$ver</Version>" |
             Set-Content $proj
 
       - name: Publish self-contained
         shell: pwsh
         run: |
-          dotnet publish app/src/EveWindowCommander/EveWindowCommander.csproj `
+          dotnet publish app/src/EveDeck/EveDeck.csproj `
             -c Release --self-contained -r win-x64 `
             -o publish-ci
 

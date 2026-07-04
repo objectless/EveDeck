@@ -1,0 +1,22 @@
+<Window x:Class="EveDeck.Views.PillOverlay"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        AllowsTransparency="True"
+        Background="Transparent"
+        WindowStartupLocation="Manual">
+  <!-- Transparent, click-through strip; only the centred pill is visible. Used identically for the
+       master window and every corner tile so all five labels look the same. -->
+  <Border x:Name="Pill" HorizontalAlignment="Center" VerticalAlignment="Center"
+          Background="#CC0D1117" CornerRadius="6" Padding="12,4">
+    <StackPanel Orientation="Horizontal">
+      <!-- Rounded character portrait (collapsed when the seat has no ESI link) -->
+      <Ellipse x:Name="PortraitDot" Width="0" Height="0" Margin="0,0,7,0"
+               VerticalAlignment="Center" Visibility="Collapsed"/>
+      <TextBlock x:Name="LabelText" Foreground="#E5E7EB" FontWeight="SemiBold"
+                 VerticalAlignment="Center"/>
+    </StackPanel>
+  </Border>
+</Window>

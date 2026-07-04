@@ -1,0 +1,29 @@
+<Window x:Class="EveDeck.Views.SplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        WindowStartupLocation="CenterScreen"
+        Width="620" Height="380">
+  <Grid>
+    <!-- Background image (bg.png loaded from file in code-behind) -->
+    <Image x:Name="BgImage" Stretch="UniformToFill"
+           RenderOptions.BitmapScalingMode="HighQuality"/>
+    <!-- Dark vignette so the logo reads cleanly over any background -->
+    <Rectangle>
+      <Rectangle.Fill>
+        <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.7" RadiusY="0.7">
+          <GradientStop Color="#00000000" Offset="0"/>
+          <GradientStop Color="#CC050810" Offset="1"/>
+        </RadialGradientBrush>
+      </Rectangle.Fill>
+    </Rectangle>
+    <!-- Logo centred on top -->
+    <Image Source="/Assets/evedeck-logo.png" Width="320" Height="320"
+           HorizontalAlignment="Center" VerticalAlignment="Center"
+           RenderOptions.BitmapScalingMode="HighQuality"/>
+  </Grid>
+</Window>

@@ -53,15 +53,15 @@ No admin rights are required for normal use. Windows may prevent focus changes i
 From a Windows terminal:
 
 ```powershell
-dotnet restore .\EwcEve.sln
-dotnet build .\EwcEve.sln
-dotnet run --project .\src\EveWindowCommander\EveWindowCommander.csproj
+dotnet restore .\EveDeck.sln
+dotnet build .\EveDeck.sln
+dotnet run --project .\src\EveDeck\EveDeck.csproj
 ```
 
 Publish a self-contained build:
 
 ```powershell
-dotnet publish .\src\EveWindowCommander\EveWindowCommander.csproj -c Release -r win-x64 --self-contained true
+dotnet publish .\src\EveDeck\EveDeck.csproj -c Release -r win-x64 --self-contained true
 ```
 
 ## Settings and Logs

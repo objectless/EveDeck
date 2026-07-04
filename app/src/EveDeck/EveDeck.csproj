@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.18362.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>EveDeck</AssemblyName>
+    <RootNamespace>EveDeck</RootNamespace>
+    <Version>1.4.0</Version>
+    <Copyright>Copyright © 2026 EveDeck</Copyright>
+    <Authors>EveDeck</Authors>
+    <Company>EveDeck</Company>
+    <!-- Framework-dependent builds accept any installed .NET 10+ runtime instead of demanding an
+         exact major match, so users don't hit the "install .NET" popup after a runtime upgrade. -->
+    <RollForward>LatestMajor</RollForward>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Assets\evedeck.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct3D11" Version="3.6.2" />
+    <PackageReference Include="Vortice.DXGI" Version="3.6.2" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.6.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\evedeck-logo.png" />
+    <Resource Include="Assets\evedeck-mark.png" />
+    <Resource Include="Assets\evedeck.ico" />
+    <Content Include="Assets\bg.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>
