@@ -163,26 +163,30 @@ public sealed partial class MainWindowViewModel
     // master is centred at rest and is the F-key "home". Independent of geometry, so setting a corner
     // seat (e.g. a corner seat in slot 1) as master simply centres that account — it never demotes
     // the real centre rect into an overlapping thumbnail. If the stored master seat is invalid (e.g. a
-    // slot was deleted) OR isn't currently logged in (no running assigned window — e.g. only some alts
-    // are up), promote the lowest-numbered seat number (= priority order) that IS running. This only
-    // ever fires when the current master is unusable; it never demotes a master that's still logged in.
+    // slot was deleted) OR isn't currently logged in, promote the lowest-numbered seat number
+    // (= priority order) that IS running. This only ever fires when the current master is unusable;
+    // it never demotes a master that's still logged in.
+    //
+    // "Logged in" here MUST mean a live, currently-detected EVE window (FindAssignedWindows), not just
+    // AssignedWindows.Count > 0 — that list is persisted config that survives a client closing (the
+    // user has to manually remove the entry), so it stays non-empty long after the seat's window is
+    // gone and would otherwise block promotion forever.
     private void EnsureValidMasterSeat()
     {
         if (SelectedProfile is null || SelectedProfile.Slots.Count == 0) return;
 
         var master = Assignments.FirstOrDefault(a => a.SlotNumber == ActiveMasterSeat);
-        if (master is not null && master.AssignedWindows.Count > 0) return;
+        if (master is not null && FindAssignedWindows(master).Any()) return;
 
         var promoted = Assignments
-            .Where(a => a.AssignedWindows.Count > 0)
             .OrderBy(a => a.SlotNumber)
-            .FirstOrDefault();
+            .FirstOrDefault(a => FindAssignedWindows(a).Any());
         var fallback = promoted?.SlotNumber ?? CenterSlotNumber;
         if (fallback == ActiveMasterSeat) return;
 
         Log.Warn(master is null
             ? $"Master seat {ActiveMasterSeat} no longer exists; defaulting to seat {fallback}."
-            : $"Master seat {ActiveMasterSeat} ({master.Label}) has no running window; promoting seat {fallback} ({promoted?.Label}).");
+            : $"Master seat {ActiveMasterSeat} ({master.Label}) is not currently logged in; promoting seat {fallback} ({promoted?.Label}).");
         ActiveMasterSeat = fallback;
         SyncMasterSlot();
         UpdatePositionCodes();
