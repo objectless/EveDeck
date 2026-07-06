@@ -162,35 +162,63 @@ public sealed partial class MainWindowViewModel
     // The MASTER is a SEAT (character/account), not a position: whichever seat the user designated as
     // master is centred at rest and is the F-key "home". Independent of geometry, so setting a corner
     // seat (e.g. a corner seat in slot 1) as master simply centres that account — it never demotes
-    // the real centre rect into an overlapping thumbnail. If the stored master seat is invalid (e.g. a
-    // slot was deleted) OR isn't currently logged in, promote the lowest-numbered seat number
-    // (= priority order) that IS running. This only ever fires when the current master is unusable;
-    // it never demotes a master that's still logged in.
+    // the real centre rect into an overlapping thumbnail.
     //
-    // "Logged in" here MUST mean a live, currently-detected EVE window (FindAssignedWindows), not just
-    // AssignedWindows.Count > 0 — that list is persisted config that survives a client closing (the
-    // user has to manually remove the entry), so it stays non-empty long after the seat's window is
-    // gone and would otherwise block promotion forever.
+    // Two distinct cases:
+    //  * The designated master seat was DELETED (slot removed): permanently fall back to the centre
+    //    slot and PERSIST it — the old seat is gone for good.
+    //  * The designated master seat exists but its client isn't running (partial session): TRANSIENTLY
+    //    promote the highest-priority (lowest-numbered) seat that IS running via _promotedMasterSeat,
+    //    filling the master GEOMETRY slot without overwriting the user's saved master. ComputeHome-
+    //    Arrangement then lays the remaining seats around it, so this stays correct for non-square
+    //    families (Side Stack/Whammy, where the master is the HIGHEST-numbered big slot). The promotion
+    //    is re-evaluated from scratch on every apply/profile-switch and snaps back to the real master
+    //    the moment its client is detected again — it is NEVER saved, which is what used to scramble
+    //    these layouts permanently.
+    //
+    // "Running" MUST mean a live, currently-detected EVE window (FindAssignedWindows), not just
+    // AssignedWindows.Count > 0 — that list is persisted config that survives a client closing.
     private void EnsureValidMasterSeat()
     {
         if (SelectedProfile is null || SelectedProfile.Slots.Count == 0) return;
 
-        var master = Assignments.FirstOrDefault(a => a.SlotNumber == ActiveMasterSeat);
-        if (master is not null && FindAssignedWindows(master).Any()) return;
+        // Re-evaluate from scratch: drop any prior transient promotion so the persisted master is the
+        // baseline again (and so a master that came back online resumes control).
+        _promotedMasterSeat = null;
 
+        var designated = ActiveMasterSeat;
+        var master = Assignments.FirstOrDefault(a => a.SlotNumber == designated);
+
+        // Deleted master seat -> permanent, persisted fallback to the geometric centre.
+        if (master is null)
+        {
+            var fallback = CenterSlotNumber;
+            if (fallback == designated) return;
+            Log.Warn($"Master seat {designated} no longer exists; defaulting to seat {fallback}.");
+            ActiveMasterSeat = fallback;
+            SyncMasterSlot();
+            UpdatePositionCodes();
+            OnPropertyChanged(nameof(MasterSlotNumber));
+            return;
+        }
+
+        // Designated master's client is running -> use it as-is.
+        if (FindAssignedWindows(master).Any()) return;
+
+        // Partial session: transiently centre the highest-priority running seat. No change if the
+        // designated master is the only one that would qualify or nobody else is running.
         var promoted = Assignments
+            .Where(a => a.SlotNumber != designated)
             .OrderBy(a => a.SlotNumber)
             .FirstOrDefault(a => FindAssignedWindows(a).Any());
-        var fallback = promoted?.SlotNumber ?? CenterSlotNumber;
-        if (fallback == ActiveMasterSeat) return;
+        if (promoted is null) return;
 
-        Log.Warn(master is null
-            ? $"Master seat {ActiveMasterSeat} no longer exists; defaulting to seat {fallback}."
-            : $"Master seat {ActiveMasterSeat} ({master.Label}) is not currently logged in; promoting seat {fallback} ({promoted?.Label}).");
-        ActiveMasterSeat = fallback;
+        _promotedMasterSeat = promoted.SlotNumber;
         SyncMasterSlot();
         UpdatePositionCodes();
         OnPropertyChanged(nameof(MasterSlotNumber));
+        RaiseIdentityDependents();
+        Log.Info($"Master seat {designated} ({master.Label}) is not logged in; temporarily centring seat {promoted.SlotNumber} ({promoted.Label}) for this session (not saved).");
     }
 
     // Corner overlay apply: resize ALL clients to master resolution, park non-master off-screen left,
@@ -208,42 +236,75 @@ public sealed partial class MainWindowViewModel
         }
 
         var masterRect = ApplyMasterResOverride(ResolvePlacementRect(centerSlot));
-        var parkRect = ResolveParkRect(masterRect);
         var masterAssignment = Assignments.FirstOrDefault(a => a.SlotNumber == ActiveMasterSeat);
+        var masterWindow = masterAssignment is null ? null : FindAssignedWindows(masterAssignment).FirstOrDefault();
 
-        // Collect all assigned windows with their intended positions.
-        var moves = new List<(EveWindowInfo window, WindowRect rect, bool borderless, bool isMaster)>();
-        foreach (var assignment in Assignments.Where(a => a.AssignedWindows.Count > 0))
+        // Collect non-master assigned windows now; the master is moved separately below so we can
+        // requery its ACTUAL post-move size before parking anyone off it (see note below).
+        var nonMasterMoves = new List<(EveWindowInfo window, bool borderless)>();
+        foreach (var assignment in Assignments.Where(a => a.AssignedWindows.Count > 0 && a.SlotNumber != ActiveMasterSeat))
         {
-            var isMaster = assignment.SlotNumber == ActiveMasterSeat;
-            var destRect = isMaster ? masterRect : parkRect;
-
             var slot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == assignment.SlotNumber);
             var borderless = slot?.Borderless ?? true;
-
             foreach (var window in FindAssignedWindows(assignment))
             {
                 if (borderless) SaveStyleSnapshotIfMissing(window);
-                moves.Add((window, destRect, borderless, isMaster));
+                nonMasterMoves.Add((window, borderless));
             }
         }
 
-        if (moves.Count == 0) { Log.Warn("No assigned windows found for preview mode layout."); return; }
+        if (masterWindow is null && nonMasterMoves.Count == 0) { Log.Warn("No assigned windows found for preview mode layout."); return; }
 
         _applyInProgress = true;
         UndoLastApplyCommand.RaiseCanExecuteChanged();
         _undoRects = Windows.GroupBy(w => w.Title).ToDictionary(g => g.Key, g => g.First().Rect.Clone());
 
+        var masterSlotBorderless = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == ActiveMasterSeat)?.Borderless ?? true;
+
         await System.Threading.Tasks.Task.Run(async () =>
         {
-            foreach (var (window, rect, borderless, isMaster) in moves)
+            if (masterWindow is not null)
+            {
+                try
+                {
+                    if (masterSlotBorderless) SaveStyleSnapshotIfMissing(masterWindow);
+                    _windowService.MoveResizeWindow(masterWindow.Handle, masterRect);
+                    if (masterSlotBorderless) _windowService.MakeBorderless(masterWindow.Handle);
+                }
+                catch (Exception ex)
+                {
+                    WpfApp.Current.Dispatcher.Invoke(() =>
+                        Log.Error($"Preview apply failed for master {masterWindow.Title}: {ex.Message}"));
+                }
+
+                await System.Threading.Tasks.Task.Delay(300);
+                try { _windowService.MoveResizeWindow(masterWindow.Handle, masterRect); } catch { }
+            }
+        });
+
+        // Some EVE clients enforce their own fixed window/render resolution (e.g. "Window mode" set
+        // in the in-game Settings dialog) and silently ignore or ratio-clamp an external resize. Park
+        // geometry must follow whatever the master ACTUALLY ended up at, not the size we asked for —
+        // otherwise every parked alt gets force-resized to a mismatched size, reflowing their UI.
+        var actualMasterRect = masterWindow is not null && _windowService.TryGetWindowRect(masterWindow.Handle, out var liveRect)
+            ? liveRect
+            : masterRect;
+        if (actualMasterRect.Width != masterRect.Width || actualMasterRect.Height != masterRect.Height)
+            Log.Warn($"Master window did not accept the requested size ({masterRect.Width}x{masterRect.Height}); it is actually {actualMasterRect.Width}x{actualMasterRect.Height} (likely a fixed in-game window/resolution setting). Parking alts at the actual size instead.");
+        var parkRect = ResolveParkRect(actualMasterRect);
+
+        var moves = nonMasterMoves.Select(m => (m.window, rect: parkRect, m.borderless)).ToList();
+
+        await System.Threading.Tasks.Task.Run(async () =>
+        {
+            foreach (var (window, rect, borderless) in moves)
             {
                 try
                 {
                     _windowService.MoveResizeWindow(window.Handle, rect);
                     if (borderless) _windowService.MakeBorderless(window.Handle);
                     WpfApp.Current.Dispatcher.Invoke(() =>
-                        Log.Info($"{window.Title} → {(isMaster ? "master" : "park")} {rect}."));
+                        Log.Info($"{window.Title} → park {rect}."));
                 }
                 catch (Exception ex)
                 {
@@ -253,7 +314,7 @@ public sealed partial class MainWindowViewModel
             }
 
             await System.Threading.Tasks.Task.Delay(300);
-            foreach (var (window, rect, _, _) in moves)
+            foreach (var (window, rect, _) in moves)
             {
                 try { _windowService.MoveResizeWindow(window.Handle, rect); } catch { } // best-effort second pass; window may have closed mid-apply
             }
@@ -270,7 +331,6 @@ public sealed partial class MainWindowViewModel
         StartCornerOverlays();
 
         // Bring the master client to the foreground so it floats on top of the corners.
-        var masterWindow = masterAssignment is null ? null : FindAssignedWindows(masterAssignment).FirstOrDefault();
         if (masterWindow is not null)
         {
             try { _windowService.FocusWindow(masterWindow.Handle); } catch { } // best-effort focus; window may have closed mid-apply

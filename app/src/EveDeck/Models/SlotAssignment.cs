@@ -8,6 +8,9 @@ public sealed class SlotAssignment : ObservableObject
     private int _slotNumber;
     private string _label = "";
     private string? _frameColor;
+    private string? _labelFontFamily;
+    private double? _labelFontSize;
+    private string? _labelColor;
     private bool _isMaster;
     private string _positionCode = "";
 
@@ -90,6 +93,25 @@ public sealed class SlotAssignment : ObservableObject
         set => SetProperty(ref _frameColor, value);
     }
 
+    // 3b — Optional per-seat preview-label font overrides (null = inherit the global default).
+    public string? LabelFontFamily
+    {
+        get => _labelFontFamily;
+        set => SetProperty(ref _labelFontFamily, value);
+    }
+
+    public double? LabelFontSize
+    {
+        get => _labelFontSize;
+        set => SetProperty(ref _labelFontSize, value);
+    }
+
+    public string? LabelColor
+    {
+        get => _labelColor;
+        set => SetProperty(ref _labelColor, value);
+    }
+
     // Keep this seat's EVE window pinned topmost (HWND_TOPMOST) at all times.
     private bool _isTopmost;
     public bool IsTopmost
@@ -157,19 +179,20 @@ public sealed class SlotAssignment : ObservableObject
 
     public bool IsAssigned => AssignedWindows.Count > 0;
 
-    // The character actually logged into this seat's window right now (from the live "EVE - Name"
-    // window title), independent of the seat's stable configured Label. Empty when unassigned.
+    // The character actually logged into this seat's live window right now. Set by the ViewModel on
+    // every refresh from the seat's first DETECTED window (resolved across ALL assigned candidate
+    // windows, not just AssignedWindows[0]), so a seat holding several character-set clients shows
+    // whichever one is actually running rather than its stable configured main-account Label. Empty
+    // when the seat has no live window. Not persisted.
+    private string _runningCharacterName = "";
     [System.Text.Json.Serialization.JsonIgnore]
     public string RunningCharacterName
     {
-        get
+        get => _runningCharacterName;
+        set
         {
-            if (AssignedWindows.Count == 0) return "";
-            const string prefix = "EVE - ";
-            var title = AssignedWindows[0].Title;
-            return title.StartsWith(prefix, System.StringComparison.OrdinalIgnoreCase)
-                ? title[prefix.Length..].Trim()
-                : "";
+            if (SetProperty(ref _runningCharacterName, value))
+                OnPropertyChanged(nameof(DisplayLabel));
         }
     }
 

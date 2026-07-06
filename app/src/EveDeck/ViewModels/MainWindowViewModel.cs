@@ -147,10 +147,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             if (parameter is not SlotAssignment seat) return;
             // IsTopmost is already updated by the TwoWay binding before this command fires.
-            foreach (var w in FindAssignedWindows(seat))
-                _windowService.SetWindowTopmost(w.Handle, seat.IsTopmost);
+            if (seat.IsTopmost)
+            {
+                // Pinned: raise now only if EVE is currently focused; the foreground hook keeps it in sync.
+                var eveForeground = IsEveWindowForeground();
+                foreach (var w in FindAssignedWindows(seat))
+                    _windowService.SetWindowTopmost(w.Handle, eveForeground);
+            }
+            else
+            {
+                // Un-pinned: drop to normal z-order immediately, regardless of what's focused.
+                foreach (var w in FindAssignedWindows(seat))
+                    _windowService.SetWindowTopmost(w.Handle, false);
+            }
+            _lastEveForeground = null; // pinned set changed; re-evaluate on the next foreground change
             Save();
-            Log.Info($"Seat {seat.SlotNumber} ({seat.Label}) always-on-top: {seat.IsTopmost}.");
+            Log.Info($"Seat {seat.SlotNumber} ({seat.Label}) above-while-EVE-focused: {seat.IsTopmost}.");
         });
 
         SwitchCharacterSetCommand = new RelayCommand(parameter =>
@@ -490,17 +502,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public int MasterSlotNumber => ActiveMasterSeat;
 
+    // Transient promotion set by EnsureValidMasterSeat when the persisted master seat's client isn't
+    // running, so the master geometry slot gets filled by a logged-in seat during a partial session.
+    // NEVER persisted — the user's chosen master (SelectedProfile.MasterSeat) is untouched, so it
+    // snaps back automatically on the next apply once the real master's client is running again.
+    private int? _promotedMasterSeat;
+
     // The master seat of the ACTIVE profile (per-profile so each activity can centre a different main).
     // Falls back to the geometric centre slot when the profile hasn't designated one (new/migrated).
+    // A live transient promotion (partial session) wins over the persisted value for placement/labels.
     internal int ActiveMasterSeat
     {
         get
         {
+            if (_promotedMasterSeat is int promoted) return promoted;
             if (SelectedProfile is null) return _settings.MasterSlotNumber;
             return SelectedProfile.MasterSeat > 0 ? SelectedProfile.MasterSeat : CenterSlotNumber;
         }
         set
         {
+            _promotedMasterSeat = null;   // an explicit master change supersedes any transient promotion
             if (SelectedProfile is not null) SelectedProfile.MasterSeat = value;
             else _settings.MasterSlotNumber = value;
             OnPropertyChanged(nameof(MasterSlotNumber));
@@ -950,10 +971,75 @@ public sealed partial class MainWindowViewModel : ObservableObject
         get => _settings.CornerOverlayLabelFontSize;
         set
         {
-            var clamped = Math.Clamp(value, 8.0, 24.0);
+            var clamped = Math.Clamp(value, 6.0, 72.0);
             if (Math.Abs(_settings.CornerOverlayLabelFontSize - clamped) < 0.1) return;
             _settings.CornerOverlayLabelFontSize = clamped; OnPropertyChanged(); Save();
+            if (_settings.CornerOverlaysEnabled && _cornerOverlays.Count > 0) StartCornerOverlays();
         }
+    }
+
+    public string CornerOverlayLabelStyle
+    {
+        get => _settings.CornerOverlayLabelStyle;
+        set
+        {
+            if (_settings.CornerOverlayLabelStyle == value || string.IsNullOrEmpty(value)) return;
+            _settings.CornerOverlayLabelStyle = value;
+            OnPropertyChanged();
+            Save();
+            if (_settings.CornerOverlaysEnabled && _cornerOverlays.Count > 0) StartCornerOverlays();
+        }
+    }
+
+    // One-line summary of the global default label font for the Options tab (e.g. "Segoe UI, 13px").
+    public string LabelFontSummary
+    {
+        get
+        {
+            var family = string.IsNullOrWhiteSpace(_settings.CornerOverlayLabelFontFamily)
+                ? "Segoe UI" : _settings.CornerOverlayLabelFontFamily;
+            return $"{family}, {_settings.CornerOverlayLabelFontSize:0}px";
+        }
+    }
+
+    // Current global default label font (family, WPF DIP size, colour hex) for seeding the font dialog.
+    public (string family, double sizeDip, string color) GlobalLabelFont() =>
+        (_settings.CornerOverlayLabelFontFamily ?? "", _settings.CornerOverlayLabelFontSize, _settings.CornerOverlayLabelColor ?? "");
+
+    // Applies the global DEFAULT label font (family + size + colour) chosen in the WinForms font dialog.
+    // Size is a WPF DIP value already (the caller converts from the dialog's points). Rebuilds overlays.
+    public void ApplyGlobalLabelFont(string family, double sizeDip, string colorHex)
+    {
+        _settings.CornerOverlayLabelFontFamily = family ?? "";
+        _settings.CornerOverlayLabelFontSize = Math.Clamp(sizeDip, 6.0, 72.0);
+        if (!string.IsNullOrWhiteSpace(colorHex)) _settings.CornerOverlayLabelColor = colorHex;
+        OnPropertyChanged(nameof(CornerOverlayLabelFontSize));
+        OnPropertyChanged(nameof(LabelFontSummary));
+        Save();
+        if (_settings.CornerOverlaysEnabled && _cornerOverlays.Count > 0) StartCornerOverlays();
+    }
+
+    // Applies (or clears, when args are null) a single seat's label font overrides. Rebuilds overlays.
+    public void ApplySeatLabelFont(SlotAssignment seat, string? family, double? sizeDip, string? colorHex)
+    {
+        seat.LabelFontFamily = string.IsNullOrWhiteSpace(family) ? null : family;
+        seat.LabelFontSize = sizeDip.HasValue ? Math.Clamp(sizeDip.Value, 6.0, 72.0) : null;
+        seat.LabelColor = string.IsNullOrWhiteSpace(colorHex) ? null : colorHex;
+        Save();
+        if (_settings.CornerOverlaysEnabled && _cornerOverlays.Count > 0) StartCornerOverlays();
+    }
+
+    // Current effective active-window frame colour for a seat (its own override, else the global) --
+    // used to seed the per-seat colour picker.
+    public string EffectiveSeatFrameColor(SlotAssignment seat)
+        => string.IsNullOrWhiteSpace(seat.FrameColor) ? ActiveFrameColor : seat.FrameColor!;
+
+    // Applies (or clears, when colorHex is null) a single seat's active-window frame colour override.
+    public void ApplySeatFrameColor(SlotAssignment seat, string? colorHex)
+    {
+        seat.FrameColor = string.IsNullOrWhiteSpace(colorHex) ? null : colorHex;
+        _lastFrameHandle = 0; // force the frame overlay to re-resolve this seat's colour on the next tick
+        Save();
     }
 
     // Last main-window position; persisted by the view on close and restored on launch.
@@ -1009,11 +1095,32 @@ public sealed partial class MainWindowViewModel : ObservableObject
             _windowService.SetProcessPriority((uint)w.ProcessId, false);
     }
 
+    // Tracks the last EVE-foreground state so repeated foreground changes (e.g. tabbing between two EVE
+    // clients) don't re-issue redundant SetWindowPos calls; only real EVE<->non-EVE transitions apply.
+    private bool? _lastEveForeground;
+
+    // Force a fresh apply next call (after layout apply / window (re)assignment the cache is stale).
     internal void ApplyTopmostState()
     {
+        _lastEveForeground = null;
+        RefreshTopmostForForeground(_windowService.GetForegroundWindowHandle());
+    }
+
+    // Focus-gated always-on-top: a pinned seat's window is HWND_TOPMOST only while an EVE client is the
+    // foreground app, so pinned windows float over EVE but drop out of the way when you switch to a
+    // non-EVE app. Driven by the foreground WinEvent hook (HotkeyService.ForegroundChanged).
+    internal void RefreshTopmostForForeground(nint foregroundHwnd)
+    {
+        var eveForeground = foregroundHwnd != 0 && Windows.Any(w => w.Handle == foregroundHwnd);
+        if (_lastEveForeground == eveForeground) return;
+        _lastEveForeground = eveForeground;
+
         foreach (var seat in Assignments)
+        {
+            if (!seat.IsTopmost) continue;
             foreach (var w in FindAssignedWindows(seat))
-                _windowService.SetWindowTopmost(w.Handle, seat.IsTopmost);
+                _windowService.SetWindowTopmost(w.Handle, eveForeground);
+        }
     }
 
     private void ToggleTopmostForActive()
@@ -1091,7 +1198,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 SlotNumber = a.SlotNumber,
                 Label = a.Label,
                 IsMaster = a.IsMaster,
-                FrameColor = a.FrameColor
+                FrameColor = a.FrameColor,
+                LabelFontFamily = a.LabelFontFamily,
+                LabelFontSize = a.LabelFontSize,
+                LabelColor = a.LabelColor
             });
         }
         // Clone hotkey bindings unbound (user should configure them per set).
@@ -1494,6 +1604,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
             RebindRestartedWindows();
             DetectNewlyLaunchedClients();
+            UpdateLiveSeatCharacters();
             LastUpdatedText = $"Last refresh {DateTime.Now:HH:mm:ss}";
             Status = $"Detected {Windows.Count} EVE/test windows and {Monitors.Count} monitors.";
             Log.Info(Status);
@@ -1503,6 +1614,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(DetectionStateText));
             OnPropertyChanged(nameof(DetectionStateColor));
             RebuildMonitorPreview();
+
+            // Live running-character labels changed with the detected windows above: refresh the
+            // surfaces that snapshot them (they are not data-bound to DisplayLabel directly).
+            RebuildMiniMap();
+            RaiseIdentityDependents();
         }
         catch (Exception ex)
         {
@@ -1515,6 +1631,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         try
         {
+            // Keep the active character set's stored seats in lockstep with the live Assignments before
+            // serialising. All editing (rename, add/delete seat, per-seat font/colour) happens on the live
+            // top-level Assignments; without this the set keeps a stale copy that resurfaces on a set
+            // switch or reload -- the cause of labels/seats not persisting consistently.
+            SnapshotLiveToActiveSet();
             _configService.Save(_settings);
             Status = $"Saved settings to {_configService.ConfigPath}.";
             Log.Info(Status);
@@ -1638,6 +1759,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         _autoSaveTimer.Stop();
         _autoSaveTimer.Start();
+    }
+
+    // Write immediately if a debounced auto-save is pending -- e.g. when the window hides to the tray --
+    // so a just-typed label isn't stuck in the 1s debounce if the process goes away before it fires.
+    internal void FlushPendingSave()
+    {
+        if (_autoSaveTimer.IsEnabled) { _autoSaveTimer.Stop(); Save(); }
     }
 
     // ── Static helpers ─────────────────────────────────────────────────────────

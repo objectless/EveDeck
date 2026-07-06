@@ -261,13 +261,23 @@ public partial class CornerOverlayWindow : Window
     // Push this window back to HWND_BOTTOM if something else raised it.
     // Skipped while the mouse is over the tile: SetWindowPos can silently cancel TrackMouseEvent,
     // which would break hover-to-peek. The tile is only interesting to the user right now anyway.
-    public void RefreshZOrder()
+    public void RefreshZOrder(bool topmost = false)
     {
         if (_mouseTracking) return;
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == 0) return;
-        Win32Native.SetWindowPos(hwnd, Win32Native.HwndBottom, 0, 0, 0, 0,
-            Win32Native.SwpNoMove | Win32Native.SwpNoSize | Win32Native.SwpNoActivate);
+        const uint flags = Win32Native.SwpNoMove | Win32Native.SwpNoSize | Win32Native.SwpNoActivate;
+        if (topmost)
+        {
+            // Raise above normal windows so the previews cover other apps while EVE is focused.
+            Win32Native.SetWindowPos(hwnd, Win32Native.HwndTopmost, 0, 0, 0, 0, flags);
+        }
+        else
+        {
+            // HWND_BOTTOM alone won't clear the WS_EX_TOPMOST band, so drop topmost first, then sink.
+            Win32Native.SetWindowPos(hwnd, Win32Native.HwndNotTopmost, 0, 0, 0, 0, flags);
+            Win32Native.SetWindowPos(hwnd, Win32Native.HwndBottom, 0, 0, 0, 0, flags);
+        }
     }
 
     private void UnregisterThumbnail()

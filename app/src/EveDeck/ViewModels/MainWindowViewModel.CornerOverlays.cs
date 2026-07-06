@@ -285,8 +285,8 @@ public sealed partial class MainWindowViewModel
             _cornerRects[position] = rect;
 
             var pillAtTop = (rect.Y + rect.Height / 2.0) < primaryMasterCenterY;
-            CreatePill(position, rect, dpiScale, pillAtTop, PillTextForPosition(position),
-                SeatPortraitUrl(OccupantAtPosition(position)));
+            CreatePill(position, OccupantAtPosition(position), rect, dpiScale, pillAtTop, PillTextForPosition(position),
+                SeatPortraitUrl(OccupantAtPosition(position)), centered: true);
 
             var seat = OccupantAtPosition(position);
             var window = FindSeatWindow(seat);
@@ -311,7 +311,7 @@ public sealed partial class MainWindowViewModel
             var masterRect = ResolvePlacementRect(masterSlot);
             var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
             var centerPillText = FindSeatWindow(centeredSeat) is not null ? CenterPillTextForGroup(group.GroupId) : "";
-            CreatePill(groupCenter, masterRect, dpiScale, atTop: true, centerPillText, SeatPortraitUrl(centeredSeat));
+            CreatePill(groupCenter, centeredSeat, masterRect, dpiScale, atTop: true, centerPillText, SeatPortraitUrl(centeredSeat));
         }
 
         if (_cornerOverlays.Count > 0) _frameTimer.Start();
@@ -319,10 +319,29 @@ public sealed partial class MainWindowViewModel
 
     private string SeatPortraitUrl(int seat) => Seat(seat)?.PortraitUrl ?? "";
 
-    private void CreatePill(int key, WindowRect rect, double dpiScale, bool atTop, string text, string portraitUrl)
+    // Effective label font (family, WPF size, colour hex) for a seat: the seat's own overrides win,
+    // else the global defaults. Public so the Options / per-seat font pickers can seed their dialog.
+    public (string family, double size, string color) EffectiveSeatLabelFont(SlotAssignment seat)
+    {
+        var family = !string.IsNullOrWhiteSpace(seat.LabelFontFamily) ? seat.LabelFontFamily! : _settings.CornerOverlayLabelFontFamily;
+        var size = seat.LabelFontSize ?? _settings.CornerOverlayLabelFontSize;
+        var color = !string.IsNullOrWhiteSpace(seat.LabelColor) ? seat.LabelColor! : _settings.CornerOverlayLabelColor;
+        return (family ?? "", size, color ?? "");
+    }
+
+    private (string family, double size, string color) ResolveLabelFont(int seat)
+    {
+        var s = Seat(seat);
+        return s is null
+            ? (_settings.CornerOverlayLabelFontFamily ?? "", _settings.CornerOverlayLabelFontSize, _settings.CornerOverlayLabelColor ?? "")
+            : EffectiveSeatLabelFont(s);
+    }
+
+    private void CreatePill(int key, int seat, WindowRect rect, double dpiScale, bool atTop, string text, string portraitUrl, bool centered = false)
     {
         if (!_settings.CornerOverlayShowLabel) return;
-        var pill = new PillOverlay(rect.X, rect.Y, rect.Width, rect.Height, dpiScale, _settings, atTop);
+        var (family, size, color) = ResolveLabelFont(seat);
+        var pill = new PillOverlay(rect.X, rect.Y, rect.Width, rect.Height, dpiScale, _settings, atTop, centered, family, size, color);
         pill.Show();
         pill.SetContent(text, portraitUrl);
         _pills[key] = pill;
@@ -689,7 +708,12 @@ public sealed partial class MainWindowViewModel
     private void RefreshPositionPill(int position)
     {
         if (_pills.TryGetValue(position, out var pill))
-            pill.SetContent(PillTextForPosition(position), SeatPortraitUrl(OccupantAtPosition(position)));
+        {
+            var seat = OccupantAtPosition(position);
+            pill.SetContent(PillTextForPosition(position), SeatPortraitUrl(seat));
+            var (family, size, color) = ResolveLabelFont(seat);
+            pill.UpdateAppearance(family, size, color);
+        }
     }
 
     private void RefreshGroupCenterPill(SwapGroup group)
@@ -697,7 +721,11 @@ public sealed partial class MainWindowViewModel
         var groupCenter = CenterSlotForGroup(group);
         var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
         if (_pills.TryGetValue(groupCenter, out var pill))
+        {
             pill.SetContent(CenterPillTextForGroup(group.GroupId), SeatPortraitUrl(centeredSeat));
+            var (family, size, color) = ResolveLabelFont(centeredSeat);
+            pill.UpdateAppearance(family, size, color);
+        }
     }
 
     internal void RefreshAllPills()
@@ -706,10 +734,22 @@ public sealed partial class MainWindowViewModel
         foreach (var group in EffectiveGroups()) RefreshGroupCenterPill(group);
     }
 
+    // True when an EVE client -- or EveDeck itself -- is the foreground app; drives whether the corner
+    // previews sit on top (covering other apps) or sink to the bottom of the z-order.
+    private bool IsEveOrEwcForeground()
+    {
+        var fg = _windowService.GetForegroundWindowHandle();
+        return fg != 0 && (Windows.Any(w => w.Handle == fg) ||
+            fg == new System.Windows.Interop.WindowInteropHelper(System.Windows.Application.Current.MainWindow).Handle);
+    }
+
     internal void RefreshCornerOverlayZOrder()
     {
+        var topmost = IsEveOrEwcForeground();
         foreach (var overlay in _cornerOverlays.Values)
-            overlay.RefreshZOrder();
+            overlay.RefreshZOrder(topmost);
+        if (topmost)
+            foreach (var pill in _pills.Values) pill.BringToTop();
     }
 
     // -- Per-tick upkeep ---------------------------------------------------------
@@ -718,9 +758,7 @@ public sealed partial class MainWindowViewModel
     {
         if (_cornerOverlays.Count == 0) return;
 
-        var fg = _windowService.GetForegroundWindowHandle();
-        var eveOrEwcFg = fg != 0 && (Windows.Any(w => w.Handle == fg) ||
-            fg == new System.Windows.Interop.WindowInteropHelper(System.Windows.Application.Current.MainWindow).Handle);
+        var eveOrEwcFg = IsEveOrEwcForeground();
         foreach (var pill in _pills.Values)
             pill.SetTopmost(eveOrEwcFg);
 
@@ -774,7 +812,7 @@ public sealed partial class MainWindowViewModel
                 _cornerSourceHandles[position] = window.Handle;
             }
 
-            overlay.RefreshZOrder();
+            overlay.RefreshZOrder(eveOrEwcFg);
         }
 
         foreach (var group in EffectiveGroups())
@@ -789,5 +827,9 @@ public sealed partial class MainWindowViewModel
                     SeatPortraitUrl(centeredSeat));
             }
         }
+
+        // Tiles just went topmost (when focused); keep every name pill above them.
+        if (eveOrEwcFg)
+            foreach (var pill in _pills.Values) pill.BringToTop();
     }
 }

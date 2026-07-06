@@ -32,7 +32,11 @@ public partial class MainWindow : Window
         _viewModel = new MainWindowViewModel();
         DataContext = _viewModel;
         _hotkeyService.HotkeyPressed += (_, binding) => _viewModel.HandleHotkey(binding.ActionId);
-        _hotkeyService.ForegroundChanged += (_, hwnd) => _viewModel.ApplyProcessPriorities(hwnd);
+        _hotkeyService.ForegroundChanged += (_, hwnd) =>
+        {
+            _viewModel.ApplyProcessPriorities(hwnd);
+            _viewModel.RefreshTopmostForForeground(hwnd);
+        };
         _viewModel.HotkeysChanged += ViewModel_HotkeysChanged;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
@@ -184,11 +188,13 @@ public partial class MainWindow : Window
     // 2a — System tray icon with context menu.
     private void InitTrayIcon()
     {
+        // Always visible -- persistent tray presence regardless of window state (foreground,
+        // minimized, or hidden), not just while minimized-to-tray.
         _notifyIcon = new System.Windows.Forms.NotifyIcon
         {
             Icon = LoadAppIcon(),
             Text = "EveDeck",
-            Visible = false
+            Visible = true
         };
 
         var contextMenu = new System.Windows.Forms.ContextMenuStrip();
@@ -230,7 +236,6 @@ public partial class MainWindow : Window
         Show();
         WindowState = WindowState.Normal;
         Activate();
-        if (_notifyIcon is not null) _notifyIcon.Visible = false;
     }
 
     // Set when the user genuinely wants to quit (tray › Exit), so OnClosing lets the close through
@@ -248,7 +253,10 @@ public partial class MainWindow : Window
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
         base.OnClosing(e);
-        if (_exiting || !_viewModel.MinimizeToTray) return;
+        if (_exiting || !_viewModel.MinimizeToTray) return; // real close: OnClosed saves
+        // Hiding to tray keeps the process alive, so flush any pending debounced save now in case the
+        // machine shuts down / the process is killed before the 1s auto-save timer fires.
+        _viewModel.FlushPendingSave();
         e.Cancel = true;
         HideToTray();
     }
@@ -261,11 +269,7 @@ public partial class MainWindow : Window
             HideToTray();
     }
 
-    private void HideToTray()
-    {
-        Hide();
-        if (_notifyIcon is not null) _notifyIcon.Visible = true;
-    }
+    private void HideToTray() => Hide();
 
     private void ViewModel_HotkeysChanged(object? sender, EventArgs e) => RegisterHotkeys();
 
@@ -277,7 +281,31 @@ public partial class MainWindow : Window
             _viewModel.CancelHotkeyCapture();
     }
 
-    private void Window_SourceInitialized(object sender, EventArgs e) => RegisterHotkeys();
+    private void Window_SourceInitialized(object sender, EventArgs e)
+    {
+        RegisterHotkeys();
+        HookTaskbarCreated();
+    }
+
+    // Windows broadcasts "TaskbarCreated" when the shell (Explorer) starts or restarts. On an Explorer
+    // restart our tray icon is dropped; re-assert it so the right-click menu stays available.
+    private int _taskbarCreatedMsg;
+    private void HookTaskbarCreated()
+    {
+        _taskbarCreatedMsg = unchecked((int)EveDeck.Utilities.Win32Native.RegisterWindowMessage("TaskbarCreated"));
+        if (PresentationSource.FromVisual(this) is HwndSource src) src.AddHook(TrayWndProc);
+    }
+
+    private nint TrayWndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
+    {
+        if (msg == _taskbarCreatedMsg && _taskbarCreatedMsg != 0 && _notifyIcon is not null)
+        {
+            // Toggle Visible to force the icon to be re-added to the freshly created taskbar.
+            _notifyIcon.Visible = false;
+            _notifyIcon.Visible = true;
+        }
+        return 0;
+    }
 
     private void RegisterHotkeys()
     {
@@ -485,6 +513,77 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
         var c = dialog.Color;
         _viewModel.ActiveFrameColor = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+    }
+
+    private static string ColorToHex(System.Drawing.Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+
+    // Shows a WinForms font+color dialog seeded from the given family / WPF-DIP size / hex colour.
+    // Returns the picked font on OK. WPF FontSize is in DIPs (1/96in); the dialog works in points
+    // (1/72in), so convert on the way in and out (dip = pt * 96/72).
+    private bool TryPickFont(string family, double sizeDip, string colorHex,
+                             out string outFamily, out double outSizeDip, out string outColorHex)
+    {
+        outFamily = family; outSizeDip = sizeDip; outColorHex = colorHex;
+        using var dialog = new System.Windows.Forms.FontDialog { ShowColor = true, ShowEffects = true, FontMustExist = true };
+        var seedFamily = string.IsNullOrWhiteSpace(family) ? "Segoe UI" : family;
+        var pt = Math.Max(1f, (float)(sizeDip * 72.0 / 96.0));
+        try { dialog.Font = new System.Drawing.Font(seedFamily, pt); }
+        catch { try { dialog.Font = new System.Drawing.Font("Segoe UI", pt); } catch { /* dialog keeps its own default */ } }
+        try
+        {
+            var wc = (Color)System.Windows.Media.ColorConverter.ConvertFromString(colorHex);
+            dialog.Color = System.Drawing.Color.FromArgb(wc.R, wc.G, wc.B);
+        }
+        catch { /* keep the dialog default colour if the stored hex fails to parse */ }
+
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return false;
+        outFamily = dialog.Font.Name;
+        outSizeDip = dialog.Font.SizeInPoints * 96.0 / 72.0;
+        outColorHex = ColorToHex(dialog.Color);
+        return true;
+    }
+
+    private void LabelFontPick_Click(object sender, RoutedEventArgs e)
+    {
+        var (family, sizeDip, color) = _viewModel.GlobalLabelFont();
+        if (TryPickFont(family, sizeDip, color, out var f, out var s, out var c))
+            _viewModel.ApplyGlobalLabelFont(f, s, c);
+    }
+
+    private void SlotLabelFontPick_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SlotAssignment seat }) return;
+        var (family, sizeDip, color) = _viewModel.EffectiveSeatLabelFont(seat);
+        if (TryPickFont(family, sizeDip, color, out var f, out var s, out var c))
+            _viewModel.ApplySeatLabelFont(seat, f, s, c);
+    }
+
+    private void SlotLabelFontReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SlotAssignment seat })
+            _viewModel.ApplySeatLabelFont(seat, null, null, null);
+    }
+
+    private void SlotFrameColorPick_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SlotAssignment seat }) return;
+        using var dialog = new System.Windows.Forms.ColorDialog { FullOpen = true };
+        try
+        {
+            var current = (Color)System.Windows.Media.ColorConverter.ConvertFromString(_viewModel.EffectiveSeatFrameColor(seat));
+            dialog.Color = System.Drawing.Color.FromArgb(current.A, current.R, current.G, current.B);
+        }
+        catch { /* keep the dialog default if the stored hex fails to parse */ }
+
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+        var c = dialog.Color;
+        _viewModel.ApplySeatFrameColor(seat, $"#{c.R:X2}{c.G:X2}{c.B:X2}");
+    }
+
+    private void SlotFrameColorReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SlotAssignment seat })
+            _viewModel.ApplySeatFrameColor(seat, null);
     }
 
     private void RestoreBackup_Click(object sender, RoutedEventArgs e)

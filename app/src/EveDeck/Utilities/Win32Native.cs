@@ -37,6 +37,9 @@ internal static class Win32Native
     [DllImport("user32.dll")]
     internal static extern bool TrackMouseEvent(ref TrackMouseEventStruct lpEventTrack);
 
+    [DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    internal static extern uint RegisterWindowMessage(string lpString);
+
     // DWM thumbnail property flags
     internal const int DwmTnpRectDestination = 0x00000001;
     internal const int DwmTnpVisible = 0x00000008;

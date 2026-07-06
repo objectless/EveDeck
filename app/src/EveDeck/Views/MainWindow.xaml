@@ -365,7 +365,38 @@
                                             Content="{Binding Name}"
                                             IsChecked="{Binding IsActive, Mode=OneWay}"
                                             Command="{Binding DataContext.SwitchCharacterSetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}"/>
+                                            CommandParameter="{Binding}">
+                                <ToggleButton.Style>
+                                  <Style TargetType="ToggleButton">
+                                    <Setter Property="Cursor" Value="Hand"/>
+                                    <Setter Property="Template">
+                                      <Setter.Value>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                          <Border x:Name="bd" CornerRadius="4" Padding="{TemplateBinding Padding}"
+                                                  Background="{StaticResource ButtonBrush}"
+                                                  BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                          </Border>
+                                          <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="False">
+                                              <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                              <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentBrush}"/>
+                                              <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                              <Setter Property="Foreground" Value="White"/>
+                                              <Setter Property="FontWeight" Value="SemiBold"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                              <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                            </Trigger>
+                                          </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                      </Setter.Value>
+                                    </Setter>
+                                  </Style>
+                                </ToggleButton.Style>
+                              </ToggleButton>
                               <Button Content="Launch" Padding="7,3" FontSize="11" MinHeight="0" Margin="2,0,0,0"
                                       Command="{Binding DataContext.LaunchGroupCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                       CommandParameter="{Binding}"
@@ -580,10 +611,55 @@
                                                 IsChecked="{Binding IsTopmost, Mode=TwoWay}"
                                                 Command="{Binding DataContext.ToggleTopmostCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}"
-                                                Content="&#8868;" FontSize="11"
-                                                Padding="4,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0"
-                                                ToolTip="Pin window always-on-top (HWND_TOPMOST). Use when a preview tile needs to float above other windows."
-                                                Style="{StaticResource {x:Type ToggleButton}}"/>
+                                                Content="&#x1F4CC;" FontSize="12"
+                                                Padding="7,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0"
+                                                ToolTip="Keep this seat above other windows while EVE is focused. When you switch to a non-EVE app (browser, Discord) it drops back to normal so it doesn't cover them.">
+                                    <ToggleButton.Style>
+                                      <Style TargetType="ToggleButton">
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                        <Setter Property="Template">
+                                          <Setter.Value>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                              <Border x:Name="bd" CornerRadius="3" Padding="{TemplateBinding Padding}"
+                                                      Background="Transparent"
+                                                      BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                              </Border>
+                                              <ControlTemplate.Triggers>
+                                                <Trigger Property="IsChecked" Value="False">
+                                                  <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                                                </Trigger>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                  <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentBrush}"/>
+                                                  <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                                  <Setter Property="Foreground" Value="White"/>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                  <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                                </Trigger>
+                                              </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                          </Setter.Value>
+                                        </Setter>
+                                      </Style>
+                                    </ToggleButton.Style>
+                                  </ToggleButton>
+                                  <Button DockPanel.Dock="Right" Content="Font"
+                                          Click="SlotLabelFontPick_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Set this seat's preview label font, size and colour"/>
+                                  <Button DockPanel.Dock="Right" Content="&#8635;"
+                                          Click="SlotLabelFontReset_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Reset this seat's label font to the global default"/>
+                                  <Button DockPanel.Dock="Right" Content="Color"
+                                          Click="SlotFrameColorPick_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Set this seat's active-window frame colour (the highlight around the focused client)"/>
+                                  <Button DockPanel.Dock="Right" Content="&#8635;"
+                                          Click="SlotFrameColorReset_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Reset this seat's frame colour to the global default"/>
                                   <TextBox Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}"
                                            Style="{StaticResource InlineSlotLabel}"
                                            FontSize="14" FontWeight="SemiBold"
@@ -1429,13 +1505,22 @@ Shows your background clients as live mini-previews in the screen corners while 
               <CheckBox Content="Prefix pills with position code (e.g. TL · Name)"
                         IsChecked="{Binding CornerOverlayShowSlotNumber}"
                         Margin="0,0,0,10"/>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
-                <TextBlock Text="Label font size" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
-                <TextBox Width="60"
-                         Text="{Binding CornerOverlayLabelFontSize, UpdateSourceTrigger=PropertyChanged}"
-                         HorizontalContentAlignment="Center"/>
-                <TextBlock Text="pt" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                <TextBlock Text="Label style" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
+                <ComboBox Width="180" SelectedValuePath="Tag"
+                          SelectedValue="{Binding CornerOverlayLabelStyle}">
+                  <ComboBoxItem Tag="Pill" Content="Pill (name chip)"/>
+                  <ComboBoxItem Tag="IconText" Content="Character icon + name"/>
+                </ComboBox>
               </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                <TextBlock Text="Default label font" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
+                <Button Content="Choose font..." Click="LabelFontPick_Click" Padding="7,4" Margin="0,0,8,0"/>
+                <TextBlock Text="{Binding LabelFontSummary}" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+              </StackPanel>
+              <TextBlock Text="Sets the font, size and colour used for preview labels. Override per seat with the 'Font' button on each slot."
+                         TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"
+                         Foreground="{StaticResource MutedBrush}"/>
 
               <!-- ── Settings Backup ─────────────────────────────────── -->
               <TextBlock Text="Settings Backup" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
@@ -1603,8 +1688,6 @@ Watches EVE's chatlog files (Documents\EVE\logs\Chatlogs) for a keyword and play
           </Grid>
         </TabItem>
 
-        <!-- Display Tips tab removed — resolution picker is now inline in the Layouts tab profile
-             settings row, and the VSR/DSR guide is the collapsible expander below the layout grid. -->
         <!-- ──────────────────── DISCLAIMER TAB ──────────────────── -->
         <TabItem>
           <TabItem.Header>
@@ -1872,24 +1955,26 @@ EveDeck arranges your EVE clients into tidy on-screen layouts and lets you jump 
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-                  <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Clients" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
                 <TextBlock Grid.Row="0" Grid.Column="1" Text="Match each detected EVE window to a slot in your layout." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="Layouts" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="Pick or design where the slots sit on screen, then apply it." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="Pick or design where the slots sit on screen, then apply it. Includes the AMD VSR / Nvidia DSR guide for giving the master slot more pixels." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
                 <TextBlock Grid.Row="2" Grid.Column="0" Text="Hotkeys" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
                 <TextBlock Grid.Row="2" Grid.Column="1" Text="Bind keys to focus a client, cycle, or swap one into the master slot." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
                 <TextBlock Grid.Row="3" Grid.Column="0" Text="Options" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
                 <TextBlock Grid.Row="3" Grid.Column="1" Text="Tune the active frame, dimming, previews, scaling, and startup." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Monitors" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
                 <TextBlock Grid.Row="4" Grid.Column="1" Text="See your displays and their exact coordinates for placing layouts." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
-                <TextBlock Grid.Row="5" Grid.Column="0" Text="Display Tips" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
-                <TextBlock Grid.Row="5" Grid.Column="1" Text="How to use AMD VSR or Nvidia DSR to give the master slot more pixels." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
-                <TextBlock Grid.Row="6" Grid.Column="0" Text="Profile Sync" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
-                <TextBlock Grid.Row="6" Grid.Column="1" Text="Mass-copy one character's EVE UI settings to multiple alts in one click." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
-                <TextBlock Grid.Row="7" Grid.Column="0" Text="Disclaimer" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
-                <TextBlock Grid.Row="7" Grid.Column="1" Text="Exactly what EveDeck will and won't do to your clients." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Disclaimer" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
+                <TextBlock Grid.Row="5" Grid.Column="1" Text="Exactly what EveDeck will and won't do to your clients." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Logs" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
+                <TextBlock Grid.Row="6" Grid.Column="1" Text="A running record of what EveDeck has done, for troubleshooting." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="Profile Sync" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
+                <TextBlock Grid.Row="7" Grid.Column="1" Text="Mass-copy one character's EVE UI settings to multiple alts in one click." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
+                <TextBlock Grid.Row="8" Grid.Column="0" Text="About" FontWeight="SemiBold" FontSize="12" Margin="0,2,0,4"/>
+                <TextBlock Grid.Row="8" Grid.Column="1" Text="What EveDeck is, credits, and the version you're on." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,2,0,4" TextWrapping="Wrap"/>
               </Grid>
 
               <Separator Margin="0,4,0,16"/>

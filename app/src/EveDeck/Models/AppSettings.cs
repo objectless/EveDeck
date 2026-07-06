@@ -47,6 +47,9 @@ public sealed class AppSettings
     public bool CornerOverlayShowLabel { get; set; } = true;
     public bool CornerOverlayShowSlotNumber { get; set; } = false;
     public double CornerOverlayLabelFontSize { get; set; } = 13.0;
+    public string CornerOverlayLabelStyle { get; set; } = "Pill";
+    public string CornerOverlayLabelFontFamily { get; set; } = ""; // "" = Segoe UI (WPF default)
+    public string CornerOverlayLabelColor { get; set; } = "#E5E7EB"; // global default label text color
     public int CornerOverlayLabelHeight { get; set; } = 28; // WPF DIPs
 
     // Use Windows.Graphics.Capture + GPU trilinear downscale for the corner previews instead of

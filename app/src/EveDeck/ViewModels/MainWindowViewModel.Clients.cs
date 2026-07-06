@@ -32,11 +32,19 @@ public sealed partial class MainWindowViewModel
     public SlotAssignment? MasterSeatAssignment =>
         Assignments.FirstOrDefault(a => a.SlotNumber == ActiveMasterSeat);
 
-    // The master account's display name: its ESI main character if linked, else the seat label.
-    public string MasterCharacterName =>
-        MasterSeatAssignment?.MainCharacter?.CharacterName
-        ?? MasterSeatAssignment?.Label
-        ?? "";
+    // The master account's title-bar name: the character actually logged into the master seat's live
+    // window right now, else its ESI main character if linked, else the seat label.
+    public string MasterCharacterName
+    {
+        get
+        {
+            var seat = MasterSeatAssignment;
+            if (seat is null) return "";
+            return string.IsNullOrWhiteSpace(seat.RunningCharacterName)
+                ? (seat.MainCharacter?.CharacterName ?? seat.Label)
+                : seat.RunningCharacterName;
+        }
+    }
 
     public string MasterPortraitUrl => MasterSeatAssignment?.PortraitUrl ?? "";
     public bool HasMasterPortrait => !string.IsNullOrEmpty(MasterPortraitUrl);
@@ -106,7 +114,7 @@ public sealed partial class MainWindowViewModel
         TryAutoLabelSlot(assignment, SelectedWindow);
 
         if (assignment.IsTopmost)
-            _windowService.SetWindowTopmost(SelectedWindow.Handle, true);
+            _windowService.SetWindowTopmost(SelectedWindow.Handle, IsEveWindowForeground());
 
         Log.Info($"Added '{title}' to slot {assignment.SlotNumber} ({assignment.Label}).");
         Save();
@@ -296,6 +304,19 @@ public sealed partial class MainWindowViewModel
             .Where(w => w is not null)
             .Cast<EveWindowInfo>();
 
+    // Refresh each seat's live running-character name from the character logged into its first
+    // detected window, so every label surface (title bar, minimap, corner pills, slot-card "Running:"
+    // line) reflects whoever is actually playing that seat. Falls back to empty -> seat Label when the
+    // seat has no live window. Call after RebindRestartedWindows so entry titles are current.
+    private void UpdateLiveSeatCharacters()
+    {
+        foreach (var assignment in Assignments)
+        {
+            var window = FindSeatWindow(assignment.SlotNumber);
+            assignment.RunningCharacterName = window is null ? "" : CharacterNameFromTitle(window.Title);
+        }
+    }
+
     private EveWindowInfo? FindActiveManagedWindow()
     {
         var handle = _windowService.GetForegroundWindowHandle();
@@ -313,6 +334,18 @@ public sealed partial class MainWindowViewModel
             {
                 var window = FindWindowByEntry(entry);
                 if (window is null) continue;
+
+                // Only refresh PID/handle when the resolved window is the SAME character this entry
+                // represents. FindWindowByEntry falls back to PID/substring matching, which on a
+                // character-set seat (several pre-assigned alts sharing one physical client) cross-matches
+                // a sibling character's window. Accepting that match -- and, worse, the old code then
+                // overwriting entry.Title with the sibling's name -- permanently collapsed the set into
+                // duplicates and silently dropped a character (settings.json corruption). A relaunched
+                // SAME character still matches here by exact title. The entry's title is its stable
+                // identity and is never rewritten; live per-seat labels come from UpdateLiveSeatCharacters.
+                if (!CharacterNameFromTitle(window.Title).Equals(CharacterNameFromTitle(entry.Title), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 entry.LastProcessId = window.ProcessId;
                 entry.LastHandleHex = window.HandleHex;
             }
@@ -363,11 +396,16 @@ public sealed partial class MainWindowViewModel
                 characterSwitched = true;
                 Log.Info($"Detected character switch on PID {window.ProcessId}: '{previousCharacter}' -> '{character}'.");
 
-                // Keep the slot's stored title/label current so future window lookups and the UI
-                // reflect the new character rather than the one that logged off.
+                // Rename the matched entry to the new character ONLY when that character isn't already
+                // assigned to this seat. On character-SET seats the switched-to alt has its own entry, so
+                // renaming this one would duplicate it and drop the alt that just logged off (the exact
+                // corruption that hit the Overoth/Andr3sa seats). Single-window seats (new char not in the
+                // set) still follow a permanent relog. Display labels update live via UpdateLiveSeatCharacters.
                 var slot = Assignments.FirstOrDefault(a => a.AssignedWindows.Any(e => e.LastProcessId == window.ProcessId));
                 var entry = slot?.AssignedWindows.FirstOrDefault(e => e.LastProcessId == window.ProcessId);
-                if (entry is not null) entry.Title = window.Title;
+                if (entry is not null && slot is not null
+                    && !slot.AssignedWindows.Any(e => e != entry && CharacterNameFromTitle(e.Title).Equals(character, StringComparison.OrdinalIgnoreCase)))
+                    entry.Title = window.Title;
                 if (slot is not null) TryAutoLabelSlot(slot, window);
             }
         }
