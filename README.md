@@ -117,9 +117,6 @@ dotnet publish .\app\src\EveDeck\EveDeck.csproj `
   -c Release --self-contained -r win-x64 -o .\app\publish
 ```
 
-The [evedeck.space](https://evedeck.space) website lives in its own repository,
-[EveDeck-site](https://github.com/objectless/EveDeck-site).
-
 ## License
 
 EveDeck is free software under the **GNU General Public License v3.0** — see
