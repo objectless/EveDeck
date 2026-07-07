@@ -31,6 +31,12 @@ pixel-perfect layouts, shows live previews of every background client, and lets 
 throw focus to any character with a single keypress — while staying strictly inside the
 EVE Online EULA. **It is a window manager only. One input, one client, always.**
 
+<p align="center">
+  <img src="images/single.jpg" width="640" alt="A borderless EVE client filling its master slot" />
+  <br />
+  <sub>One client, borderless, filling its slot — no window chrome eating your view.</sub>
+</p>
+
 ## Everything you need for multiboxing
 
 🪟 **Previews &amp; peek** — high-quality Windows.Graphics.Capture (D3D11) thumbnails of your
@@ -57,6 +63,45 @@ auto-apply on client launch, per-profile taskbar avoidance, and full multi-monit
 works at 1440p, 4K, or any AMD VSR / Nvidia DSR virtual resolution, with an optional
 master-resolution override. EVE clients are never resized mid-session, so the in-game UI
 never re-flows.
+
+## Layouts, visualized
+
+Every diagram below is generated straight from the same slot geometry the app computes at
+runtime (see [`PresetFactory.cs`](app/src/EveDeck/Services/PresetFactory.cs)) — not mockups.
+Pick a family, set a resolution and account count, and EveDeck does the math.
+
+<table>
+<tr>
+<td width="50%">
+<img src="images/layoutwin.png" width="100%" alt="The Layouts tab, Side Stack profile selected" />
+<br /><sub>The <b>Layouts</b> tab — pick a family, set resolution + accounts, hit Apply.</sub>
+</td>
+<td width="50%">
+<img src="images/examplesidestack.jpg" width="100%" alt="Side Stack layout running live in EVE with 5 accounts" />
+<br /><sub><b>Side Stack</b>, 5 accounts, live in EVE — master fills the screen, alts stack down the edge.</sub>
+</td>
+</tr>
+<tr>
+<td width="50%">
+<img src="images/diagrams/grid.svg" width="100%" alt="Grid layout diagram, 6 accounts" />
+<br /><sub><b>Grid</b> — evenly split tiles, any account count from 2 to 15.</sub>
+</td>
+<td width="50%">
+<img src="images/diagrams/center-master.svg" width="100%" alt="Center Master layout diagram, 9 accounts" />
+<br /><sub><b>Center Master</b> — a ring of alts with the master floating centred on top.</sub>
+</td>
+</tr>
+<tr>
+<td width="50%">
+<img src="images/diagrams/whammy-board.svg" width="100%" alt="Whammy Board layout diagram, 7 accounts" />
+<br /><sub><b>Whammy Board</b> — alts split top and bottom, master fills the gap edge to edge.</sub>
+</td>
+<td width="50%">
+<img src="images/diagrams/side-stack.svg" width="100%" alt="Side Stack layout diagram, 4 accounts on the left edge" />
+<br /><sub><b>Side Stack</b> — a column of alts down either edge, master takes the rest.</sub>
+</td>
+</tr>
+</table>
 
 ## Up and running in minutes
 

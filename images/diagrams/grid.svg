@@ -1,0 +1,16 @@
+<svg viewBox="0 0 668 388" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+<defs><filter id="ds" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#000000" flood-opacity="0.45"/></filter></defs>
+<rect x="0" y="0" width="668" height="388" rx="16" fill="#0D1420" stroke="rgba(78,230,255,0.35)" stroke-width="1.5"/>
+<rect x="14.0" y="14.0" width="213.2" height="180.0" fill="#0F2233" stroke="#4EE6FF" stroke-width="2"/>
+<text x="120.6" y="104.0" fill="#E7F0FF" font-size="30.0" font-weight="700" text-anchor="middle" dominant-baseline="central">1</text>
+<rect x="227.2" y="14.0" width="213.2" height="180.0" fill="#0F2233" stroke="#4EE6FF" stroke-width="2"/>
+<text x="333.9" y="104.0" fill="#E7F0FF" font-size="30.0" font-weight="700" text-anchor="middle" dominant-baseline="central">2</text>
+<rect x="440.5" y="14.0" width="213.5" height="180.0" fill="#0F2233" stroke="#4EE6FF" stroke-width="2"/>
+<text x="547.2" y="104.0" fill="#E7F0FF" font-size="30.0" font-weight="700" text-anchor="middle" dominant-baseline="central">3</text>
+<rect x="14.0" y="194.0" width="213.2" height="180.0" fill="#0F2233" stroke="#4EE6FF" stroke-width="2"/>
+<text x="120.6" y="284.0" fill="#E7F0FF" font-size="30.0" font-weight="700" text-anchor="middle" dominant-baseline="central">4</text>
+<rect x="227.2" y="194.0" width="213.2" height="180.0" fill="#0F2233" stroke="#4EE6FF" stroke-width="2"/>
+<text x="333.9" y="284.0" fill="#E7F0FF" font-size="30.0" font-weight="700" text-anchor="middle" dominant-baseline="central">5</text>
+<rect x="440.5" y="194.0" width="213.5" height="180.0" fill="#152A42" stroke="rgba(155,125,255,0.55)" stroke-width="1.5" filter="url(#ds)"/>
+<text x="547.2" y="284.0" fill="#9B7DFF" font-size="30.0" font-weight="700" text-anchor="middle" dominant-baseline="central">6</text>
+</svg>
