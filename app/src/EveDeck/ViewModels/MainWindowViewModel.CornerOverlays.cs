@@ -755,10 +755,18 @@ public sealed partial class MainWindowViewModel
     internal void RefreshCornerOverlayZOrder()
     {
         var topmost = IsEveOrEwcForeground();
-        foreach (var overlay in _cornerOverlays.Values)
+        foreach (var (position, overlay) in _cornerOverlays)
+        {
             overlay.RefreshZOrder(topmost);
+            if (_pills.TryGetValue(position, out var pill))
+                pill.PinAboveTile(overlay.Handle);
+        }
+        // The master label has no tile of its own to pin against (see PinAboveTile), so it still needs
+        // an explicit topmost raise when focused.
         if (topmost)
-            foreach (var pill in _pills.Values) pill.BringToTop();
+            foreach (var (position, pill) in _pills)
+                if (!_cornerOverlays.ContainsKey(position))
+                    pill.BringToTop();
     }
 
     // -- Per-tick upkeep ---------------------------------------------------------
@@ -830,6 +838,15 @@ public sealed partial class MainWindowViewModel
             }
 
             overlay.RefreshZOrder(eveOrEwcFg);
+            // Pin this corner's pill directly to its own tile (single atomic SetWindowPos, hwndInsertAfter
+            // = the tile) instead of independently raising the pill to the global topmost front. Two
+            // separate top-level windows each fighting for HWND_TOPMOST every tick raced against DWM's
+            // own decoupled compositing -- interleaving the two SetWindowPos calls in application code
+            // (the previous attempt) didn't help, because DWM could still composite a frame between them.
+            // Tying the pill's position directly to the tile's current position, in one call, removes the
+            // race entirely: wherever the tile ends up this tick, the pill rides one step above it, always.
+            if (_pills.TryGetValue(position, out var ownPill))
+                ownPill.PinAboveTile(overlay.Handle);
         }
 
         foreach (var group in EffectiveGroups())
@@ -845,8 +862,11 @@ public sealed partial class MainWindowViewModel
             }
         }
 
-        // Tiles just went topmost (when focused); keep every name pill above them.
+        // Corner pills are already pinned directly to their own tile above. The master label has no
+        // tile to pin against, so it still needs an explicit topmost raise when focused.
         if (eveOrEwcFg)
-            foreach (var pill in _pills.Values) pill.BringToTop();
+            foreach (var (position, pill) in _pills)
+                if (!_cornerOverlays.ContainsKey(position))
+                    pill.BringToTop();
     }
 }

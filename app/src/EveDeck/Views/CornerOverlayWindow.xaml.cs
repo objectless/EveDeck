@@ -258,6 +258,11 @@ public partial class CornerOverlayWindow : Window
         Win32Native.DwmUpdateThumbnailProperties(_thumbnailId, ref props);
     }
 
+    // Exposed so the tile's own name pill can pin its z-order directly relative to this window
+    // (SetWindowPos hwndInsertAfter) instead of independently fighting for HWND_TOPMOST -- see
+    // PillOverlay.PinAboveTile.
+    public nint Handle => new WindowInteropHelper(this).Handle;
+
     // Push this window back to HWND_BOTTOM if something else raised it.
     // Skipped while the mouse is over the tile: SetWindowPos can silently cancel TrackMouseEvent,
     // which would break hover-to-peek. The tile is only interesting to the user right now anyway.

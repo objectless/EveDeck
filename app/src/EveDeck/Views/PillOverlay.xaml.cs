@@ -191,12 +191,29 @@ public partial class PillOverlay : Window
     }
 
     // Re-insert at the top of the topmost band so the name pill stays above its tile (which may itself
-    // be raised to topmost while EVE is focused).
+    // be raised to topmost while EVE is focused). Used for the master label, which has no tile of its
+    // own to pin against (see PinAboveTile).
     public void BringToTop()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == 0) return;
         Win32Native.SetWindowPos(hwnd, Win32Native.HwndTopmost, 0, 0, 0, 0,
+            Win32Native.SwpNoMove | Win32Native.SwpNoSize | Win32Native.SwpNoActivate);
+    }
+
+    // Ties this label's z-order directly to its own corner tile in a single atomic call, instead of
+    // both windows independently reasserting HWND_TOPMOST every tick (the previous approach). Two
+    // separate top-level windows each fighting for the front of the global topmost band, once per
+    // 250ms tick, raced against DWM's own (decoupled, asynchronous) compositing -- interleaving the
+    // two SetWindowPos calls in application code didn't help, because DWM can still composite a frame
+    // between them. `hwndInsertAfter = tileHwnd` places this window immediately above the tile in a
+    // single call, so there is no window where the two are observed out of order: wherever the tile
+    // ends up (topmost while focused, HWND_BOTTOM while not), the label rides along one step above it.
+    public void PinAboveTile(nint tileHwnd)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == 0 || tileHwnd == 0) return;
+        Win32Native.SetWindowPos(hwnd, tileHwnd, 0, 0, 0, 0,
             Win32Native.SwpNoMove | Win32Native.SwpNoSize | Win32Native.SwpNoActivate);
     }
 
