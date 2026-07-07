@@ -16,14 +16,7 @@ jobs:
       notes: ${{ steps.notes.outputs.notes }}
 
     steps:
-      # fetch-depth: 0 (full history + tag objects) -- actions/checkout's default shallow fetch
-      # peels annotated tags down to a lightweight ref pointing straight at the commit, so
-      # `git for-each-ref --format='%(contents:body)'` silently reads the COMMIT message instead
-      # of the tag annotation. Bit us on v1.4.5: the release notes/whatsNew below came out as the
-      # commit body (prose, no bullets) instead of the tag message (real bullets).
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Extract version from tag
         id: ver
@@ -37,12 +30,27 @@ jobs:
       - name: Extract changelog from tag message
         id: notes
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # The annotated tag's body (everything after the first line) is the single source of
-          # truth for changelog bullets — both the GitHub release and the website read from here,
-          # so there's nowhere for the two to drift into "see the other one" circular pointers.
-          BODY="$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents:body)')"
-          if [ -z "$BODY" ]; then
+          # Read the tag's annotation via the GitHub API instead of the local checkout. Tried
+          # `git for-each-ref --format='%(contents:body)'` against the checked-out repo twice
+          # (v1.4.5, v1.4.6) and both times it silently returned the underlying COMMIT's message
+          # instead of the tag's: actions/checkout resolves a tag-triggered workflow by commit SHA
+          # (github.sha is the commit the annotated tag points to, not the tag object's own SHA),
+          # so the local refs/tags/<name> ref it creates points straight at the commit and the
+          # annotation is gone regardless of fetch-depth. The API has no such ambiguity -- it reads
+          # the tag object directly by its own SHA.
+          TAG="${GITHUB_REF_NAME}"
+          OBJ_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/$TAG" --jq .object.sha)"
+          OBJ_TYPE="$(gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/$TAG" --jq .object.type)"
+          if [ "$OBJ_TYPE" = "tag" ]; then
+            MSG="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/$OBJ_SHA" --jq .message)"
+            BODY="$(printf '%s\n' "$MSG" | tail -n +2 | sed '/./,$!d')"
+          else
+            BODY=""
+          fi
+          if [ -z "$(echo "$BODY" | tr -d '[:space:]')" ]; then
             BODY="No changelog notes were written for this tag."
           fi
           {
