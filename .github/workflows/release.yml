@@ -16,7 +16,14 @@ jobs:
       notes: ${{ steps.notes.outputs.notes }}
 
     steps:
+      # fetch-depth: 0 (full history + tag objects) -- actions/checkout's default shallow fetch
+      # peels annotated tags down to a lightweight ref pointing straight at the commit, so
+      # `git for-each-ref --format='%(contents:body)'` silently reads the COMMIT message instead
+      # of the tag annotation. Bit us on v1.4.5: the release notes/whatsNew below came out as the
+      # commit body (prose, no bullets) instead of the tag message (real bullets).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Extract version from tag
         id: ver
