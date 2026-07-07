@@ -739,8 +739,17 @@ public sealed partial class MainWindowViewModel
     private bool IsEveOrEwcForeground()
     {
         var fg = _windowService.GetForegroundWindowHandle();
-        return fg != 0 && (Windows.Any(w => w.Handle == fg) ||
-            fg == new System.Windows.Interop.WindowInteropHelper(System.Windows.Application.Current.MainWindow).Handle);
+        if (fg == 0) return false;
+        if (Windows.Any(w => w.Handle == fg)) return true;
+
+        // The foreground-change WinEvent hook is registered inside MainWindow's own constructor
+        // (HotkeyService.RegisterAll) and can fire before WPF has assigned Application.MainWindow --
+        // WindowInteropHelper's ctor throws ArgumentNullException on a null window, which crashed the
+        // whole process on startup whenever a real foreground switch happened early (i.e. whenever
+        // EVE clients already existed to switch between). Treat "no main window yet" as simply "not
+        // EveDeck's window" rather than dereferencing it.
+        var mainWindow = System.Windows.Application.Current?.MainWindow;
+        return mainWindow is not null && fg == new System.Windows.Interop.WindowInteropHelper(mainWindow).Handle;
     }
 
     internal void RefreshCornerOverlayZOrder()
