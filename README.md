@@ -10,7 +10,7 @@
 Live GPU-quality previews, hotkey focus switching, and resolution-independent layout
 profiles — all from a single self-contained Windows app.
 
-[![Download latest](https://img.shields.io/github/v/release/objectless/EveDeck?label=Download&style=for-the-badge)](https://github.com/objectless/EveDeck/releases/latest)
+[![Download latest](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fevedeck.space%2Fapi%2Fversion&query=%24.version&prefix=v&label=Download&color=2563eb&style=for-the-badge)](https://github.com/objectless/EveDeck/releases/latest)
 [![Website](https://img.shields.io/badge/evedeck.space-visit-2563eb?style=for-the-badge)](https://evedeck.space)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-16a34a?style=for-the-badge)](LICENSE)
 
