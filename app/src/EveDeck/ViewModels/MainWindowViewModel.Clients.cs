@@ -443,8 +443,9 @@ public sealed partial class MainWindowViewModel
         if (parameter is not SlotAssignment assignment) return;
         ActiveMasterSeat = assignment.SlotNumber;
         SyncMasterSlot();
-        var masterIdx = Assignments.IndexOf(assignment);
-        if (masterIdx > 0) Assignments.Move(masterIdx, 0);
+        // Master is identified by SlotNumber / IsMaster, never by list position, so leave the seat
+        // where the user put it. Moving it to index 0 here reshuffled the manual seat order every
+        // time a master was set or a tile was centred -- the "seat order won't stick" bug.
         OnPropertyChanged(nameof(MasterSlotNumber));
         RaiseIdentityDependents();
         Save();

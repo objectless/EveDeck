@@ -31,7 +31,20 @@ public partial class ActiveFrameOverlay : Window
         FrameBlur.Radius = blur;
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != 0)
-            Win32Native.SetWindowPos(hwnd, 0, x - pad, y - pad, width + pad * 2, height + pad * 2,
-                Win32Native.SwpNoActivate | Win32Native.SwpNoZOrder | Win32Native.SwpShowWindow);
+            // Re-assert HWND_TOPMOST (not SwpNoZOrder) on every reposition: pinned EVE clients and
+            // corner tiles are raised into the topmost band each tick, and with SwpNoZOrder the frame
+            // stayed wherever it was and got buried behind them -- reading as flicker / disappearing.
+            Win32Native.SetWindowPos(hwnd, Win32Native.HwndTopmost, x - pad, y - pad, width + pad * 2, height + pad * 2,
+                Win32Native.SwpNoActivate | Win32Native.SwpShowWindow);
+    }
+
+    // Re-raise to the top of the topmost band without moving/resizing. Called each tick while the
+    // frame is visible so windows raised after the last ApplyFrame don't leave it covered.
+    public void BringToTop()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != 0)
+            Win32Native.SetWindowPos(hwnd, Win32Native.HwndTopmost, 0, 0, 0, 0,
+                Win32Native.SwpNoMove | Win32Native.SwpNoSize | Win32Native.SwpNoActivate);
     }
 }

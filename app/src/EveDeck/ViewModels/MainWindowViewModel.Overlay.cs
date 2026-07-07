@@ -72,9 +72,13 @@ public sealed partial class MainWindowViewModel
             _frameOverlay.ApplyFrame(rect.X, rect.Y, rect.Width, rect.Height, ActiveFrameThickness, ActiveFrameGlowRadius, brush);
             _lastFrameRect = rect;
         }
-        else if (!_frameOverlay.IsVisible)
+        else
         {
-            _frameOverlay.Show();
+            // Rect/handle unchanged, so ApplyFrame (which re-asserts topmost) didn't run this tick.
+            // Pinned clients / corner tiles may have been raised above the frame since the last apply,
+            // so re-show if needed and re-raise it so it doesn't sink behind them -- kills the flicker.
+            if (!_frameOverlay.IsVisible) _frameOverlay.Show();
+            _frameOverlay.BringToTop();
         }
     }
 

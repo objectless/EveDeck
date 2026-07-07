@@ -401,11 +401,10 @@ public partial class MainWindow : Window
             var to = _viewModel.Assignments.IndexOf(targetSlot);
             if (from >= 0 && to >= 0 && from != to)
             {
-                // Swap: move dragged slot to target position, then slide the displaced target back.
-                // After Move(from, to), the item originally at `to` shifts to to-1 (forward) or to+1 (backward).
+                // Reorder (insert): drop the dragged seat at the target position; the seats in between
+                // slide over by one. ObservableCollection.Move does exactly this in a single step -- a
+                // proper drag-to-reorder, not a two-seat swap, so one drag lands the intended order.
                 _viewModel.Assignments.Move(from, to);
-                var targetNewIdx = from < to ? to - 1 : to + 1;
-                _viewModel.Assignments.Move(targetNewIdx, from);
                 _viewModel.Save();
             }
             e.Handled = true;
