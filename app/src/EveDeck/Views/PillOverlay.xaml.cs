@@ -138,6 +138,9 @@ public partial class PillOverlay : Window
             return;
         }
 
+        PortraitDot.Width = PortraitDot.Height = _portraitDip;
+        PortraitDot.Visibility = Visibility.Visible;
+
         try
         {
             // Request a higher-resolution portrait (the seat url is the 64px variant) so the icon stays
@@ -146,19 +149,46 @@ public partial class PillOverlay : Window
             var bmp = new BitmapImage();
             bmp.BeginInit();
             bmp.CacheOption = BitmapCacheOption.OnLoad;
+            // Decode once at the actual on-screen size (physical px) instead of loading the full 128px
+            // source and live-rescaling it into a ~20-30px icon on every render -- the latter is a
+            // visible source of jitter for the icon specifically (the plain Pill style has no image and
+            // doesn't show it).
+            var physSize = Math.Max(1, (int)Math.Round(_portraitDip * _dpiScale));
+            bmp.DecodePixelWidth = physSize;
+            bmp.DecodePixelHeight = physSize;
             bmp.UriSource = new System.Uri(url);
             bmp.EndInit();
-            PortraitDot.Fill = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill };
-            PortraitDot.Width = PortraitDot.Height = _portraitDip;
-            PortraitDot.Visibility = Visibility.Visible;
+
+            // Keep whatever portrait is currently showing until the new one is actually ready -- a
+            // refresh (occupancy swap, appearance update) should never blank the icon while the new
+            // bitmap downloads, and a transient load failure shouldn't blank it either.
+            if (bmp.IsDownloading)
+                bmp.DownloadCompleted += (_, _) => PortraitDot.Fill = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill };
+            else
+                PortraitDot.Fill = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill };
         }
-        catch
-        {
-            PortraitDot.Visibility = Visibility.Collapsed;
-        }
+        catch { /* keep showing the previous portrait rather than blanking on a transient failure */ }
     }
 
-    public void SetTopmost(bool value) { if (Topmost != value) Topmost = value; }
+    // Mirrors CornerOverlayWindow.RefreshZOrder so the label's z-order stays clamped to its tile's --
+    // WPF's Topmost DP only clears WS_EX_TOPMOST, which reinserts the window at the TOP of the normal
+    // band (not the bottom), so a label that was just topmost stays stranded above whatever the user
+    // switches to (a browser, etc.) even after its tile has correctly sunk to HWND_BOTTOM.
+    public void SetTopmost(bool value)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == 0) return;
+        const uint flags = Win32Native.SwpNoMove | Win32Native.SwpNoSize | Win32Native.SwpNoActivate;
+        if (value)
+        {
+            Win32Native.SetWindowPos(hwnd, Win32Native.HwndTopmost, 0, 0, 0, 0, flags);
+        }
+        else
+        {
+            Win32Native.SetWindowPos(hwnd, Win32Native.HwndNotTopmost, 0, 0, 0, 0, flags);
+            Win32Native.SetWindowPos(hwnd, Win32Native.HwndBottom, 0, 0, 0, 0, flags);
+        }
+    }
 
     // Re-insert at the top of the topmost band so the name pill stays above its tile (which may itself
     // be raised to topmost while EVE is focused).

@@ -36,6 +36,11 @@ public partial class MainWindow : Window
         {
             _viewModel.ApplyProcessPriorities(hwnd);
             _viewModel.RefreshTopmostForForeground(hwnd);
+            // RefreshTopmostForForeground can freshly raise a pinned seat's window to HWND_TOPMOST,
+            // which inserts it at the very FRONT of the topmost band -- burying the corner tiles and
+            // pill labels until the next 250ms frame tick reclaims them. Reclaim immediately instead
+            // of waiting, so pinning a seat can't make the labels flicker on every focus switch.
+            _viewModel.RefreshCornerOverlayZOrder();
         };
         _viewModel.HotkeysChanged += ViewModel_HotkeysChanged;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;

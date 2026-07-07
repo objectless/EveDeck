@@ -453,7 +453,18 @@ public static class PresetFactory
                     }
 
                     var (beforeW, beforeH, beforeC, beforeS) = (existing.TemplateWidth, existing.TemplateHeight, existing.TemplateCount, existing.TemplateSide);
+                    // RegenerateFamilySlots rebuilds Slots from scratch (fresh LayoutSlot objects), which
+                    // wiped every minimap-set HomeSeat (corner assignment) on every single app launch --
+                    // this runs unconditionally here, not just when the user actually changes the
+                    // resolution/count dropdown. Slot numbering for a given category+count is stable
+                    // (PopulateGridSlots/PopulateCenterMasterSlots/etc. always number position N the same
+                    // way), so snapshot HomeSeat by position and restore it onto the regenerated slots.
+                    var homeSeatByPosition = existing.Slots.Where(s => s.HomeSeat.HasValue)
+                        .ToDictionary(s => s.SlotNumber, s => s.HomeSeat);
                     RegenerateFamilySlots(existing);
+                    foreach (var slot in existing.Slots)
+                        if (homeSeatByPosition.TryGetValue(slot.SlotNumber, out var homeSeat))
+                            slot.HomeSeat = homeSeat;
                     if (existing.TemplateWidth != beforeW || existing.TemplateHeight != beforeH || existing.TemplateCount != beforeC || existing.TemplateSide != beforeS)
                         changed = true;
                     continue;

@@ -759,8 +759,16 @@ public sealed partial class MainWindowViewModel
         if (_cornerOverlays.Count == 0) return;
 
         var eveOrEwcFg = IsEveOrEwcForeground();
-        foreach (var pill in _pills.Values)
-            pill.SetTopmost(eveOrEwcFg);
+        // Only sink pills here when losing focus. Raising them here too (unconditionally, every tick)
+        // was pure churn while focused: the corner-tile loop below re-asserts HWND_TOPMOST on every
+        // tile right after, burying whatever this raised, and the "keep pills above tiles" pass at the
+        // bottom of this method raises them again -- a raise/bury/raise cycle every single 250ms tick,
+        // forever, while EVE has focus. That constant self-inflicted z-order thrash is what read as
+        // "labels flickering" with no trigger. The bottom pass already re-asserts pills above tiles
+        // when focused, so this loop only needs to handle the sink-on-focus-loss case.
+        if (!eveOrEwcFg)
+            foreach (var pill in _pills.Values)
+                pill.SetTopmost(false);
 
         if (!eveOrEwcFg && (_peekPosition >= 0 || _pendingHoverPosition >= 0 || _cursorOverPosition >= 0))
         {
