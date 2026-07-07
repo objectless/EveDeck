@@ -28,8 +28,8 @@ or "based on EveDeck".
 
 ## EVE Online
 
-EVE Online and all related trademarks are the property of [CCP hf.](https://www.ccpgames.com/)
-EveDeck is a third-party tool and is not affiliated with or endorsed by CCP hf.
+EVE Online and all related trademarks are the property of [Fenris Creations hf.](https://fenriscreations.com/)
+EveDeck is a third-party tool and is not affiliated with or endorsed by Fenris Creations.
 EveDeck is designed to comply with the EVE Online EULA's one-input-one-client rule:
 it is a window manager only and contains no input broadcasting, automation, or game
 memory access. Forks that add such functionality violate the EVE Online EULA and,

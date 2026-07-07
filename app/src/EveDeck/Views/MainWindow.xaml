@@ -1982,7 +1982,7 @@ EveDeck arranges your EVE clients into tidy on-screen layouts and lets you jump 
               <!-- Credits -->
               <TextBlock Text="Credits" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,6"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,0,0,16">
-Built by the EveDeck project. Window management and live previews use native Windows APIs (Win32 and DWM) with GPU capture via Windows.Graphics.Capture and Vortice. EVE Online is a trademark of CCP/Fenris Creations hf.; EveDeck is an unofficial, community-made tool and is not affiliated with or endorsed by CCP/Fenris Creations.
+Built by the EveDeck project. Window management and live previews use native Windows APIs (Win32 and DWM) with GPU capture via Windows.Graphics.Capture and Vortice. EVE Online is a trademark of Fenris Creations hf.; EveDeck is an unofficial, community-made tool and is not affiliated with or endorsed by Fenris Creations.
               </TextBlock>
 
               <!-- Compliance -->

@@ -5,7 +5,7 @@ public sealed class EsiCharacter
     public long CharacterId { get; set; }
     public string CharacterName { get; set; } = "";
 
-    // Public CCP/Fenris Creations image server (no auth). WPF BitmapImage downloads + caches these via WinINET,
+    // Public Fenris Creations image server (no auth). WPF BitmapImage downloads + caches these via WinINET,
     // so binding an Image.Source directly to the URL is sufficient — no custom cache needed.
     // Valid sizes: 32, 64, 128, 256, 512.
     public string PortraitUrl => CharacterId > 0

@@ -1,16 +1,16 @@
 # EVE Online EULA / ToS Compliance
 
 > **Not legal advice.** This document records the design constraints that keep EVE Window
-> Commander (EWC) on the permitted side of CCP/Fenris Creations' rules. CCP/Fenris Creations' policies can change; for
-> certainty about a specific setup, file a support ticket with CCP/Fenris Creations describing the tool.
+> Commander (EWC) on the permitted side of Fenris Creations' rules. Fenris Creations' policies can change; for
+> certainty about a specific setup, file a support ticket with Fenris Creations describing the tool.
 
 ## The rule that matters
 
-CCP/Fenris Creations' consistent enforcement principle is:
+Fenris Creations' consistent enforcement principle is:
 
 > **One human input may only affect one client.**
 
-In June 2014 (the "Kronos" policy change) CCP/Fenris Creations banned **input broadcasting / multiplexing**
+In June 2014 (the "Kronos" policy change) Fenris Creations banned **input broadcasting / multiplexing**
 — sending a single keystroke or click to multiple clients at once. This is what made
 ISBoxer's broadcasting features bannable. What survived, and remains acceptable, is the
 **passive window-management** side: repositioning, resizing, swapping, and arranging client
@@ -58,6 +58,6 @@ The compliance risk is **future features**, not the current design. To stay comp
 
 ## If you need certainty
 
-File a CCP/Fenris Creations support ticket describing EWC as: *"a window manager that positions EVE client
+File a Fenris Creations support ticket describing EWC as: *"a window manager that positions EVE client
 windows and switches focus between them — no input broadcasting, no automation, no memory
-access."* That is the description CCP/Fenris Creations has historically permitted.
+access."* That is the description Fenris Creations has historically permitted.

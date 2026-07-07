@@ -126,5 +126,5 @@ The **EveDeck name, logo, and icon are not covered by the GPL** and remain the e
 property of the EveDeck project — forks must ship under their own branding. See
 [TRADEMARKS.md](TRADEMARKS.md).
 
-EVE Online is a trademark of [CCP hf.](https://www.ccpgames.com/) EveDeck is a third-party
-tool, not affiliated with or endorsed by CCP hf.
+EVE Online is a trademark of [Fenris Creations hf.](https://fenriscreations.com/) EveDeck is a
+third-party tool, not affiliated with or endorsed by Fenris Creations.
