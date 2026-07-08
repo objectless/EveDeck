@@ -59,6 +59,14 @@ Gated mode fires keys only while EVE is the active app.
 🖥️ **Desktop &amp; system** — borderless toggling, active-window frame glow, tray mode,
 auto-apply on client launch, per-profile taskbar avoidance, and full multi-monitor support.
 
+📋 **Profile Sync** — copy one character's EVE settings to any number of alts in a click:
+both per-character (`core_char`) and per-account (`core_user`) files, so window positions
+and UI are truly 1:1 across every client. Originals are timestamp-backed-up first.
+
+🎙️ **Comms overlay** — pin Mumble's Talking UI on top of your layout: drag it anywhere,
+resize from any edge, lock it in place, and set its transparency. It's the real Mumble
+window — fully interactive, restored untouched when you detach.
+
 📋 **Resolution independent** — layout slots are stored as fractional rects, so one profile
 works at 1440p, 4K, or any AMD VSR / Nvidia DSR virtual resolution, with an optional
 master-resolution override. EVE clients are never resized mid-session, so the in-game UI
