@@ -64,6 +64,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private UpdateCheckService.UpdateInfo? _availableUpdate;
     private bool _updateBannerDismissed;
+    private bool _configResetBannerDismissed;
+    private IReadOnlyList<string> _hotkeyConflicts = Array.Empty<string>();
+    private bool _hotkeyConflictBannerDismissed;
     private ActiveFrameOverlay? _frameOverlay;
     private Brush _frameBrush = Brushes.Orange;
     private EveWindowInfo? _selectedWindow;
@@ -133,6 +136,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         RemoveEsiCharacterCommand = new RelayCommand(RemoveEsiCharacter);
         RestoreBackupCommand = new RelayCommand(() => RestoreSelectedBackup(), () => SelectedBackup is not null);
         DismissUpdateBannerCommand = new RelayCommand(() => { _updateBannerDismissed = true; OnPropertyChanged(nameof(ShowUpdateBanner)); });
+        DismissConfigResetBannerCommand = new RelayCommand(() => { _configResetBannerDismissed = true; OnPropertyChanged(nameof(ShowConfigResetBanner)); });
+        DismissHotkeyConflictBannerCommand = new RelayCommand(() => { _hotkeyConflictBannerDismissed = true; OnPropertyChanged(nameof(ShowHotkeyConflictBanner)); });
         OpenUpdateUrlCommand = new RelayCommand(() =>
         {
             if (_availableUpdate?.DownloadUrl is { } url)
@@ -487,6 +492,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string UpdateVersionText => _availableUpdate is not null ? $"EveDeck {_availableUpdate.Version} is available" : "";
     public ICommand DismissUpdateBannerCommand { get; }
     public ICommand OpenUpdateUrlCommand { get; }
+
+    public bool ShowConfigResetBanner => _configService.WasResetFromCorruption && !_configResetBannerDismissed;
+    public ICommand DismissConfigResetBannerCommand { get; }
+
+    public bool ShowHotkeyConflictBanner => _hotkeyConflicts.Count > 0 && !_hotkeyConflictBannerDismissed;
+    public string HotkeyConflictMessage => _hotkeyConflicts.Count == 1
+        ? $"1 hotkey could not be registered: {_hotkeyConflicts[0]}"
+        : $"{_hotkeyConflicts.Count} hotkeys could not be registered: {string.Join("; ", _hotkeyConflicts)}";
+    public ICommand DismissHotkeyConflictBannerCommand { get; }
+
+    // Called after every HotkeyService.RegisterAll so the banner reflects the current conflict set.
+    public void SetHotkeyConflicts(IReadOnlyList<string> failures)
+    {
+        _hotkeyConflicts = failures;
+        _hotkeyConflictBannerDismissed = false;
+        OnPropertyChanged(nameof(ShowHotkeyConflictBanner));
+        OnPropertyChanged(nameof(HotkeyConflictMessage));
+    }
 
     public int WindowCount => Windows.Count;
     public int MonitorCount => Monitors.Count;
@@ -1026,6 +1049,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
         seat.FrameColor = string.IsNullOrWhiteSpace(colorHex) ? null : colorHex;
         _lastFrameHandle = 0; // force the frame overlay to re-resolve this seat's colour on the next tick
         Save();
+    }
+
+    // Applies both halves of a pasted EVE theme string to a seat in one go: Primary -> frame colour,
+    // Accent -> label colour (see Utilities.EveThemeString, used by the "Paste Theme" seat button).
+    public void ApplySeatTheme(SlotAssignment seat, string frameColorHex, string labelColorHex)
+    {
+        seat.FrameColor = frameColorHex;
+        seat.LabelColor = labelColorHex;
+        _lastFrameHandle = 0;
+        Save();
+        if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
     }
 
     // Last main-window position; persisted by the view on close and restored on launch.

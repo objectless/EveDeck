@@ -46,9 +46,9 @@ public sealed class AppSettings
     public bool CornerOverlaysEnabled { get; set; } = true;
     public bool CornerOverlayShowLabel { get; set; } = true;
     public bool CornerOverlayShowSlotNumber { get; set; } = false;
-    public double CornerOverlayLabelFontSize { get; set; } = 13.0;
+    public double CornerOverlayLabelFontSize { get; set; } = 21.0;
     public string CornerOverlayLabelStyle { get; set; } = "Pill";
-    public string CornerOverlayLabelFontFamily { get; set; } = ""; // "" = Segoe UI (WPF default)
+    public string CornerOverlayLabelFontFamily { get; set; } = "Acens"; // bundled font, see Assets\Fonts\Acens-LICENSE.txt
     public string CornerOverlayLabelColor { get; set; } = "#E5E7EB"; // global default label text color
     public int CornerOverlayLabelHeight { get; set; } = 28; // WPF DIPs
 

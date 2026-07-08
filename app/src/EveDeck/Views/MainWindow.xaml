@@ -152,6 +152,54 @@
         </DockPanel>
       </Border>
 
+      <!-- ═══ Config Reset Banner ═══ -->
+      <Border DockPanel.Dock="Top"
+              Background="#2A1608"
+              BorderBrush="#F59E0B"
+              BorderThickness="0,0,0,1"
+              Padding="14,5"
+              Visibility="{Binding ShowConfigResetBanner, Converter={StaticResource BoolToVis}}">
+        <DockPanel>
+          <Button DockPanel.Dock="Right"
+                  Command="{Binding DismissConfigResetBannerCommand}"
+                  Background="Transparent" BorderThickness="0"
+                  Foreground="{StaticResource MutedBrush}"
+                  FontSize="14" Padding="8,0" Cursor="Hand"
+                  ToolTip="Dismiss">&#x2715;</Button>
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                       Foreground="#F59E0B" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBlock Text="Your settings file appeared to be corrupted and was reset to defaults. A backup was saved automatically — open Options → Backups to restore your previous settings."
+                       Foreground="{StaticResource TextBrush}" FontSize="12" VerticalAlignment="Center"
+                       TextWrapping="Wrap" MaxWidth="760"/>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- ═══ Hotkey Conflict Banner ═══ -->
+      <Border DockPanel.Dock="Top"
+              Background="#2A1608"
+              BorderBrush="#F59E0B"
+              BorderThickness="0,0,0,1"
+              Padding="14,5"
+              Visibility="{Binding ShowHotkeyConflictBanner, Converter={StaticResource BoolToVis}}">
+        <DockPanel>
+          <Button DockPanel.Dock="Right"
+                  Command="{Binding DismissHotkeyConflictBannerCommand}"
+                  Background="Transparent" BorderThickness="0"
+                  Foreground="{StaticResource MutedBrush}"
+                  FontSize="14" Padding="8,0" Cursor="Hand"
+                  ToolTip="Dismiss">&#x2715;</Button>
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                       Foreground="#F59E0B" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBlock Text="{Binding HotkeyConflictMessage}"
+                       Foreground="{StaticResource TextBrush}" FontSize="12" VerticalAlignment="Center"
+                       TextWrapping="Wrap" MaxWidth="760"/>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
       <!-- ═══ Status Bar ═══ -->
       <Border DockPanel.Dock="Bottom"
               Background="#0A0D14"
@@ -660,6 +708,10 @@
                                           Click="SlotFrameColorReset_Click"
                                           Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
                                           ToolTip="Reset this seat's frame colour to the global default"/>
+                                  <Button DockPanel.Dock="Right" Content="Theme"
+                                          Click="SlotPasteTheme_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Paste a copied EVE 'Edit Theme' string to set this seat's frame + label colour (Primary -&gt; frame, Accent -&gt; label)"/>
                                   <TextBox Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}"
                                            Style="{StaticResource InlineSlotLabel}"
                                            FontSize="14" FontWeight="SemiBold"

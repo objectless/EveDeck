@@ -12,6 +12,7 @@ using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using Point = System.Windows.Point;
 using EveDeck.Models;
 using EveDeck.Services;
+using EveDeck.Utilities;
 using EveDeck.ViewModels;
 
 namespace EveDeck.Views;
@@ -314,8 +315,9 @@ public partial class MainWindow : Window
     private void RegisterHotkeys()
     {
         var handle = new WindowInteropHelper(this).Handle;
-        _hotkeyService.RegisterAll(handle, _viewModel.Hotkeys, _viewModel.Log,
+        var failures = _hotkeyService.RegisterAll(handle, _viewModel.Hotkeys, _viewModel.Log,
             _viewModel.RequireEveFocusForHotkeys, _viewModel.IsEveWindowForeground);
+        _viewModel.SetHotkeyConflicts(failures);
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -587,6 +589,33 @@ public partial class MainWindow : Window
     {
         if (sender is FrameworkElement { DataContext: SlotAssignment seat })
             _viewModel.ApplySeatFrameColor(seat, null);
+    }
+
+    // Reads the clipboard for a copied EVE "Edit Theme" string and applies Primary/Accent to this
+    // seat's frame/label colours. See Utilities.EveThemeString for the expected format.
+    private void SlotPasteTheme_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SlotAssignment seat }) return;
+
+        string clip;
+        try { clip = System.Windows.Clipboard.GetText(); }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Could not read the clipboard: {ex.Message}",
+                "Paste Theme", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!EveThemeString.TryParse(clip, out var primary, out var accent))
+        {
+            System.Windows.MessageBox.Show(
+                "Clipboard doesn't look like an EVE theme string. Use the copy button in EVE's " +
+                "Edit Theme dialog first (expects \"#RRGGBB,#RRGGBB,...\").",
+                "Paste Theme", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _viewModel.ApplySeatTheme(seat, primary, accent);
     }
 
     private void RestoreBackup_Click(object sender, RoutedEventArgs e)

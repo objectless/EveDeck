@@ -40,7 +40,9 @@ public sealed class HotkeyService : IDisposable
         b.ActionId.StartsWith("FocusSlot", StringComparison.OrdinalIgnoreCase)
         || b.ActionId.StartsWith("SwitchToCharacter", StringComparison.OrdinalIgnoreCase);
 
-    public void RegisterAll(nint windowHandle, IEnumerable<HotkeyBinding> bindings, LogService log,
+    // Returns the display text for every binding that could not be registered (empty if all succeeded)
+    // so the caller can surface the full set to the user, not just the first conflict.
+    public IReadOnlyList<string> RegisterAll(nint windowHandle, IEnumerable<HotkeyBinding> bindings, LogService log,
         bool requireEveFocus, Func<bool> isEveForeground)
     {
         UnregisterAll(log);
@@ -89,8 +91,10 @@ public sealed class HotkeyService : IDisposable
 
         if (failures.Count > 0)
         {
-            log.Error($"{failures.Count} hotkey(s) were not registered. Another app or another EveDeck instance may already own them. First conflict: {failures[0]}");
+            log.Error($"{failures.Count} hotkey(s) were not registered. Another app or another EveDeck instance may already own them: {string.Join("; ", failures)}");
         }
+
+        return failures;
     }
 
     public void UnregisterAll(LogService? log = null)

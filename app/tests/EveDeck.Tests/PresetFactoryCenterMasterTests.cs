@@ -8,8 +8,11 @@ namespace EveDeck.Tests;
 public class PresetFactoryCenterMasterTests
 {
     [Fact]
-    public void CenterMaster_5At2560x1440_MatchesLegacyLayoutExactly()
+    public void CenterMaster_5At2560x1440_MasterShrunkTo60Percent()
     {
+        // 2026-07-08: tiles are back to the original full 2x2 grid (legacy behavior); only the master's
+        // size changed, from 1.5 cells (75%, matching the pre-existing legacy 5-Char master exactly) down
+        // to 1.2 cells (60%) so it covers less of each corner tile while the grid itself is untouched.
         var profile = new LayoutProfile
         {
             IsFamilyTemplate = true,
@@ -43,7 +46,7 @@ public class PresetFactoryCenterMasterTests
 
         Assert.Equal(5, slots[4].SlotNumber);
         Assert.Equal("Master", slots[4].Label);
-        Assert.Equal((320, 180, 1920, 1080), (slots[4].X, slots[4].Y, slots[4].Width, slots[4].Height));
+        Assert.Equal((512, 288, 1536, 864), (slots[4].X, slots[4].Y, slots[4].Width, slots[4].Height));
     }
 
     [Theory]

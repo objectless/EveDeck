@@ -158,6 +158,8 @@ internal sealed class LabelSurfaceWindow : Window
         private double _portraitDip;
         private string _portraitUrl = "";
         private double _tileXDip, _tileYDip, _tileWDip, _tileHDip;
+        private BitmapImage? _pendingPortrait;
+        private EventHandler? _pendingPortraitHandler;
 
         public PillElement(bool iconStyle, int baseHeight, double dpiScale, bool atTop, bool centered)
         {
@@ -216,7 +218,7 @@ internal sealed class LabelSurfaceWindow : Window
         public void ApplyAppearance(string family, double fontSize, string colorHex)
         {
             _text.FontSize = fontSize;
-            _text.FontFamily = string.IsNullOrWhiteSpace(family) ? new FontFamily("Segoe UI") : new FontFamily(family);
+            _text.FontFamily = ResolveFontFamily(family);
             _text.Foreground = BrushFromHex(colorHex, _iconStyle
                 ? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)
                 : Color.FromRgb(0xE5, 0xE7, 0xEB));
@@ -263,6 +265,13 @@ internal sealed class LabelSurfaceWindow : Window
 
         private void ApplyPortrait()
         {
+            // A rebuild can supersede a still-downloading portrait from the previous one; detach its
+            // handler so it can't land on _portraitDot after a newer portrait already applied.
+            if (_pendingPortrait is not null && _pendingPortraitHandler is not null)
+                _pendingPortrait.DownloadCompleted -= _pendingPortraitHandler;
+            _pendingPortrait = null;
+            _pendingPortraitHandler = null;
+
             if (!_iconStyle || string.IsNullOrEmpty(_portraitUrl))
             {
                 _portraitDot.Visibility = Visibility.Collapsed;
@@ -290,11 +299,32 @@ internal sealed class LabelSurfaceWindow : Window
 
                 // Keep whatever portrait is currently showing until the new one is actually ready.
                 if (bmp.IsDownloading)
-                    bmp.DownloadCompleted += (_, _) => _portraitDot.Fill = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill };
+                {
+                    _pendingPortrait = bmp;
+                    _pendingPortraitHandler = (_, _) =>
+                    {
+                        _portraitDot.Fill = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill };
+                        _pendingPortrait = null;
+                        _pendingPortraitHandler = null;
+                    };
+                    bmp.DownloadCompleted += _pendingPortraitHandler;
+                }
                 else
+                {
                     _portraitDot.Fill = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill };
+                }
             }
             catch { /* keep showing the previous portrait rather than blanking on a transient failure */ }
+        }
+
+        // "Acens" (the shipped default) is bundled as an app resource so it renders correctly even
+        // when not installed system-wide; any other family name is resolved from installed fonts.
+        private static readonly FontFamily BundledAcens = new(new Uri("pack://application:,,,/Assets/Fonts/"), "./#Acens");
+
+        private static FontFamily ResolveFontFamily(string family)
+        {
+            if (string.IsNullOrWhiteSpace(family)) return new FontFamily("Segoe UI");
+            return family.Equals("Acens", StringComparison.OrdinalIgnoreCase) ? BundledAcens : new FontFamily(family);
         }
 
         private static SolidColorBrush BrushFromHex(string hex, Color fallback)

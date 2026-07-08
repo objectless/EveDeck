@@ -10,14 +10,18 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>EveDeck</AssemblyName>
     <RootNamespace>EveDeck</RootNamespace>
-    <Version>1.4.7</Version>
+    <Version>1.5.0</Version>
     <Copyright>Copyright © 2026 EveDeck</Copyright>
     <Authors>EveDeck</Authors>
     <Company>EveDeck</Company>
     <!-- Framework-dependent builds accept any installed .NET 10+ runtime instead of demanding an
          exact major match, so users don't hit the "install .NET" popup after a runtime upgrade. -->
     <RollForward>LatestMajor</RollForward>
-    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- DPI awareness is declared in app.manifest (dpiAwareness/dpiAware) since this is a WPF-primary
+         app (WinForms is used only for the tray icon and DWM overlay windows), and the WFO0003 analyzer
+         assumes a WinForms-hosted app and doesn't apply here; the runtime SetProcessDpiAwarenessContext
+         call in App.xaml.cs is a defensive fallback, not the primary mechanism. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <ApplicationIcon>Assets\evedeck.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
@@ -25,6 +29,12 @@
     <Resource Include="Assets\evedeck-mark.png" />
     <Resource Include="Assets\evedeck.ico" />
     <Content Include="Assets\bg.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- Personal-use-only font (see Assets\Fonts\Acens-LICENSE.txt), bundled so the default label
+         font renders correctly without requiring a separate system-wide font install. -->
+    <Resource Include="Assets\Fonts\Acens.ttf" />
+    <Content Include="Assets\Fonts\Acens-LICENSE.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

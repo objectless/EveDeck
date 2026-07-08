@@ -1,0 +1,9 @@
+Acens.ttf
+Copyright (c) Big Jack, 2003. All rights reserved. "Acens" is a trademark of Big Jack.
+
+License: personal / non-commercial use only.
+
+Bundled here because EveDeck cannot be sold for money (EVE Online's third-party developer
+license prohibits charging for tools built on its API/UI) -- the app is distributed free of
+charge, with only voluntary ISK donations accepted, which keeps it within this font's
+personal-use terms. Do not use this font file in a build or fork that is sold commercially.

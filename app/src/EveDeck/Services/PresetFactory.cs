@@ -329,12 +329,19 @@ public static class PresetFactory
             profile.Slots.Add(Slot(slotNum++, offset, bottomY, size, bottomH, label));
         }
 
-        // Master spans the hollow centre plus a half-cell overlap on each side: 1.5 cells for the 2×2 ring
-        // (matches the legacy 5-Char master exactly), otherwise (s-1) cells so it scales with the ring.
-        // Numerator is doubled to keep integer math (1.5 cells -> 3/2).
-        var masterCellsX2 = (s == 2) ? 3 : 2 * (s - 1);
-        var masterW = masterCellsX2 * cellW / 2;
-        var masterH = masterCellsX2 * cellH / 2;
+        // Master spans the hollow centre plus overlap into the surrounding ring tiles. The 2x2 ring
+        // (s==2) has no interior cell at all, so this is the only thing standing between "no master"
+        // and "master covers everything". 2026-07-08: sized down from 1.5 cells (75% of each dimension,
+        // matching the legacy 5-Char master exactly) to 1.2 cells (60%) so it covers less of each corner
+        // tile -- but only when the ring is still symmetric (both top and bottom hold their full 2
+        // tiles, i.e. the 5-client case). When one side has shrunk to a single full-width/height tile
+        // (the 4-client case), that lone tile's area is already half the whole screen, so a 60% master
+        // would end up SMALLER than it; keep the original 75% there instead. Larger rings (s>2) already
+        // have a real hollow and keep their original (s-1)-cell sizing for the same reason.
+        var symmetric = topN == topMax && bottomN == bottomMax;
+        var masterCellsX10 = s != 2 ? 10 * (s - 1) : symmetric ? 12 : 15;
+        var masterW = masterCellsX10 * cellW / 10;
+        var masterH = masterCellsX10 * cellH / 10;
         profile.Slots.Add(Slot(n, (sw - masterW) / 2, (sh - masterH) / 2, masterW, masterH, "Master"));
     }
 

@@ -9,6 +9,9 @@ public sealed class ConfigService
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
+    // Guards against the auto-save timer and a manual Save() racing on the same temp file.
+    private readonly object _saveLock = new();
+
     private readonly bool _isDefaultFolder;
 
     public string AppDataFolder { get; }
@@ -25,8 +28,13 @@ public sealed class ConfigService
     public string LogsFolder => Path.Combine(AppDataFolder, "logs");
     public string BackupsFolder => Path.Combine(AppDataFolder, "backups");
 
+    // Set by Load() when settings.json was unreadable and had to be reset to defaults, so the UI
+    // can tell the user rather than silently starting fresh.
+    public bool WasResetFromCorruption { get; private set; }
+
     public AppSettings Load()
     {
+        WasResetFromCorruption = false;
         // One-time migration: move settings from old "EVE Window Commander" folder to "EveDeck".
         var oldFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -54,6 +62,7 @@ public sealed class ConfigService
                 // Corrupt settings file — back it up and start fresh.
                 var bakPath = ConfigPath + ".bak";
                 try { File.Move(ConfigPath, bakPath, overwrite: true); } catch { } // best-effort backup; LogService not alive during Load
+                WasResetFromCorruption = true;
             }
         }
 
@@ -65,17 +74,20 @@ public sealed class ConfigService
 
     public void Save(AppSettings settings)
     {
-        Directory.CreateDirectory(AppDataFolder);
-        // Write to a temp file then atomically replace — prevents zero-filled settings.json on crash.
-        var tmp = ConfigPath + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(settings, JsonOptions));
-        // File.Replace requires the destination to already exist (throws FileNotFoundException
-        // otherwise) — falls back to a plain move on first-ever launch or right after Load() moves
-        // a corrupt settings.json out of the way.
-        if (File.Exists(ConfigPath))
-            File.Replace(tmp, ConfigPath, destinationBackupFileName: null);
-        else
-            File.Move(tmp, ConfigPath);
+        lock (_saveLock)
+        {
+            Directory.CreateDirectory(AppDataFolder);
+            // Write to a temp file then atomically replace — prevents zero-filled settings.json on crash.
+            var tmp = ConfigPath + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(settings, JsonOptions));
+            // File.Replace requires the destination to already exist (throws FileNotFoundException
+            // otherwise) — falls back to a plain move on first-ever launch or right after Load() moves
+            // a corrupt settings.json out of the way.
+            if (File.Exists(ConfigPath))
+                File.Replace(tmp, ConfigPath, destinationBackupFileName: null);
+            else
+                File.Move(tmp, ConfigPath);
+        }
     }
 
     // ── Backup ────────────────────────────────────────────────────────────────
@@ -223,7 +235,6 @@ public sealed class ConfigService
                     settings.Hotkeys.Add(binding);
             }
 
-            BackfillSwapMasterGestures(settings.Hotkeys);
             PruneRetiredHotkeys(settings.Hotkeys);
         }
 
@@ -274,32 +285,4 @@ public sealed class ConfigService
         foreach (var h in retired) hotkeys.Remove(h);
     }
 
-    // The corner→master swap actions originally shipped unbound (VirtualKey 0). For saves created
-    // before defaults were assigned, fill in the default gesture when the action is still unbound and
-    // the gesture isn't already taken. User-chosen or deliberately cleared bindings are left untouched
-    // (a deliberate clear that lands on the default gesture is indistinguishable, an acceptable trade
-    // for making the core mechanic work out of the box).
-    private static void BackfillSwapMasterGestures(ObservableCollection<HotkeyBinding> hotkeys)
-    {
-        var swapActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "SwapFocusedWithMaster", "SwapSlotWithMaster1", "SwapSlotWithMaster2",
-            "SwapSlotWithMaster3", "SwapSlotWithMaster4",
-        };
-
-        foreach (var def in HotkeyDefaults.Create())
-        {
-            if (!swapActions.Contains(def.ActionId) || def.VirtualKey == 0) continue;
-
-            var existing = hotkeys.FirstOrDefault(h => h.ActionId.Equals(def.ActionId, StringComparison.OrdinalIgnoreCase));
-            if (existing is null || existing.VirtualKey != 0) continue; // user already bound it
-
-            var taken = hotkeys.Any(h => h.VirtualKey == def.VirtualKey && h.Modifiers == def.Modifiers && h.VirtualKey != 0);
-            if (taken) continue;
-
-            existing.Modifiers = def.Modifiers;
-            existing.VirtualKey = def.VirtualKey;
-            existing.GestureText = def.GestureText;
-        }
-    }
 }

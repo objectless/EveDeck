@@ -67,6 +67,10 @@ public sealed class LayoutProfile
     public bool SupportsCornerGrid =>
         Slots.Count >= 2 && Slots.Select(s => (s.X, s.Y)).Distinct().Count() >= 2;
 
+    // WPF ComboBox selection boxes fall back to ToString() in some template paths even with
+    // DisplayMemberPath set - show the profile name instead of the type name.
+    public override string ToString() => Name;
+
     public LayoutProfile Clone(string? name = null)
     {
         var clone = new LayoutProfile { Name = name ?? $"{Name} Copy", IsBuiltIn = false, Category = "Custom", IsFamilyTemplate = false };

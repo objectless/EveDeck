@@ -112,7 +112,13 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             },
             fVisible = true
         };
-        Win32Native.DwmUpdateThumbnailProperties(id, ref props);
+        if (Win32Native.DwmUpdateThumbnailProperties(id, ref props) != 0)
+        {
+            Log?.Invoke($"DWM thumbnail properties update failed for tile {position}.");
+            UnregisterThumbnail(position);
+            if (_hiddenTiles.Add(position)) Invalidate(rect);
+            return;
+        }
 
         if (_hiddenTiles.Remove(position)) Invalidate(rect);
     }

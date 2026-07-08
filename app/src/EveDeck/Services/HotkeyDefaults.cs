@@ -26,10 +26,12 @@ public static class HotkeyDefaults
 
         bindings.Add(new HotkeyBinding { ActionId = "ApplyLayout", DisplayName = "Apply active layout", Modifiers = ModControl | ModAlt, VirtualKey = (uint)'A', GestureText = "Ctrl+Alt+A" });
 
+        // Ship unbound (like the direction/character-switch hotkeys below) so the default gesture set
+        // stays small and collision-free out of the box; rebind in the Hotkeys tab if wanted.
         for (var i = 1; i <= 5; i++)
         {
-            bindings.Add(new HotkeyBinding { ActionId = $"MoveActiveToSlot{i}", DisplayName = $"Move active EVE window to slot {i}", Modifiers = ModControl | ModAlt | ModShift, VirtualKey = (uint)('0' + i), GestureText = $"Ctrl+Alt+Shift+{i}" });
-            bindings.Add(new HotkeyBinding { ActionId = $"SwapActiveWithSlot{i}", DisplayName = $"Swap active EVE window with slot {i}", Modifiers = ModControl | ModAlt | ModShift, VirtualKey = (uint)(0x70 + i - 1), GestureText = $"Ctrl+Alt+Shift+F{i}" });
+            bindings.Add(new HotkeyBinding { ActionId = $"MoveActiveToSlot{i}", DisplayName = $"Move active EVE window to slot {i}", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+            bindings.Add(new HotkeyBinding { ActionId = $"SwapActiveWithSlot{i}", DisplayName = $"Swap active EVE window with slot {i}", Modifiers = 0, VirtualKey = 0, GestureText = "" });
         }
 
         // 3d — Assign the current foreground EVE window to the next empty slot.
@@ -38,14 +40,15 @@ public static class HotkeyDefaults
         // 3b — Undo the last layout apply (restores windows to pre-apply positions).
         bindings.Add(new HotkeyBinding { ActionId = "UndoLastApply", DisplayName = "Undo last layout apply", Modifiers = 0, VirtualKey = 0, GestureText = "" });
 
-        // Swap the focused EVE window's slot with the designated master slot.
-        bindings.Add(new HotkeyBinding { ActionId = "SwapFocusedWithMaster", DisplayName = "Swap focused client into master slot", Modifiers = ModControl | ModAlt, VirtualKey = (uint)'M', GestureText = "Ctrl+Alt+M" });
+        // Swap the focused EVE window's slot with the designated master slot. Ships unbound; rebind
+        // in the Hotkeys tab if wanted.
+        bindings.Add(new HotkeyBinding { ActionId = "SwapFocusedWithMaster", DisplayName = "Swap focused client into master slot", Modifiers = 0, VirtualKey = 0, GestureText = "" });
 
         // Per-slot swap-into-master hotkeys: rotate slot N's character into the master slot and
-        // the master's character down into corner N. This is the core fast-switch mechanic, so it
-        // ships with default gestures (Ctrl+Shift+1..4). Rebind in the Hotkeys tab if they clash.
+        // the master's character down into corner N. Core fast-switch mechanic, but ships unbound
+        // like the rest of the Move/Swap group to keep the out-of-box gesture set small.
         for (var i = 1; i <= 4; i++)
-            bindings.Add(new HotkeyBinding { ActionId = $"SwapSlotWithMaster{i}", DisplayName = $"Swap slot {i} into master slot", Modifiers = ModControl | ModShift, VirtualKey = (uint)('0' + i), GestureText = $"Ctrl+Shift+{i}" });
+            bindings.Add(new HotkeyBinding { ActionId = $"SwapSlotWithMaster{i}", DisplayName = $"Swap slot {i} into master slot", Modifiers = 0, VirtualKey = 0, GestureText = "" });
 
         // Direction-based focus hotkeys: each maps to the slot at that screen position in the active
         // profile, then brings it to the centre (overlay mode) or foreground (flat mode). Ship unbound
