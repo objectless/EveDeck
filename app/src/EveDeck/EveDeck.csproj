@@ -10,7 +10,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>EveDeck</AssemblyName>
     <RootNamespace>EveDeck</RootNamespace>
-    <Version>1.4.6</Version>
+    <Version>1.4.7</Version>
     <Copyright>Copyright © 2026 EveDeck</Copyright>
     <Authors>EveDeck</Authors>
     <Company>EveDeck</Company>
@@ -20,11 +20,6 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>Assets\evedeck.ico</ApplicationIcon>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Vortice.Direct3D11" Version="3.6.2" />
-    <PackageReference Include="Vortice.DXGI" Version="3.6.2" />
-    <PackageReference Include="Vortice.D3DCompiler" Version="3.6.2" />
-  </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\evedeck-logo.png" />
     <Resource Include="Assets\evedeck-mark.png" />

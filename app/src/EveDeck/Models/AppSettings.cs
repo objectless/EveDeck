@@ -52,11 +52,6 @@ public sealed class AppSettings
     public string CornerOverlayLabelColor { get; set; } = "#E5E7EB"; // global default label text color
     public int CornerOverlayLabelHeight { get; set; } = 28; // WPF DIPs
 
-    // Use Windows.Graphics.Capture + GPU trilinear downscale for the corner previews instead of
-    // DWM thumbnails. WGC gives materially sharper minified UI text (DWM's bilinear minify is the
-    // blocky-text culprit). On by default; falls back to DWM automatically if WGC init fails.
-    public bool CornerOverlayUseWgc { get; set; } = true;
-
     // Click a corner preview tile to bring that client to the centre (focus switch). Pure window
     // management — the click is NOT forwarded into the EVE client, so it stays EULA-compliant (no
     // input injection). A convenient alternative to the centre-seat hotkeys for users who haven't

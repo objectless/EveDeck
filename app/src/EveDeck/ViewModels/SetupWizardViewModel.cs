@@ -123,13 +123,6 @@ public sealed class SetupWizardViewModel : ObservableObject
         }
     }
 
-    private bool _useWgc = true;
-    public bool UseWgc
-    {
-        get => _useWgc;
-        set => SetProperty(ref _useWgc, value);
-    }
-
     private bool _focusPreviewOnClick = true;
     public bool FocusPreviewOnClick
     {
@@ -200,7 +193,6 @@ public sealed class SetupWizardViewModel : ObservableObject
             if (IsCenterMaster)
             {
                 lines.Add($"• Preview mode ON, master = center slot {ClientCount}");
-                lines.Add($"• High-quality GPU previews: {(UseWgc ? "on" : "off")}");
                 lines.Add($"• Click a preview to center that client: {(FocusPreviewOnClick ? "on" : "off")}");
             }
 

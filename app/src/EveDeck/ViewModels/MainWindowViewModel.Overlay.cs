@@ -20,7 +20,7 @@ public sealed partial class MainWindowViewModel
     {
         // The frame timer is shared with corner-overlay maintenance; only stop it when
         // corner overlays aren't relying on it.
-        if (_cornerOverlays.Count == 0) _frameTimer.Stop();
+        if (!CornerOverlaysLive) _frameTimer.Stop();
         _frameOverlay?.Hide();
     }
 

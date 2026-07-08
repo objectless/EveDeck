@@ -16,12 +16,18 @@ public sealed partial class MainWindowViewModel
     // EffectiveGroups() synthesises a single all-slots group when no groups are defined so legacy
     // behaviour is preserved automatically.
 
-    // Tiles + pills are keyed by POSITION id. Centre pills are stored under the group's centre slot number.
-    private readonly Dictionary<int, CornerOverlayWindow> _cornerOverlays = new();
-    private readonly Dictionary<int, PillOverlay> _pills = new();
+    // ONE window hosts every tile thumbnail and ONE (owned by it, so the OS keeps it above) hosts
+    // every label. Tiles + pills are keyed by POSITION id; centre pills are stored under the group's
+    // centre slot number. With a single HWND per surface there is no per-tile z-order to maintain.
+    private TileSurfaceWindow? _tileSurface;
+    private LabelSurfaceWindow? _labelSurface;
+    private bool _surfacesTopmost;
     private readonly Dictionary<int, nint> _cornerSourceHandles = new();
     private readonly Dictionary<int, WindowRect> _cornerRects = new();
     private int _cursorOverPosition = -1;
+
+    // True while the corner-overlay surfaces exist (the overlays are live on screen).
+    internal bool CornerOverlaysLive => _tileSurface is not null;
 
     // Corner position waiting for the debounce delay to fire. -1 = none pending.
     private int _pendingHoverPosition = -1;
@@ -209,7 +215,7 @@ public sealed partial class MainWindowViewModel
 
     private void ReapplyCornerHomes()
     {
-        var overlaysLive = _cornerOverlays.Count > 0;
+        var overlaysLive = CornerOverlaysLive;
         ResetCornerOccupancy();
         UpdatePositionCodes();
         RebuildMiniMap();
@@ -264,57 +270,71 @@ public sealed partial class MainWindowViewModel
             ?? Monitors.FirstOrDefault();
         var dpiScale = monitor is null ? 1.0 : monitor.DpiX / 96.0;
 
+        var slotRects = SelectedProfile.Slots.ToDictionary(s => s.SlotNumber, s => ResolvePlacementRect(s));
+
+        // Surface bounds: the layout monitor, or the union of the slot rects as a fallback.
+        int surfX, surfY, surfW, surfH;
+        if (monitor is not null)
+        {
+            surfX = monitor.Bounds.X; surfY = monitor.Bounds.Y;
+            surfW = monitor.Bounds.Width; surfH = monitor.Bounds.Height;
+        }
+        else
+        {
+            surfX = slotRects.Values.Min(r => r.X);
+            surfY = slotRects.Values.Min(r => r.Y);
+            surfW = Math.Max(1, slotRects.Values.Max(r => r.X + r.Width) - surfX);
+            surfH = Math.Max(1, slotRects.Values.Max(r => r.Y + r.Height) - surfY);
+        }
+
         var groupCenterSlots = EffectiveGroups()
             .ToDictionary(g => g.GroupId, g => CenterSlotForGroup(g));
 
         var primaryCenter = groupCenterSlots.Values.FirstOrDefault(CenterSlotNumber);
-        var primaryMasterSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == primaryCenter);
-        var primaryMasterRect = primaryMasterSlot is not null ? ResolvePlacementRect(primaryMasterSlot) : new WindowRect();
+        var primaryMasterRect = slotRects.GetValueOrDefault(primaryCenter) ?? new WindowRect();
         var primaryMasterCenterY = primaryMasterRect.Y + primaryMasterRect.Height / 2.0;
+
+        _tileSurface = new TileSurfaceWindow(surfX, surfY, surfW, surfH);
+        _tileSurface.TileClicked = OnCornerTileClicked;
+        _tileSurface.Show();
+
+        if (_settings.CornerOverlayShowLabel)
+        {
+            _labelSurface = new LabelSurfaceWindow(surfX, surfY, surfW, surfH, dpiScale, _settings);
+            _labelSurface.SetOwner(_tileSurface.Handle);
+            _labelSurface.Show();
+        }
 
         var allGroupCenterSlotNums = groupCenterSlots.Values.ToHashSet();
         foreach (var slot in SelectedProfile.Slots.Where(s => !allGroupCenterSlotNums.Contains(s.SlotNumber)))
         {
             var position = slot.SlotNumber;
-            var rect = ResolvePlacementRect(slot);
+            var rect = slotRects[position];
 
-            var overlay = new CornerOverlayWindow(rect.X, rect.Y, rect.Width, rect.Height, dpiScale, _settings);
-            overlay.Clicked = () => OnCornerTileClicked(position);
-            overlay.Show();
-            _cornerOverlays[position] = overlay;
+            _tileSurface.AddTile(position, rect.X, rect.Y, rect.Width, rect.Height);
             _cornerRects[position] = rect;
-
-            var pillAtTop = (rect.Y + rect.Height / 2.0) < primaryMasterCenterY;
-            CreatePill(position, OccupantAtPosition(position), rect, dpiScale, pillAtTop, PillTextForPosition(position),
-                SeatPortraitUrl(OccupantAtPosition(position)), centered: true);
 
             var seat = OccupantAtPosition(position);
             var window = FindSeatWindow(seat);
-            if (window is not null)
-            {
-                overlay.UpdateSource(window.Handle);
-                _cornerSourceHandles[position] = window.Handle;
-            }
-            else
-            {
-                overlay.Visibility = System.Windows.Visibility.Hidden;
-                if (_pills.TryGetValue(position, out var emptyPill)) emptyPill.SetText("");
-                _cornerSourceHandles[position] = 0;
-            }
+            var pillAtTop = (rect.Y + rect.Height / 2.0) < primaryMasterCenterY;
+            CreatePill(position, seat, rect, pillAtTop, centered: true,
+                window is not null ? PillTextForPosition(position) : "", SeatPortraitUrl(seat));
+
+            _tileSurface.SetSource(position, window?.Handle ?? 0);
+            _cornerSourceHandles[position] = window?.Handle ?? 0;
         }
 
         foreach (var group in EffectiveGroups())
         {
             var groupCenter = groupCenterSlots[group.GroupId];
-            var masterSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
-            if (masterSlot is null) continue;
-            var masterRect = ResolvePlacementRect(masterSlot);
+            if (!slotRects.TryGetValue(groupCenter, out var masterRect)) continue;
             var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
             var centerPillText = FindSeatWindow(centeredSeat) is not null ? CenterPillTextForGroup(group.GroupId) : "";
-            CreatePill(groupCenter, centeredSeat, masterRect, dpiScale, atTop: true, centerPillText, SeatPortraitUrl(centeredSeat));
+            CreatePill(groupCenter, centeredSeat, masterRect, atTop: true, centered: false, centerPillText, SeatPortraitUrl(centeredSeat));
         }
 
-        if (_cornerOverlays.Count > 0) _frameTimer.Start();
+        ApplySurfaceZOrder(IsEveOrEwcForeground());
+        _frameTimer.Start();
     }
 
     private string SeatPortraitUrl(int seat) => Seat(seat)?.PortraitUrl ?? "";
@@ -337,14 +357,12 @@ public sealed partial class MainWindowViewModel
             : EffectiveSeatLabelFont(s);
     }
 
-    private void CreatePill(int key, int seat, WindowRect rect, double dpiScale, bool atTop, string text, string portraitUrl, bool centered = false)
+    private void CreatePill(int key, int seat, WindowRect rect, bool atTop, bool centered, string text, string portraitUrl)
     {
-        if (!_settings.CornerOverlayShowLabel) return;
+        if (_labelSurface is null) return;
         var (family, size, color) = ResolveLabelFont(seat);
-        var pill = new PillOverlay(rect.X, rect.Y, rect.Width, rect.Height, dpiScale, _settings, atTop, centered, family, size, color);
-        pill.Show();
-        pill.SetContent(text, portraitUrl);
-        _pills[key] = pill;
+        _labelSurface.SetPill(key, rect, atTop, centered, family, size, color);
+        _labelSurface.SetPillContent(key, text, portraitUrl);
     }
 
     // -- Pill captions -----------------------------------------------------------
@@ -387,19 +405,13 @@ public sealed partial class MainWindowViewModel
         RevertPeekSwap();
         _cursorOverPosition = -1;
 
-        foreach (var overlay in _cornerOverlays.Values)
-        {
-            try { overlay.Close(); } catch { } // window may already be closed
-        }
-        _cornerOverlays.Clear();
+        try { _labelSurface?.Close(); } catch { } // window may already be closed
+        _labelSurface = null;
+        try { _tileSurface?.Close(); } catch { } // window may already be closed
+        _tileSurface = null;
+        _surfacesTopmost = false;
         _cornerSourceHandles.Clear();
         _cornerRects.Clear();
-
-        foreach (var pill in _pills.Values)
-        {
-            try { pill.Close(); } catch { } // window may already be closed
-        }
-        _pills.Clear();
 
         if (!_settings.ActiveFrameEnabled) _frameTimer.Stop();
     }
@@ -698,34 +710,28 @@ public sealed partial class MainWindowViewModel
 
     internal void UpdateCornerOverlay(int position, nint sourceHwnd)
     {
-        if (_cornerOverlays.TryGetValue(position, out var overlay))
-        {
-            overlay.UpdateSource(sourceHwnd);
-            _cornerSourceHandles[position] = sourceHwnd;
-        }
+        if (_tileSurface is null || !_cornerRects.ContainsKey(position)) return;
+        _tileSurface.SetSource(position, sourceHwnd);
+        _cornerSourceHandles[position] = sourceHwnd;
     }
 
     private void RefreshPositionPill(int position)
     {
-        if (_pills.TryGetValue(position, out var pill))
-        {
-            var seat = OccupantAtPosition(position);
-            pill.SetContent(PillTextForPosition(position), SeatPortraitUrl(seat));
-            var (family, size, color) = ResolveLabelFont(seat);
-            pill.UpdateAppearance(family, size, color);
-        }
+        if (_labelSurface is null || !_cornerRects.ContainsKey(position)) return;
+        var seat = OccupantAtPosition(position);
+        _labelSurface.SetPillContent(position, PillTextForPosition(position), SeatPortraitUrl(seat));
+        var (family, size, color) = ResolveLabelFont(seat);
+        _labelSurface.SetPillAppearance(position, family, size, color);
     }
 
     private void RefreshGroupCenterPill(SwapGroup group)
     {
+        if (_labelSurface is null) return;
         var groupCenter = CenterSlotForGroup(group);
         var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
-        if (_pills.TryGetValue(groupCenter, out var pill))
-        {
-            pill.SetContent(CenterPillTextForGroup(group.GroupId), SeatPortraitUrl(centeredSeat));
-            var (family, size, color) = ResolveLabelFont(centeredSeat);
-            pill.UpdateAppearance(family, size, color);
-        }
+        _labelSurface.SetPillContent(groupCenter, CenterPillTextForGroup(group.GroupId), SeatPortraitUrl(centeredSeat));
+        var (family, size, color) = ResolveLabelFont(centeredSeat);
+        _labelSurface.SetPillAppearance(groupCenter, family, size, color);
     }
 
     internal void RefreshAllPills()
@@ -754,38 +760,32 @@ public sealed partial class MainWindowViewModel
 
     internal void RefreshCornerOverlayZOrder()
     {
-        var topmost = IsEveOrEwcForeground();
-        foreach (var (position, overlay) in _cornerOverlays)
-        {
-            overlay.RefreshZOrder(topmost);
-            if (_pills.TryGetValue(position, out var pill))
-                pill.PinAboveTile(overlay.Handle);
-        }
-        // The master label has no tile of its own to pin against (see PinAboveTile), so it still needs
-        // an explicit topmost raise when focused.
-        if (topmost)
-            foreach (var (position, pill) in _pills)
-                if (!_cornerOverlays.ContainsKey(position))
-                    pill.BringToTop();
+        if (_tileSurface is null) return;
+        ApplySurfaceZOrder(IsEveOrEwcForeground());
+    }
+
+    // The ONLY z-order management left in the overlay subsystem: two windows, moved between the
+    // topmost band (EVE/EveDeck focused) and the bottom (anything else focused), on focus
+    // transitions. The label surface is an owned window of the tile surface, so the window manager
+    // itself keeps labels above tiles at all times -- there is nothing to re-assert per tick.
+    private void ApplySurfaceZOrder(bool topmost)
+    {
+        _surfacesTopmost = topmost;
+        _tileSurface?.SetZ(topmost);
+        _labelSurface?.SetZ(topmost);
     }
 
     // -- Per-tick upkeep ---------------------------------------------------------
 
     internal void MaintainCornerOverlays()
     {
-        if (_cornerOverlays.Count == 0) return;
+        if (_tileSurface is null) return;
 
         var eveOrEwcFg = IsEveOrEwcForeground();
-        // Only sink pills here when losing focus. Raising them here too (unconditionally, every tick)
-        // was pure churn while focused: the corner-tile loop below re-asserts HWND_TOPMOST on every
-        // tile right after, burying whatever this raised, and the "keep pills above tiles" pass at the
-        // bottom of this method raises them again -- a raise/bury/raise cycle every single 250ms tick,
-        // forever, while EVE has focus. That constant self-inflicted z-order thrash is what read as
-        // "labels flickering" with no trigger. The bottom pass already re-asserts pills above tiles
-        // when focused, so this loop only needs to handle the sink-on-focus-loss case.
-        if (!eveOrEwcFg)
-            foreach (var pill in _pills.Values)
-                pill.SetTopmost(false);
+        // Focus gating is event-driven (the foreground WinEvent hook in MainWindow); this is only a
+        // fallback for a missed transition. No unconditional per-tick SetWindowPos calls -- that
+        // churn was the historical source of every "labels flicker" report.
+        if (eveOrEwcFg != _surfacesTopmost) ApplySurfaceZOrder(eveOrEwcFg);
 
         if (!eveOrEwcFg && (_peekPosition >= 0 || _pendingHoverPosition >= 0 || _cursorOverPosition >= 0))
         {
@@ -814,7 +814,9 @@ public sealed partial class MainWindowViewModel
             }
         }
 
-        foreach (var (position, overlay) in _cornerOverlays)
+        // Source liveness: point each tile at its occupant's current window (clients relaunch with
+        // new handles; a missing client hides the tile and blanks its label until it returns).
+        foreach (var position in _cornerRects.Keys)
         {
             var seat = OccupantAtPosition(position);
             var window = FindSeatWindow(seat);
@@ -822,8 +824,8 @@ public sealed partial class MainWindowViewModel
             {
                 if (_cornerSourceHandles.GetValueOrDefault(position) != 0)
                 {
-                    overlay.SourceLost();
-                    if (_pills.TryGetValue(position, out var lostPill)) lostPill.SetText("");
+                    _tileSurface.SetSource(position, 0);
+                    _labelSurface?.SetPillContent(position, "", SeatPortraitUrl(seat));
                     _cornerSourceHandles[position] = 0;
                 }
                 continue;
@@ -832,41 +834,20 @@ public sealed partial class MainWindowViewModel
             _cornerSourceHandles.TryGetValue(position, out var lastHandle);
             if (window.Handle != lastHandle)
             {
-                overlay.UpdateSource(window.Handle);
+                _tileSurface.SetSource(position, window.Handle);
                 RefreshPositionPill(position);
                 _cornerSourceHandles[position] = window.Handle;
             }
-
-            overlay.RefreshZOrder(eveOrEwcFg);
-            // Pin this corner's pill directly to its own tile (single atomic SetWindowPos, hwndInsertAfter
-            // = the tile) instead of independently raising the pill to the global topmost front. Two
-            // separate top-level windows each fighting for HWND_TOPMOST every tick raced against DWM's
-            // own decoupled compositing -- interleaving the two SetWindowPos calls in application code
-            // (the previous attempt) didn't help, because DWM could still composite a frame between them.
-            // Tying the pill's position directly to the tile's current position, in one call, removes the
-            // race entirely: wherever the tile ends up this tick, the pill rides one step above it, always.
-            if (_pills.TryGetValue(position, out var ownPill))
-                ownPill.PinAboveTile(overlay.Handle);
         }
 
         foreach (var group in EffectiveGroups())
         {
             var groupCenter = CenterSlotForGroup(group);
             var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
-            if (_pills.TryGetValue(groupCenter, out var masterPill))
-            {
-                var centeredWindow = FindSeatWindow(centeredSeat);
-                masterPill.SetContent(
-                    centeredWindow is null ? "" : CenterPillTextForGroup(group.GroupId),
-                    SeatPortraitUrl(centeredSeat));
-            }
+            var centeredWindow = FindSeatWindow(centeredSeat);
+            _labelSurface?.SetPillContent(groupCenter,
+                centeredWindow is null ? "" : CenterPillTextForGroup(group.GroupId),
+                SeatPortraitUrl(centeredSeat));
         }
-
-        // Corner pills are already pinned directly to their own tile above. The master label has no
-        // tile to pin against, so it still needs an explicit topmost raise when focused.
-        if (eveOrEwcFg)
-            foreach (var (position, pill) in _pills)
-                if (!_cornerOverlays.ContainsKey(position))
-                    pill.BringToTop();
     }
 }

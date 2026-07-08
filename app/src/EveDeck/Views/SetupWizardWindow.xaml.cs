@@ -10,7 +10,6 @@ public partial class SetupWizardWindow : Window
 
     public int ResultClientCount { get; private set; }
     public string ResultMonitorId { get; private set; } = "";
-    public bool ResultUseWgc { get; private set; }
     public bool ResultFocusPreviewOnClick { get; private set; }
     public int ResultMasterSeat { get; private set; }
     public IReadOnlyList<SlotAssignment> ResultSlotAssignments { get; private set; } = [];
@@ -34,7 +33,6 @@ public partial class SetupWizardWindow : Window
 
         ResultClientCount = _vm.ClientCount;
         ResultMonitorId = _vm.SelectedMonitor?.Id ?? "";
-        ResultUseWgc = _vm.UseWgc;
         ResultFocusPreviewOnClick = _vm.FocusPreviewOnClick;
         ResultMasterSeat = _vm.MasterSeatNumber;
         ResultSlotAssignments = _vm.WizardSlots.ToList();

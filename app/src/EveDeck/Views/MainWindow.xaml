@@ -1472,12 +1472,6 @@ Shows your background clients as live mini-previews in the screen corners while 
               <CheckBox Content="Enable live previews"
                         IsChecked="{Binding CornerOverlaysEnabled}"
                         Margin="0,0,0,10"/>
-              <CheckBox Content="High-quality previews (GPU capture)"
-                        IsChecked="{Binding CornerOverlayUseWgc}"
-                        Margin="0,0,0,2"/>
-              <TextBlock Text="Sharper previews using the GPU. Costs a little more performance, and automatically falls back to standard previews on systems that don't support it."
-                         TextWrapping="Wrap" FontSize="11" Margin="20,0,0,10"
-                         Foreground="{StaticResource MutedBrush}"/>
               <CheckBox Content="Click a preview to bring that client to the center"
                         IsChecked="{Binding FocusPreviewOnClick}"
                         Margin="0,0,0,2"/>

@@ -78,8 +78,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         _settings = _configService.Load();
         Log = new LogService(_configService.LogsFolder);
-        // Surface corner-capture fallbacks (WGC → DWM) in the Logs tab.
-        Views.CornerOverlayWindow.Log = msg => Log.Warn(msg);
+        // Surface overlay diagnostics (failed thumbnail registrations etc.) in the Logs tab.
+        Views.TileSurfaceWindow.Log = msg => Log.Warn(msg);
         Assignments = _settings.Assignments;
         Profiles = _settings.Profiles;
         Hotkeys = _settings.Hotkeys;
@@ -897,21 +897,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             _settings.CornerOverlayShowLabel = value;
             OnPropertyChanged();
             Save();
-            if (_settings.CornerOverlaysEnabled && _cornerOverlays.Count > 0) StartCornerOverlays();
-        }
-    }
-
-    public bool CornerOverlayUseWgc
-    {
-        get => _settings.CornerOverlayUseWgc;
-        set
-        {
-            if (_settings.CornerOverlayUseWgc == value) return;
-            _settings.CornerOverlayUseWgc = value;
-            OnPropertyChanged();
-            Save();
-            // Rebuild overlays so the new capture backend takes effect immediately.
-            if (_settings.CornerOverlaysEnabled && _cornerOverlays.Count > 0) StartCornerOverlays();
+            if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
         }
     }
 
@@ -962,7 +948,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             _settings.CornerOverlayShowSlotNumber = value;
             OnPropertyChanged();
             Save();
-            if (_settings.CornerOverlaysEnabled && _pills.Count > 0) RefreshAllPills();
+            if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) RefreshAllPills();
         }
     }
 
@@ -974,7 +960,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             var clamped = Math.Clamp(value, 6.0, 72.0);
             if (Math.Abs(_settings.CornerOverlayLabelFontSize - clamped) < 0.1) return;
             _settings.CornerOverlayLabelFontSize = clamped; OnPropertyChanged(); Save();
-            if (_settings.CornerOverlaysEnabled && _cornerOverlays.Count > 0) StartCornerOverlays();
+            if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
         }
     }
 
@@ -987,7 +973,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             _settings.CornerOverlayLabelStyle = value;
             OnPropertyChanged();
             Save();
-            if (_settings.CornerOverlaysEnabled && _cornerOverlays.Count > 0) StartCornerOverlays();
+            if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
         }
     }
 
@@ -1016,7 +1002,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(CornerOverlayLabelFontSize));
         OnPropertyChanged(nameof(LabelFontSummary));
         Save();
-        if (_settings.CornerOverlaysEnabled && _cornerOverlays.Count > 0) StartCornerOverlays();
+        if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
     }
 
     // Applies (or clears, when args are null) a single seat's label font overrides. Rebuilds overlays.
@@ -1026,7 +1012,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         seat.LabelFontSize = sizeDip.HasValue ? Math.Clamp(sizeDip.Value, 6.0, 72.0) : null;
         seat.LabelColor = string.IsNullOrWhiteSpace(colorHex) ? null : colorHex;
         Save();
-        if (_settings.CornerOverlaysEnabled && _cornerOverlays.Count > 0) StartCornerOverlays();
+        if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
     }
 
     // Current effective active-window frame colour for a seat (its own override, else the global) --
@@ -1428,7 +1414,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     // Apply the choices collected by the setup wizard: target monitor, an appropriately-sized
     // built-in profile for the client count, and (for 5-client) the corner-master configuration.
-    public void RunInitialSetup(int clientCount, string monitorId, bool useWgc, bool focusPreviewOnClick = true)
+    public void RunInitialSetup(int clientCount, string monitorId, bool focusPreviewOnClick = true)
     {
         Refresh(); // make sure the monitor list is current before we resolve the selection
 
@@ -1447,7 +1433,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             // Flagship corner-master layout: full-screen, master = centre slot 5, overlays on.
             UseMonitorWorkArea = false;
-            CornerOverlayUseWgc = useWgc;
             FocusPreviewOnClick = focusPreviewOnClick;
             ActiveMasterSeat = 5;
             SyncMasterSlot();

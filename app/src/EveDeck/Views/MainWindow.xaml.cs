@@ -37,9 +37,8 @@ public partial class MainWindow : Window
             _viewModel.ApplyProcessPriorities(hwnd);
             _viewModel.RefreshTopmostForForeground(hwnd);
             // RefreshTopmostForForeground can freshly raise a pinned seat's window to HWND_TOPMOST,
-            // which inserts it at the very FRONT of the topmost band -- burying the corner tiles and
-            // pill labels until the next 250ms frame tick reclaims them. Reclaim immediately instead
-            // of waiting, so pinning a seat can't make the labels flicker on every focus switch.
+            // in front of the overlay surfaces. Re-assert the surfaces (tile window, then its owned
+            // label window) so the previews stay above pinned clients while EVE is focused.
             _viewModel.RefreshCornerOverlayZOrder();
         };
         _viewModel.HotkeysChanged += ViewModel_HotkeysChanged;
@@ -72,7 +71,7 @@ public partial class MainWindow : Window
         var result = wizard.ShowDialog();
         if (result == true)
         {
-            _viewModel.RunInitialSetup(wizard.ResultClientCount, wizard.ResultMonitorId, wizard.ResultUseWgc, wizard.ResultFocusPreviewOnClick);
+            _viewModel.RunInitialSetup(wizard.ResultClientCount, wizard.ResultMonitorId, wizard.ResultFocusPreviewOnClick);
             MergeWizardSlots(wizard.ResultClientCount, wizard.ResultSlotAssignments);
             // The first character linked in the wizard becomes the app master (overrides the layout default).
             if (wizard.ResultMasterSeat > 0)

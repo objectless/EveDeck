@@ -25,6 +25,11 @@ internal static class Win32Native
     internal const int WmMouseLeave = 0x02A3;
     internal const uint TmeLeave = 0x00000002;
 
+    // SetWindowLongPtr index for the owner window. Setting an owner makes the window manager keep
+    // this window above its owner in the z-order permanently -- the mechanism the label surface
+    // uses to stay above the tile surface without any per-tick SetWindowPos maintenance.
+    internal const int GwlpHwndParent = -8;
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct TrackMouseEventStruct
     {
