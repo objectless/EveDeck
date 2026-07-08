@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using EveDeck.Models;
@@ -22,6 +23,7 @@ public sealed class Win32WindowService
     private const uint SwpFrameChanged = 0x0020;
     private const uint SwpShowWindow = 0x0040;
     private const uint MonitorDefaultToNearest = 0x00000002;
+    private const int SwRestore = 9;
     private const long WsExLayered = 0x00080000L;
     private const uint LwaAlpha = 0x00000002;
 
@@ -81,6 +83,88 @@ public sealed class Win32WindowService
         return windows.OrderBy(w => w.Title).ThenBy(w => w.ProcessId).ToList();
     }
 
+    // General-purpose lookup for a single visible top-level window belonging to a named process,
+    // used by the Mumble utility overlay. Deliberately separate from FindEveWindows (which is
+    // hard-filtered to the EVE client / notepad test windows) rather than widening that filter.
+    // titleContains narrows to a specific window when a process owns more than one top-level window
+    // (e.g. Mumble's main window vs. its separate "Talking UI" panel).
+    public bool TryFindWindowByProcessName(string processName, out nint handle, out WindowRect rect, string? titleContains = null)
+    {
+        var found = (nint)0;
+        var foundRect = new WindowRect();
+
+        EnumWindows((h, _) =>
+        {
+            if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero)
+            {
+                return true;
+            }
+
+            var windowTitle = GetWindowTitle(h);
+            if (string.IsNullOrWhiteSpace(windowTitle))
+            {
+                return true;
+            }
+
+            if (titleContains is not null && windowTitle.IndexOf(titleContains, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return true;
+            }
+
+            GetWindowThreadProcessId(h, out var processId);
+            Process? process = null;
+            try { process = Process.GetProcessById((int)processId); }
+            catch { return true; }
+
+            if (!process.ProcessName.Equals(processName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // A minimized window's GetWindowRect is a Windows-reported sentinel (roughly
+            // -25000..-32000 with an icon-sized ~20x20 box), not a usable screen position -- if we
+            // captured that as "original"/starting rect the target would end up permanently parked
+            // off-screen (this bit Mumble in practice). Un-minimize first so the rect we read back
+            // is real.
+            if (IsIconic(h))
+            {
+                ShowWindow(h, SwRestore);
+            }
+
+            if (!GetWindowRect(h, out var nativeRect))
+            {
+                return true;
+            }
+
+            found = h;
+            foundRect = ToWindowRect(nativeRect);
+            return false; // first match is enough
+        }, IntPtr.Zero);
+
+        handle = found;
+        rect = foundRect;
+        return found != 0;
+    }
+
+    public bool IsProcessRunning(string processName)
+    {
+        try { return Process.GetProcessesByName(processName).Length > 0; }
+        catch { return false; }
+    }
+
+    // Live DPI lookup for an arbitrary screen point, used by the utility overlay chrome to scale
+    // its margins for wherever its target currently sits -- NOT the WPF window's own cached
+    // OnSourceInitialized-time DPI, which can be wrong (e.g. captured while the chrome was still
+    // sitting at its off-screen creation position, before being moved onto the target's monitor).
+    public double GetDpiScaleForPoint(int x, int y)
+    {
+        var monitor = MonitorFromPoint(new PointNative { X = x, Y = y }, MonitorDefaultToNearest);
+        var dpiX = 96u;
+        var dpiY = 96u;
+        try { GetDpiForMonitor(monitor, 0, out dpiX, out dpiY); } catch { }
+        return dpiX / 96.0;
+    }
+
     public IReadOnlyList<MonitorInfo> GetMonitors()
     {
         var monitors = new List<MonitorInfo>();
@@ -111,6 +195,8 @@ public sealed class Win32WindowService
 
         return monitors;
     }
+
+    public bool IsWindowAlive(nint handle) => handle != 0 && IsWindow(handle);
 
     public void FocusWindow(nint handle)
     {
@@ -339,6 +425,9 @@ public sealed class Win32WindowService
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(PointNative pt, uint dwFlags);
+
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfoNative lpmi);
 
@@ -364,6 +453,9 @@ public sealed class Win32WindowService
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
@@ -386,6 +478,13 @@ public sealed class Win32WindowService
 
     private static IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
         => IntPtr.Size == 8 ? SetWindowLongPtr64(hWnd, nIndex, dwNewLong) : SetWindowLong32(hWnd, nIndex, dwNewLong);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PointNative
+    {
+        public int X;
+        public int Y;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RectNative

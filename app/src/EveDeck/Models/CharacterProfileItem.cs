@@ -8,6 +8,10 @@ public sealed class CharacterProfileItem : INotifyPropertyChanged
     public required string FilePath { get; init; }
     public required string CharacterId { get; init; }
 
+    // True for per-account core_user files (account IDs have no ESI name or portrait; they render
+    // as "Account <id>"). False for per-character core_char files.
+    public bool IsAccount { get; init; }
+
     private string _characterName = "";
     public string CharacterName
     {
@@ -22,11 +26,13 @@ public sealed class CharacterProfileItem : INotifyPropertyChanged
         set { _isSelected = value; OnPropertyChanged(); }
     }
 
-    public string PortraitUrl => long.TryParse(CharacterId, out var id) && id > 0
+    public string PortraitUrl => !IsAccount && long.TryParse(CharacterId, out var id) && id > 0
         ? $"https://images.evetech.net/characters/{id}/portrait?size=64"
         : "";
 
-    public string DisplayName => string.IsNullOrEmpty(_characterName) ? $"ID {CharacterId}" : _characterName;
+    public string DisplayName => IsAccount
+        ? $"Account {CharacterId}"
+        : string.IsNullOrEmpty(_characterName) ? $"ID {CharacterId}" : _characterName;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null)

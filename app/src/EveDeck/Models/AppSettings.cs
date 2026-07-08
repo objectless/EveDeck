@@ -17,6 +17,10 @@ public sealed class AppSettings
     public string ActiveCharacterSetId { get; set; } = "";
     public Dictionary<string, StyleSnapshot> StyleSnapshotsByTitle { get; set; } = new();
 
+    // Free-form, always-on-top Mumble "Talking UI" utility overlay -- global, not tied to a
+    // layout profile or character. See Views/UtilityOverlayChrome and Models/UtilityOverlaySlot.
+    public UtilityOverlaySlot MumbleOverlay { get; set; } = new();
+
     public bool ActiveFrameEnabled { get; set; } = true;
     public int ActiveFrameThickness { get; set; } = 4;
     public int ActiveFrameGlowRadius { get; set; } = 8;

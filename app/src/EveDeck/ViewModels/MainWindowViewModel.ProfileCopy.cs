@@ -47,6 +47,26 @@ public sealed partial class MainWindowViewModel
         }
     }
 
+    // Per-account core_user files, synced alongside the character files so the copy is truly 1:1 --
+    // window positions and other account-scoped UI state live in core_user, not core_char.
+    private ObservableCollection<CharacterProfileItem> _accountProfiles = new();
+    public ObservableCollection<CharacterProfileItem> AccountProfiles
+    {
+        get => _accountProfiles;
+        private set { _accountProfiles = value; OnPropertyChanged(); }
+    }
+
+    private CharacterProfileItem? _sourceAccountProfile;
+    public CharacterProfileItem? SourceAccountProfile
+    {
+        get => _sourceAccountProfile;
+        set
+        {
+            if (SetProperty(ref _sourceAccountProfile, value))
+                ExecuteCopyProfilesCommand.RaiseCanExecuteChanged();
+        }
+    }
+
     private bool _profileCopyInProgress;
     public bool ProfileCopyInProgress
     {
@@ -76,20 +96,25 @@ public sealed partial class MainWindowViewModel
 
         ExecuteCopyProfilesCommand = new RelayCommand(
             async () => await CopyProfilesAsync(),
-            () => SourceProfile is not null
-                && CharacterProfiles.Any(c => c.IsSelected && c != SourceProfile)
-                && !ProfileCopyInProgress);
+            () => !ProfileCopyInProgress
+                && ((SourceProfile is not null
+                        && CharacterProfiles.Any(c => c.IsSelected && c != SourceProfile))
+                    || (SourceAccountProfile is not null
+                        && AccountProfiles.Any(a => a.IsSelected && a != SourceAccountProfile))));
 
         SelectAllProfileTargetsCommand = new RelayCommand(() =>
         {
             foreach (var c in CharacterProfiles)
                 if (c != SourceProfile) c.IsSelected = true;
+            foreach (var a in AccountProfiles)
+                if (a != SourceAccountProfile) a.IsSelected = true;
             ExecuteCopyProfilesCommand.RaiseCanExecuteChanged();
         });
 
         ClearAllProfileTargetsCommand = new RelayCommand(() =>
         {
             foreach (var c in CharacterProfiles) c.IsSelected = false;
+            foreach (var a in AccountProfiles) a.IsSelected = false;
             ExecuteCopyProfilesCommand.RaiseCanExecuteChanged();
         });
 
@@ -115,8 +140,23 @@ public sealed partial class MainWindowViewModel
     {
         CharacterProfiles.Clear();
         SourceProfile = null;
+        AccountProfiles.Clear();
+        SourceAccountProfile = null;
         ProfileCopyStatus = "Loading characters...";
         ExecuteCopyProfilesCommand.RaiseCanExecuteChanged();
+
+        foreach (var userFile in _eveSettings.GetUserFiles(folderPath))
+        {
+            var userId = EveSettingsService.GetUserId(userFile);
+            if (userId is null) continue;
+            var account = new CharacterProfileItem { FilePath = userFile, CharacterId = userId, IsAccount = true };
+            account.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(CharacterProfileItem.IsSelected))
+                    ExecuteCopyProfilesCommand.RaiseCanExecuteChanged();
+            };
+            AccountProfiles.Add(account);
+        }
 
         var files = _eveSettings.GetCharacterFiles(folderPath);
         var items = new List<CharacterProfileItem>();
@@ -151,19 +191,31 @@ public sealed partial class MainWindowViewModel
 
     private async Task CopyProfilesAsync()
     {
-        if (SourceProfile is null) return;
-        var targets = CharacterProfiles.Where(c => c.IsSelected && c != SourceProfile).ToList();
-        if (targets.Count == 0) return;
+        var charSource = SourceProfile;
+        List<CharacterProfileItem> charTargets = charSource is null
+            ? []
+            : CharacterProfiles.Where(c => c.IsSelected && c != charSource).ToList();
+        var accountSource = SourceAccountProfile;
+        List<CharacterProfileItem> accountTargets = accountSource is null
+            ? []
+            : AccountProfiles.Where(a => a.IsSelected && a != accountSource).ToList();
+        if (charTargets.Count == 0 && accountTargets.Count == 0) return;
 
         ProfileCopyInProgress = true;
-        ProfileCopyStatus = $"Copying to {targets.Count} character(s)...";
+        ProfileCopyStatus = $"Copying to {charTargets.Count} character(s) and {accountTargets.Count} account(s)...";
 
         var errors = new List<string>();
         await Task.Run(() =>
         {
-            foreach (var target in targets)
+            foreach (var target in charTargets)
             {
-                var err = _eveSettings.CopyProfile(SourceProfile.FilePath, target.FilePath);
+                var err = _eveSettings.CopyProfile(charSource!.FilePath, target.FilePath);
+                if (err is not null)
+                    errors.Add($"{target.DisplayName}: {err}");
+            }
+            foreach (var target in accountTargets)
+            {
+                var err = _eveSettings.CopyProfile(accountSource!.FilePath, target.FilePath);
                 if (err is not null)
                     errors.Add($"{target.DisplayName}: {err}");
             }
@@ -172,7 +224,12 @@ public sealed partial class MainWindowViewModel
         ProfileCopyInProgress = false;
 
         if (errors.Count == 0)
-            ProfileCopyStatus = $"Done! Copied {SourceProfile.DisplayName}'s settings to {targets.Count} character(s). Originals backed up.";
+        {
+            var parts = new List<string>();
+            if (charTargets.Count > 0) parts.Add($"{charSource!.DisplayName}'s settings to {charTargets.Count} character(s)");
+            if (accountTargets.Count > 0) parts.Add($"{accountSource!.DisplayName}'s account settings to {accountTargets.Count} account(s)");
+            ProfileCopyStatus = $"Done! Copied {string.Join(" and ", parts)}. Originals backed up.";
+        }
         else
             ProfileCopyStatus = $"Completed with {errors.Count} error(s): {string.Join("; ", errors)}";
 

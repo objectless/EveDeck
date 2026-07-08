@@ -9,6 +9,7 @@ public sealed class EveSettingsService
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
     private static readonly Regex CharFileRegex = new(@"^core_char_(\d+)\.dat$", RegexOptions.IgnoreCase);
+    private static readonly Regex UserFileRegex = new(@"^core_user_(\d+)\.dat$", RegexOptions.IgnoreCase);
 
     public IReadOnlyList<string> FindSettingsFolders()
     {
@@ -57,6 +58,22 @@ public sealed class EveSettingsService
     public static string? GetCharacterId(string filePath)
     {
         var match = CharFileRegex.Match(Path.GetFileName(filePath));
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    // Per-account files. Window positions and other account-scoped UI state live here, NOT in
+    // core_char -- copying only the char files leaves window layouts diverging across clients.
+    public IReadOnlyList<string> GetUserFiles(string settingsFolder)
+    {
+        if (!Directory.Exists(settingsFolder)) return [];
+        return [.. Directory.GetFiles(settingsFolder, "core_user_*.dat")
+            .Where(f => UserFileRegex.IsMatch(Path.GetFileName(f)))
+            .OrderBy(f => f)];
+    }
+
+    public static string? GetUserId(string filePath)
+    {
+        var match = UserFileRegex.Match(Path.GetFileName(filePath));
         return match.Success ? match.Groups[1].Value : null;
     }
 
