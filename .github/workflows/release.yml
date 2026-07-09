@@ -14,10 +14,14 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
       notes: ${{ steps.notes.outputs.notes }}
-      sha256: ${{ steps.vt.outputs.sha256 }}
-      vt_url: ${{ steps.vt.outputs.vt_url }}
-      vt_summary: ${{ steps.vt.outputs.vt_summary }}
-      vt_clean: ${{ steps.vt.outputs.vt_clean }}
+      zip_sha256: ${{ steps.vt.outputs.zip_sha256 }}
+      zip_vt_url: ${{ steps.vt.outputs.zip_vt_url }}
+      zip_vt_summary: ${{ steps.vt.outputs.zip_vt_summary }}
+      zip_vt_clean: ${{ steps.vt.outputs.zip_vt_clean }}
+      installer_sha256: ${{ steps.vt.outputs.installer_sha256 }}
+      installer_vt_url: ${{ steps.vt.outputs.installer_vt_url }}
+      installer_vt_summary: ${{ steps.vt.outputs.installer_vt_summary }}
+      installer_vt_clean: ${{ steps.vt.outputs.installer_vt_clean }}
 
     steps:
       - uses: actions/checkout@v4
@@ -117,81 +121,90 @@ jobs:
             "/DMyAppVersion=${{ steps.ver.outputs.version }}" `
             "/DMySourceDir=$PWD\publish-ci"
 
-      - name: Scan release zip with VirusTotal
+      - name: Scan release files with VirusTotal
         id: vt
         shell: pwsh
+        # Scans both artifacts users can download (zip AND installer) -- they're different files
+        # with different hashes, so a badge for one says nothing about the other. Same function
+        # runs twice with a distinct output prefix; each prefix's outputs are independent.
         env:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
-          $zip = "EveDeck-v${{ steps.ver.outputs.version }}.zip"
-          $hash = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()
-          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          function Invoke-VtScan {
+            param([string]$Path, [string]$Prefix)
 
-          if (-not $env:VT_API_KEY) {
-            Write-Warning "VIRUSTOTAL_API_KEY not set; skipping VirusTotal scan."
-            "vt_url=" >> $env:GITHUB_OUTPUT
-            "vt_summary=scan skipped (no API key configured)" >> $env:GITHUB_OUTPUT
-            "vt_clean=" >> $env:GITHUB_OUTPUT
-            exit 0
-          }
+            $hash = (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLower()
+            "${Prefix}_sha256=$hash" >> $env:GITHUB_OUTPUT
 
-          $headers = @{ "x-apikey" = $env:VT_API_KEY }
-          $vtUrl = "https://www.virustotal.com/gui/file/$hash"
-          $stats = $null
+            if (-not $env:VT_API_KEY) {
+              Write-Warning "VIRUSTOTAL_API_KEY not set; skipping VirusTotal scan for $Path."
+              "${Prefix}_vt_url=" >> $env:GITHUB_OUTPUT
+              "${Prefix}_vt_summary=scan skipped (no API key configured)" >> $env:GITHUB_OUTPUT
+              "${Prefix}_vt_clean=" >> $env:GITHUB_OUTPUT
+              return
+            }
 
-          # A rebuild of an identical tree (rare, but possible) hashes the same -- skip a
-          # redundant upload/scan if VirusTotal already has a report for this exact file.
-          try {
-            $existing = Invoke-RestMethod -Uri "https://www.virustotal.com/api/v3/files/$hash" -Headers $headers -Method Get -ErrorAction Stop
-            $stats = $existing.data.attributes.last_analysis_stats
-          } catch { }
+            $headers = @{ "x-apikey" = $env:VT_API_KEY }
+            $vtUrl = "https://www.virustotal.com/gui/file/$hash"
+            $stats = $null
 
-          if (-not $stats) {
+            # A rebuild of an identical tree (rare, but possible) hashes the same -- skip a
+            # redundant upload/scan if VirusTotal already has a report for this exact file.
             try {
-              $upResp = Invoke-RestMethod -Uri "https://www.virustotal.com/api/v3/files/upload_url" -Headers $headers -Method Get
-              $submit = Invoke-RestMethod -Uri $upResp.data -Headers $headers -Method Post -Form @{ file = Get-Item -Path $zip }
-              $analysisId = $submit.data.id
+              $existing = Invoke-RestMethod -Uri "https://www.virustotal.com/api/v3/files/$hash" -Headers $headers -Method Get -ErrorAction Stop
+              $stats = $existing.data.attributes.last_analysis_stats
+            } catch { }
 
-              # Fresh files typically finish in 2-4 minutes; give it up to 10 before moving on
-              # rather than blocking the whole release on VirusTotal's queue.
-              for ($i = 0; $i -lt 40; $i++) {
-                Start-Sleep -Seconds 15
-                $analysis = Invoke-RestMethod -Uri "https://www.virustotal.com/api/v3/analyses/$analysisId" -Headers $headers -Method Get
-                if ($analysis.data.attributes.status -eq "completed") {
-                  $stats = $analysis.data.attributes.stats
-                  break
+            if (-not $stats) {
+              try {
+                $upResp = Invoke-RestMethod -Uri "https://www.virustotal.com/api/v3/files/upload_url" -Headers $headers -Method Get
+                $submit = Invoke-RestMethod -Uri $upResp.data -Headers $headers -Method Post -Form @{ file = Get-Item -Path $Path }
+                $analysisId = $submit.data.id
+
+                # Fresh files typically finish in 2-4 minutes; give it up to 10 before moving on
+                # rather than blocking the whole release on VirusTotal's queue.
+                for ($i = 0; $i -lt 40; $i++) {
+                  Start-Sleep -Seconds 15
+                  $analysis = Invoke-RestMethod -Uri "https://www.virustotal.com/api/v3/analyses/$analysisId" -Headers $headers -Method Get
+                  if ($analysis.data.attributes.status -eq "completed") {
+                    $stats = $analysis.data.attributes.stats
+                    break
+                  }
                 }
+              } catch {
+                Write-Warning "VirusTotal submission failed for $Path : $_"
               }
-            } catch {
-              Write-Warning "VirusTotal submission failed: $_"
+            }
+
+            if (-not $stats) {
+              Write-Warning "VirusTotal scan did not finish in time for $Path -- report may still be processing: $vtUrl"
+              "${Prefix}_vt_url=$vtUrl" >> $env:GITHUB_OUTPUT
+              "${Prefix}_vt_summary=scan submitted, still processing -- check the report directly" >> $env:GITHUB_OUTPUT
+              "${Prefix}_vt_clean=" >> $env:GITHUB_OUTPUT
+              return
+            }
+
+            $malicious = [int]$stats.malicious
+            $suspicious = [int]$stats.suspicious
+            $clean = [int]$stats.undetected + [int]$stats.harmless
+            $flagged = ($malicious -gt 0) -or ($suspicious -gt 0)
+            $summary = if ($flagged) {
+              "$malicious malicious / $suspicious suspicious (of $($clean + $malicious + $suspicious) engines) -- review before trusting this build"
+            } else {
+              "0/$clean detections — clean"
+            }
+
+            $cleanStr = if ($flagged) { "false" } else { "true" }
+            "${Prefix}_vt_url=$vtUrl" >> $env:GITHUB_OUTPUT
+            "${Prefix}_vt_summary=$summary" >> $env:GITHUB_OUTPUT
+            "${Prefix}_vt_clean=$cleanStr" >> $env:GITHUB_OUTPUT
+            if ($flagged) {
+              Write-Warning "VirusTotal flagged $Path : $summary -- $vtUrl"
             }
           }
 
-          if (-not $stats) {
-            Write-Warning "VirusTotal scan did not finish in time -- report may still be processing: $vtUrl"
-            "vt_url=$vtUrl" >> $env:GITHUB_OUTPUT
-            "vt_summary=scan submitted, still processing -- check the report directly" >> $env:GITHUB_OUTPUT
-            "vt_clean=" >> $env:GITHUB_OUTPUT
-            exit 0
-          }
-
-          $malicious = [int]$stats.malicious
-          $suspicious = [int]$stats.suspicious
-          $clean = [int]$stats.undetected + [int]$stats.harmless
-          $flagged = ($malicious -gt 0) -or ($suspicious -gt 0)
-          $summary = if ($flagged) {
-            "$malicious malicious / $suspicious suspicious (of $($clean + $malicious + $suspicious) engines) -- review before trusting this build"
-          } else {
-            "0/$clean detections — clean"
-          }
-
-          $cleanStr = if ($flagged) { "false" } else { "true" }
-          "vt_url=$vtUrl" >> $env:GITHUB_OUTPUT
-          "vt_summary=$summary" >> $env:GITHUB_OUTPUT
-          "vt_clean=$cleanStr" >> $env:GITHUB_OUTPUT
-          if ($flagged) {
-            Write-Warning "VirusTotal flagged this build: $summary -- $vtUrl"
-          }
+          Invoke-VtScan -Path "EveDeck-v${{ steps.ver.outputs.version }}.zip" -Prefix "zip"
+          Invoke-VtScan -Path "app\installer\output\EveDeck-Setup-v${{ steps.ver.outputs.version }}.exe" -Prefix "installer"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -214,7 +227,9 @@ jobs:
 
             ---
 
-            🛡️ **VirusTotal** (zip): [${{ steps.vt.outputs.vt_summary }}](${{ steps.vt.outputs.vt_url }}) (SHA-256 `${{ steps.vt.outputs.sha256 }}`)
+            🛡️ **VirusTotal**
+            - zip: [${{ steps.vt.outputs.zip_vt_summary }}](${{ steps.vt.outputs.zip_vt_url }}) (SHA-256 `${{ steps.vt.outputs.zip_sha256 }}`)
+            - installer: [${{ steps.vt.outputs.installer_vt_summary }}](${{ steps.vt.outputs.installer_vt_url }}) (SHA-256 `${{ steps.vt.outputs.installer_sha256 }}`)
           files: |
             EveDeck-v${{ steps.ver.outputs.version }}.zip
             app/installer/output/EveDeck-Setup-v${{ steps.ver.outputs.version }}.exe
@@ -242,20 +257,28 @@ jobs:
         env:
           VERSION: ${{ needs.build-and-release.outputs.version }}
           NOTES: ${{ needs.build-and-release.outputs.notes }}
-          SHA256: ${{ needs.build-and-release.outputs.sha256 }}
-          VT_URL: ${{ needs.build-and-release.outputs.vt_url }}
-          VT_SUMMARY: ${{ needs.build-and-release.outputs.vt_summary }}
-          VT_CLEAN: ${{ needs.build-and-release.outputs.vt_clean }}
+          ZIP_SHA256: ${{ needs.build-and-release.outputs.zip_sha256 }}
+          ZIP_VT_URL: ${{ needs.build-and-release.outputs.zip_vt_url }}
+          ZIP_VT_SUMMARY: ${{ needs.build-and-release.outputs.zip_vt_summary }}
+          ZIP_VT_CLEAN: ${{ needs.build-and-release.outputs.zip_vt_clean }}
+          INSTALLER_SHA256: ${{ needs.build-and-release.outputs.installer_sha256 }}
+          INSTALLER_VT_URL: ${{ needs.build-and-release.outputs.installer_vt_url }}
+          INSTALLER_VT_SUMMARY: ${{ needs.build-and-release.outputs.installer_vt_summary }}
+          INSTALLER_VT_CLEAN: ${{ needs.build-and-release.outputs.installer_vt_clean }}
         run: |
           # Same changelog text as the GitHub release body (both come from the annotated tag
           # message) — turn each "- bullet" line into its own whatsNew array entry instead of
           # falling back to the script's generic placeholder.
           mapfile -t BULLETS < <(echo "$NOTES" | sed -n 's/^[[:space:]]*[-*][[:space:]]*//p')
           FLAGS=("--installer-url=https://github.com/objectless/EveDeck/releases/download/v$VERSION/EveDeck-Setup-v$VERSION.exe")
-          [ -n "$SHA256" ] && FLAGS+=("--sha256=$SHA256")
-          [ -n "$VT_URL" ] && FLAGS+=("--virustotal-url=$VT_URL")
-          [ -n "$VT_SUMMARY" ] && FLAGS+=("--virustotal-summary=$VT_SUMMARY")
-          [ -n "$VT_CLEAN" ] && FLAGS+=("--virustotal-clean=$VT_CLEAN")
+          [ -n "$ZIP_SHA256" ] && FLAGS+=("--sha256=$ZIP_SHA256")
+          [ -n "$ZIP_VT_URL" ] && FLAGS+=("--virustotal-url=$ZIP_VT_URL")
+          [ -n "$ZIP_VT_SUMMARY" ] && FLAGS+=("--virustotal-summary=$ZIP_VT_SUMMARY")
+          [ -n "$ZIP_VT_CLEAN" ] && FLAGS+=("--virustotal-clean=$ZIP_VT_CLEAN")
+          [ -n "$INSTALLER_SHA256" ] && FLAGS+=("--installer-sha256=$INSTALLER_SHA256")
+          [ -n "$INSTALLER_VT_URL" ] && FLAGS+=("--installer-virustotal-url=$INSTALLER_VT_URL")
+          [ -n "$INSTALLER_VT_SUMMARY" ] && FLAGS+=("--installer-virustotal-summary=$INSTALLER_VT_SUMMARY")
+          [ -n "$INSTALLER_VT_CLEAN" ] && FLAGS+=("--installer-virustotal-clean=$INSTALLER_VT_CLEAN")
           node scripts/add-release.mjs "$VERSION" \
             "https://github.com/objectless/EveDeck/releases/download/v$VERSION/EveDeck-v$VERSION.zip" \
             "${FLAGS[@]}" "${BULLETS[@]}"
