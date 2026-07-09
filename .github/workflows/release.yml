@@ -87,6 +87,7 @@ jobs:
         # existing at publish time (see EveDeck.csproj) -- must run before "Publish self-contained".
         run: |
           cd app\src\MumblePlugin
+          if not exist bin mkdir bin
           cl /nologo /LD /O2 /EHsc /std:c++17 /W4 /DUNICODE /D_UNICODE EveDeckMumblePlugin.cpp /Fe:bin\EveDeckMumblePlugin.dll /Fo:bin\
 
       - name: Publish self-contained
