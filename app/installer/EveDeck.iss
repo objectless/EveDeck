@@ -47,6 +47,11 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 LicenseFile=..\..\LICENSE
+; The in-app silent-update flow (Services/UpdateApplyService.cs) re-runs this installer with
+; /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS -- spelled out explicitly here rather than relying on
+; Inno's own defaults, since that flow depends on both being enabled.
+CloseApplications=yes
+RestartApplications=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -63,7 +68,12 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+; No skipifsilent: the in-app silent-update flow (Services/UpdateApplyService.cs) depends on this
+; relaunching EveDeck after a /VERYSILENT install -- confirmed via local testing that /VERYSILENT
+; installs otherwise finish with the app closed and nothing bringing it back (/RESTARTAPPLICATIONS
+; alone did not reliably relaunch it). Safe for interactive installs too: postinstall already
+; means "launch after finishing", this only removes the silent-mode exception to that.
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall
 
 [UninstallDelete]
 ; EveDeck writes settings.json/logs to %LOCALAPPDATA%\EveDeck, not the install dir -- left in

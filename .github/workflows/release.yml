@@ -14,10 +14,10 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
       notes: ${{ steps.notes.outputs.notes }}
-      zip_sha256: ${{ steps.vt.outputs.zip_sha256 }}
-      zip_vt_url: ${{ steps.vt.outputs.zip_vt_url }}
-      zip_vt_summary: ${{ steps.vt.outputs.zip_vt_summary }}
-      zip_vt_clean: ${{ steps.vt.outputs.zip_vt_clean }}
+      portable_sha256: ${{ steps.vt.outputs.portable_sha256 }}
+      portable_vt_url: ${{ steps.vt.outputs.portable_vt_url }}
+      portable_vt_summary: ${{ steps.vt.outputs.portable_vt_summary }}
+      portable_vt_clean: ${{ steps.vt.outputs.portable_vt_clean }}
       installer_sha256: ${{ steps.vt.outputs.installer_sha256 }}
       installer_vt_url: ${{ steps.vt.outputs.installer_vt_url }}
       installer_vt_summary: ${{ steps.vt.outputs.installer_vt_summary }}
@@ -101,10 +101,21 @@ jobs:
             -c Release --self-contained -r win-x64 `
             -o publish-ci
 
-      - name: Package as zip
+      - name: Package portable app with Velopack
         shell: pwsh
+        # Replaces the old plain zip with a Velopack-managed self-updating portable package (the
+        # app's UpdateApplyService applies updates via Velopack for this track). Output filenames
+        # are fixed by Velopack itself, not chosen here -- confirmed via a local `vpk pack` run:
+        # Releases\EveDeck-win-Portable.zip (the human-facing download), EveDeck-<ver>-full.nupkg
+        # + releases.win.json/RELEASES/assets.win.json (the update feed GithubSource reads), and
+        # EveDeck-win-Setup.exe (Velopack's own installer, which we don't surface -- Inno Setup is
+        # the installer track instead). `vpk download` seeds delta-patch generation from the prior
+        # release; harmless no-op on the very first run when there's nothing to seed from yet.
         run: |
-          Compress-Archive -Path publish-ci\* -DestinationPath "EveDeck-v${{ steps.ver.outputs.version }}.zip"
+          dotnet tool install -g vpk
+          vpk download github --repoUrl https://github.com/objectless/EveDeck --token ${{ secrets.GITHUB_TOKEN }}
+          vpk pack -u EveDeck -v ${{ steps.ver.outputs.version }} -p publish-ci -e EveDeck.exe `
+            --packTitle EveDeck --icon app\src\EveDeck\Assets\evedeck.ico
 
       - name: Build installer (Inno Setup)
         shell: pwsh
@@ -124,9 +135,11 @@ jobs:
       - name: Scan release files with VirusTotal
         id: vt
         shell: pwsh
-        # Scans both artifacts users can download (zip AND installer) -- they're different files
-        # with different hashes, so a badge for one says nothing about the other. Same function
-        # runs twice with a distinct output prefix; each prefix's outputs are independent.
+        # Scans both artifacts users can download (portable package AND installer) -- they're
+        # different files with different hashes, so a badge for one says nothing about the other.
+        # Doesn't scan the Velopack nupkg/feed files -- those aren't something a user downloads
+        # directly. Same function runs twice with a distinct output prefix; each prefix's outputs
+        # are independent.
         env:
           VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
@@ -145,8 +158,12 @@ jobs:
             }
 
             $headers = @{ "x-apikey" = $env:VT_API_KEY }
-            $vtUrl = "https://www.virustotal.com/gui/file/$hash"
+            # The hash-based report page 404s until VirusTotal has fully indexed the file, which
+            # for a brand-new hash can outlast our poll window below (or never happen at all if
+            # the upload silently failed) -- only safe to link to once we actually have a verdict.
+            $fileUrl = "https://www.virustotal.com/gui/file/$hash"
             $stats = $null
+            $analysisId = $null
 
             # A rebuild of an identical tree (rare, but possible) hashes the same -- skip a
             # redundant upload/scan if VirusTotal already has a report for this exact file.
@@ -173,14 +190,29 @@ jobs:
                 }
               } catch {
                 Write-Warning "VirusTotal submission failed for $Path : $_"
+                $analysisId = $null
               }
             }
 
             if (-not $stats) {
-              Write-Warning "VirusTotal scan did not finish in time for $Path -- report may still be processing: $vtUrl"
-              "${Prefix}_vt_url=$vtUrl" >> $env:GITHUB_OUTPUT
-              "${Prefix}_vt_summary=scan submitted, still processing -- check the report directly" >> $env:GITHUB_OUTPUT
-              "${Prefix}_vt_clean=" >> $env:GITHUB_OUTPUT
+              if ($analysisId) {
+                # Submission succeeded, VirusTotal just hasn't finished analyzing yet -- the
+                # analysis-status page is valid immediately (unlike the file-hash page above)
+                # and shows live progress, so link there instead of a page that would 404.
+                $analysisUrl = "https://www.virustotal.com/gui/file-analysis/$analysisId"
+                Write-Warning "VirusTotal scan did not finish in time for $Path -- still processing: $analysisUrl"
+                "${Prefix}_vt_url=$analysisUrl" >> $env:GITHUB_OUTPUT
+                "${Prefix}_vt_summary=scan submitted, still processing -- check the report directly" >> $env:GITHUB_OUTPUT
+                "${Prefix}_vt_clean=" >> $env:GITHUB_OUTPUT
+              } else {
+                # Never actually got a report or an analysis id -- no VirusTotal page exists for
+                # this hash yet, so don't link to one. The scheduled recheck will keep polling by
+                # hash and pick this up automatically if the file ever does get scanned.
+                Write-Warning "VirusTotal submission failed for $Path -- no report available yet."
+                "${Prefix}_vt_url=" >> $env:GITHUB_OUTPUT
+                "${Prefix}_vt_summary=scan submission failed -- will retry automatically" >> $env:GITHUB_OUTPUT
+                "${Prefix}_vt_clean=" >> $env:GITHUB_OUTPUT
+              }
               return
             }
 
@@ -195,15 +227,15 @@ jobs:
             }
 
             $cleanStr = if ($flagged) { "false" } else { "true" }
-            "${Prefix}_vt_url=$vtUrl" >> $env:GITHUB_OUTPUT
+            "${Prefix}_vt_url=$fileUrl" >> $env:GITHUB_OUTPUT
             "${Prefix}_vt_summary=$summary" >> $env:GITHUB_OUTPUT
             "${Prefix}_vt_clean=$cleanStr" >> $env:GITHUB_OUTPUT
             if ($flagged) {
-              Write-Warning "VirusTotal flagged $Path : $summary -- $vtUrl"
+              Write-Warning "VirusTotal flagged $Path : $summary -- $fileUrl"
             }
           }
 
-          Invoke-VtScan -Path "EveDeck-v${{ steps.ver.outputs.version }}.zip" -Prefix "zip"
+          Invoke-VtScan -Path "Releases\EveDeck-win-Portable.zip" -Prefix "portable"
           Invoke-VtScan -Path "app\installer\output\EveDeck-Setup-v${{ steps.ver.outputs.version }}.exe" -Prefix "installer"
 
       - name: Create GitHub Release
@@ -217,10 +249,10 @@ jobs:
             **Two ways to install:**
             - **EveDeck-Setup-v${{ steps.ver.outputs.version }}.exe** — normal Windows installer (Start Menu
               shortcut, proper uninstaller, no admin rights needed). Recommended for most people.
-            - **EveDeck-v${{ steps.ver.outputs.version }}.zip** — portable, just extract and run
-              **EveDeck.exe**.
+            - **EveDeck-win-Portable.zip** — portable, just extract and run **EveDeck.exe**.
 
-            No .NET runtime required either way — everything is bundled.
+            No .NET runtime required either way — everything is bundled. Both tracks self-update in
+            place (Options → About → Check for Updates, or the update banner).
 
             > **Windows SmartScreen:** click **More info → Run anyway** on first launch.
             > Right-click → Properties → Unblock also removes the prompt permanently.
@@ -228,10 +260,14 @@ jobs:
             ---
 
             🛡️ **VirusTotal**
-            - zip: [${{ steps.vt.outputs.zip_vt_summary }}](${{ steps.vt.outputs.zip_vt_url }}) (SHA-256 `${{ steps.vt.outputs.zip_sha256 }}`)
+            - portable: [${{ steps.vt.outputs.portable_vt_summary }}](${{ steps.vt.outputs.portable_vt_url }}) (SHA-256 `${{ steps.vt.outputs.portable_sha256 }}`)
             - installer: [${{ steps.vt.outputs.installer_vt_summary }}](${{ steps.vt.outputs.installer_vt_url }}) (SHA-256 `${{ steps.vt.outputs.installer_sha256 }}`)
           files: |
-            EveDeck-v${{ steps.ver.outputs.version }}.zip
+            Releases/EveDeck-win-Portable.zip
+            Releases/*.nupkg
+            Releases/releases.win.json
+            Releases/RELEASES
+            Releases/assets.win.json
             app/installer/output/EveDeck-Setup-v${{ steps.ver.outputs.version }}.exe
 
   update-site:
@@ -257,10 +293,10 @@ jobs:
         env:
           VERSION: ${{ needs.build-and-release.outputs.version }}
           NOTES: ${{ needs.build-and-release.outputs.notes }}
-          ZIP_SHA256: ${{ needs.build-and-release.outputs.zip_sha256 }}
-          ZIP_VT_URL: ${{ needs.build-and-release.outputs.zip_vt_url }}
-          ZIP_VT_SUMMARY: ${{ needs.build-and-release.outputs.zip_vt_summary }}
-          ZIP_VT_CLEAN: ${{ needs.build-and-release.outputs.zip_vt_clean }}
+          PORTABLE_SHA256: ${{ needs.build-and-release.outputs.portable_sha256 }}
+          PORTABLE_VT_URL: ${{ needs.build-and-release.outputs.portable_vt_url }}
+          PORTABLE_VT_SUMMARY: ${{ needs.build-and-release.outputs.portable_vt_summary }}
+          PORTABLE_VT_CLEAN: ${{ needs.build-and-release.outputs.portable_vt_clean }}
           INSTALLER_SHA256: ${{ needs.build-and-release.outputs.installer_sha256 }}
           INSTALLER_VT_URL: ${{ needs.build-and-release.outputs.installer_vt_url }}
           INSTALLER_VT_SUMMARY: ${{ needs.build-and-release.outputs.installer_vt_summary }}
@@ -271,16 +307,19 @@ jobs:
           # falling back to the script's generic placeholder.
           mapfile -t BULLETS < <(echo "$NOTES" | sed -n 's/^[[:space:]]*[-*][[:space:]]*//p')
           FLAGS=("--installer-url=https://github.com/objectless/EveDeck/releases/download/v$VERSION/EveDeck-Setup-v$VERSION.exe")
-          [ -n "$ZIP_SHA256" ] && FLAGS+=("--sha256=$ZIP_SHA256")
-          [ -n "$ZIP_VT_URL" ] && FLAGS+=("--virustotal-url=$ZIP_VT_URL")
-          [ -n "$ZIP_VT_SUMMARY" ] && FLAGS+=("--virustotal-summary=$ZIP_VT_SUMMARY")
-          [ -n "$ZIP_VT_CLEAN" ] && FLAGS+=("--virustotal-clean=$ZIP_VT_CLEAN")
+          [ -n "$PORTABLE_SHA256" ] && FLAGS+=("--sha256=$PORTABLE_SHA256")
+          [ -n "$PORTABLE_VT_URL" ] && FLAGS+=("--virustotal-url=$PORTABLE_VT_URL")
+          [ -n "$PORTABLE_VT_SUMMARY" ] && FLAGS+=("--virustotal-summary=$PORTABLE_VT_SUMMARY")
+          [ -n "$PORTABLE_VT_CLEAN" ] && FLAGS+=("--virustotal-clean=$PORTABLE_VT_CLEAN")
           [ -n "$INSTALLER_SHA256" ] && FLAGS+=("--installer-sha256=$INSTALLER_SHA256")
           [ -n "$INSTALLER_VT_URL" ] && FLAGS+=("--installer-virustotal-url=$INSTALLER_VT_URL")
           [ -n "$INSTALLER_VT_SUMMARY" ] && FLAGS+=("--installer-virustotal-summary=$INSTALLER_VT_SUMMARY")
           [ -n "$INSTALLER_VT_CLEAN" ] && FLAGS+=("--installer-virustotal-clean=$INSTALLER_VT_CLEAN")
+          # downloadUrl / sha256 / virustotal-* here describe the Velopack portable package now,
+          # not a plain zip -- reusing the same content.ts fields (no schema change) since this is
+          # a replacement, not an addition, of the old portable download.
           node scripts/add-release.mjs "$VERSION" \
-            "https://github.com/objectless/EveDeck/releases/download/v$VERSION/EveDeck-v$VERSION.zip" \
+            "https://github.com/objectless/EveDeck/releases/download/v$VERSION/EveDeck-win-Portable.zip" \
             "${FLAGS[@]}" "${BULLETS[@]}"
 
       - name: Commit content.ts update

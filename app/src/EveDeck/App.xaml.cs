@@ -2,6 +2,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
+using Velopack;
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 
@@ -11,6 +12,19 @@ public partial class App : Application
 {
     private Mutex? _singleInstanceMutex;
     private bool _ownsSingleInstanceMutex;
+
+    // App.xaml is no longer an ApplicationDefinition (see EveDeck.csproj), so this is the real
+    // entry point. VelopackApp.Build().Run() must be the very first thing that runs -- it handles
+    // Velopack's own hidden install/update/uninstall shortcut-management invocations and exits
+    // immediately when called that way, so nothing below it runs in that case (by design).
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        VelopackApp.Build().Run();
+        var app = new App();
+        app.InitializeComponent();
+        app.Run();
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -50,14 +64,12 @@ public partial class App : Application
 
         base.OnStartup(e);
 
-        if (MainWindow is not null)
-        {
-            MainWindow.ContentRendered += (_, _) => CloseSplash(splash);
-        }
-        else
-        {
-            CloseSplash(splash);
-        }
+        // No StartupUri anymore (see EveDeck.csproj) -- base.OnStartup no longer creates the
+        // window for us, so do it explicitly.
+        var mainWindow = new Views.MainWindow();
+        MainWindow = mainWindow;
+        mainWindow.ContentRendered += (_, _) => CloseSplash(splash);
+        mainWindow.Show();
     }
 
     private static void CloseSplash(Window splash)

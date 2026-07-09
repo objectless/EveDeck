@@ -65,6 +65,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private UpdateCheckService.UpdateInfo? _availableUpdate;
     private bool _updateBannerDismissed;
+    private bool _isCheckingForUpdate;
     private bool _configResetBannerDismissed;
     private IReadOnlyList<string> _hotkeyConflicts = Array.Empty<string>();
     private bool _hotkeyConflictBannerDismissed;
@@ -139,12 +140,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         DismissUpdateBannerCommand = new RelayCommand(() => { _updateBannerDismissed = true; OnPropertyChanged(nameof(ShowUpdateBanner)); });
         DismissConfigResetBannerCommand = new RelayCommand(() => { _configResetBannerDismissed = true; OnPropertyChanged(nameof(ShowConfigResetBanner)); });
         DismissHotkeyConflictBannerCommand = new RelayCommand(() => { _hotkeyConflictBannerDismissed = true; OnPropertyChanged(nameof(ShowHotkeyConflictBanner)); });
-        OpenUpdateUrlCommand = new RelayCommand(() =>
-        {
-            if (_availableUpdate?.DownloadUrl is { } url)
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
-                catch (Exception ex) { Log.Error($"Could not open link: {ex.Message}"); }
-        });
+        InstallUpdateCommand = new RelayCommand(() => _ = InstallUpdateAsync());
+        CheckForUpdateCommand = new RelayCommand(() => _ = CheckForUpdateAsync(manual: true));
         SpawnTestWindowsCommand = new RelayCommand(SpawnTestWindows);
         AutoSelectBestProfileCommand = new RelayCommand(AutoSelectBestProfile);
         SetMasterResolutionCommand = new RelayCommand(ExecuteSetMasterResolution, () => SelectedMasterResolution is not null && SelectedProfile is not null);
@@ -188,6 +185,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         LaunchGroupCommand = new RelayCommand(LaunchGroup, parameter => parameter is Models.CharacterSet);
         AddChatAlertRuleCommand = new RelayCommand(AddChatAlertRule);
         RemoveChatAlertRuleCommand = new RelayCommand(RemoveChatAlertRule, parameter => parameter is ChatAlertRule);
+        AddOverlayAllowedAppCommand = new RelayCommand(AddOverlayAllowedApp);
+        RemoveOverlayAllowedAppCommand = new RelayCommand(RemoveOverlayAllowedApp, parameter => parameter is Models.OverlayAllowedApp);
 
         // ── Views ─────────────────────────────────────────────────
         SelectedProfile = Profiles.FirstOrDefault(p => p.Id == _settings.ActiveProfileId) ?? Profiles.FirstOrDefault();
@@ -258,19 +257,77 @@ public sealed partial class MainWindowViewModel : ObservableObject
     partial void InitProfileCopy();
     partial void InitMumbleBridge();
 
-    private async Task CheckForUpdateAsync()
+    private async Task CheckForUpdateAsync(bool manual = false)
     {
+        if (manual)
+        {
+            _isCheckingForUpdate = true;
+            UpdateCheckStatusText = "Checking for updates...";
+            OnPropertyChanged(nameof(UpdateCheckStatusText));
+            OnPropertyChanged(nameof(IsCheckingForUpdate));
+        }
+
+        UpdateCheckService.UpdateInfo? info = null;
         var current = Assembly.GetExecutingAssembly().GetName().Version;
-        if (current is null) return;
-        var currentStr = $"{current.Major}.{current.Minor}.{current.Build}";
-        var info = await new UpdateCheckService(Log).CheckAsync(currentStr);
-        if (info is null) return;
-        _availableUpdate = info;
+        if (current is not null)
+        {
+            var currentStr = $"{current.Major}.{current.Minor}.{current.Build}";
+            info = await new UpdateCheckService(Log).CheckAsync(currentStr);
+            if (info is not null) _availableUpdate = info;
+        }
+
         App.Current.Dispatcher.Invoke(() =>
         {
             OnPropertyChanged(nameof(ShowUpdateBanner));
             OnPropertyChanged(nameof(UpdateVersionText));
+            if (!manual) return;
+            _isCheckingForUpdate = false;
+            UpdateCheckStatusText = info is not null ? $"EveDeck {info.Version} is available" : "You're up to date.";
+            OnPropertyChanged(nameof(UpdateCheckStatusText));
+            OnPropertyChanged(nameof(IsCheckingForUpdate));
         });
+    }
+
+    private async Task InstallUpdateAsync()
+    {
+        if (_availableUpdate is not { } update) return;
+
+        var kind = new UpdateApplyService(Log).DetectInstallKind();
+        var canApplyInPlace = kind switch
+        {
+            InstallKind.Velopack => true,
+            InstallKind.Inno => update.InstallerUrl is not null,
+            _ => false
+        };
+
+        if (!canApplyInPlace)
+        {
+            if (update.DownloadUrl is { } url)
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+                catch (Exception ex) { Log.Error($"Could not open link: {ex.Message}"); }
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"EveDeck will close and update to v{update.Version}. Continue?",
+            "Update EveDeck",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        try
+        {
+            var apply = new UpdateApplyService(Log);
+            if (kind == InstallKind.Inno)
+                await apply.ApplyInnoUpdateAsync(update.InstallerUrl!);
+            else
+                await apply.ApplyVelopackUpdateAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Update failed: {ex.Message}");
+            MessageBox.Show($"The update could not be applied: {ex.Message}", "Update EveDeck", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     // ── Observables ────────────────────────────────────────────────────────────
@@ -334,6 +391,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public RelayCommand LaunchGroupCommand { get; }
     public RelayCommand AddChatAlertRuleCommand { get; }
     public RelayCommand RemoveChatAlertRuleCommand { get; }
+    public RelayCommand AddOverlayAllowedAppCommand { get; }
+    public RelayCommand RemoveOverlayAllowedAppCommand { get; }
 
     // ── Master resolution picker (VSR/DSR supersampling) ───────────────────────
 
@@ -494,7 +553,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool ShowUpdateBanner => _availableUpdate is not null && !_updateBannerDismissed;
     public string UpdateVersionText => _availableUpdate is not null ? $"EveDeck {_availableUpdate.Version} is available" : "";
     public ICommand DismissUpdateBannerCommand { get; }
-    public ICommand OpenUpdateUrlCommand { get; }
+    public ICommand InstallUpdateCommand { get; }
+    public ICommand CheckForUpdateCommand { get; }
+    public string UpdateCheckStatusText { get; private set; } = "";
+    public bool IsCheckingForUpdate => _isCheckingForUpdate;
 
     public bool ShowConfigResetBanner => _configService.WasResetFromCorruption && !_configResetBannerDismissed;
     public ICommand DismissConfigResetBannerCommand { get; }
@@ -566,6 +628,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         "Center Master" => PresetFactory.CenterMasterResolutionOptions,
         "Whammy Board" => PresetFactory.WhammyResolutionOptions,
         "Side Stack" => PresetFactory.SideStackResolutionOptions,
+        "Twin Stack" => PresetFactory.TwinStackResolutionOptions,
         _ => Array.Empty<DisplayModeOption>(),
     };
 
@@ -575,6 +638,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         "Center Master" => PresetFactory.CenterMasterCountOptions,
         "Whammy Board" => PresetFactory.WhammyCountOptions,
         "Side Stack" => PresetFactory.SideStackCountOptions,
+        "Twin Stack" => PresetFactory.TwinStackCountOptions,
         _ => Array.Empty<int>(),
     };
 

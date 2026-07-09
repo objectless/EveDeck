@@ -1,7 +1,6 @@
 <Application x:Class="EveDeck.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="Views/MainWindow.xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Application.Resources>
     <!-- Color palette — EVE Online "captain's quarters" space aesthetic: deep void blue-blacks,
          cool starlight text, and a holographic cyan accent (Fenris Creations' signature UI cyan). -->
