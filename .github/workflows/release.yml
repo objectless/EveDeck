@@ -251,7 +251,7 @@ jobs:
           # message) — turn each "- bullet" line into its own whatsNew array entry instead of
           # falling back to the script's generic placeholder.
           mapfile -t BULLETS < <(echo "$NOTES" | sed -n 's/^[[:space:]]*[-*][[:space:]]*//p')
-          FLAGS=()
+          FLAGS=("--installer-url=https://github.com/objectless/EveDeck/releases/download/v$VERSION/EveDeck-Setup-v$VERSION.exe")
           [ -n "$SHA256" ] && FLAGS+=("--sha256=$SHA256")
           [ -n "$VT_URL" ] && FLAGS+=("--virustotal-url=$VT_URL")
           [ -n "$VT_SUMMARY" ] && FLAGS+=("--virustotal-summary=$VT_SUMMARY")
