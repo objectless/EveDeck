@@ -1,0 +1,84 @@
+name: Recheck VirusTotal status
+
+# The release job's own VT scan gives up after a 10-minute poll per file and
+# leaves the entry as "still processing" if VirusTotal's queue is backed up.
+# This runs on a schedule to pick up the final verdict once it's actually
+# ready, and patches content.ts + redeploys so the badge on /releases stops
+# lying. Cheap to run often: the first step exits immediately unless there's
+# at least one release still marked "still processing".
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  recheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout EveDeck-site
+        uses: actions/checkout@v4
+        with:
+          repository: objectless/EveDeck-site
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
+          ref: main
+
+      - name: Check for pending scans
+        id: pending
+        run: |
+          if grep -q "still processing" src/lib/content.ts; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node 22
+        if: steps.pending.outputs.found == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Recheck VirusTotal reports
+        if: steps.pending.outputs.found == 'true'
+        env:
+          VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: node scripts/recheck-vt.mjs
+
+      - name: Commit content.ts update
+        if: steps.pending.outputs.found == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/lib/content.ts
+          if git diff --cached --quiet; then
+            echo "content.ts unchanged — nothing to commit"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "chore: refresh VirusTotal scan results
+
+          Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+            git push origin HEAD:main
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+        id: commit
+
+      - name: Setup SSH and deploy
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_REMOTE_HOST: ${{ secrets.DEPLOY_REMOTE_HOST }}
+          DEPLOY_REMOTE_USER: ${{ secrets.DEPLOY_REMOTE_USER }}
+          DEPLOY_REMOTE_PATH: ${{ secrets.DEPLOY_REMOTE_PATH }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          printf '%s' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          ssh-keyscan -H "$DEPLOY_REMOTE_HOST" >> "$HOME/.ssh/known_hosts"
+          chmod +x deploy/deploy.sh deploy/deploy-rsync.sh
+          export EVEDECK_LOCAL_PATH="${{ github.workspace }}/"
+          export EVEDECK_KEY_SSH="$HOME/.ssh/deploy_key"
+          export EVEDECK_REMOTE_HOST="$DEPLOY_REMOTE_HOST"
+          export EVEDECK_REMOTE_USER="$DEPLOY_REMOTE_USER"
+          export EVEDECK_REMOTE_PATH="$DEPLOY_REMOTE_PATH"
+          export EVEDECK_APP_NAME="evedeck"
+          export EVEDECK_HEALTHCHECK_URL="https://evedeck.space/health"
+          bash deploy/deploy.sh

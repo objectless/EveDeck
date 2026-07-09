@@ -47,6 +47,7 @@ slot; click to swap. It reverts the moment your cursor leaves.
 **Grid**, **Center Master**, **Whammy Board**, **Side Stack**, **Stacked / 1-Char /
 Overlap** — plus fully custom profiles. An on-monitor WYSIWYG editor lets you drag slots
 to move, drag edges to resize, and snap to the grid. What you draw is exactly what you get.
+If a seat's client isn't running, the next seat in line is promoted to master until it returns.
 
 🧑‍🚀 **Character identity &amp; ESI** — character names and portraits via EVE SSO (PKCE
 OAuth). Fixed seats (*Model A*): accounts keep their seat and labels never scramble —
@@ -56,8 +57,10 @@ window positions rotate, identities don't. No passwords, ever.
 master, focus by screen direction, or follow a named character wherever they've rotated to.
 Gated mode fires keys only while EVE is the active app.
 
-🖥️ **Desktop &amp; system** — borderless toggling, active-window frame glow, tray mode,
-auto-apply on client launch, per-profile taskbar avoidance, and full multi-monitor support.
+🖥️ **Desktop &amp; system** — borderless toggling, active-window frame glow, focus-aware
+always-on-top pins (only topmost while EVE is foreground), tray mode, auto-apply on client
+launch, in-app update checks, rolling settings backups, per-profile taskbar avoidance,
+background CPU throttling for inactive clients, and full multi-monitor support.
 
 📋 **Profile Sync** — copy one character's EVE settings to any number of alts in a click:
 both per-character (`core_char`) and per-account (`core_user`) files, so window positions
@@ -66,6 +69,11 @@ and UI are truly 1:1 across every client. Originals are timestamp-backed-up firs
 🎙️ **Comms overlay** — pin Mumble's Talking UI on top of your layout: drag it anywhere,
 resize from any edge, lock it in place, and set its transparency. It's the real Mumble
 window — fully interactive, restored untouched when you detach.
+
+🔔 **Launch Groups &amp; Chat Alerts** — save multiple named character rosters (Character
+Sets) and launch a whole fleet with staggered EVE Launcher clicks; Chat Alerts watches your
+chatlogs for keywords per character and flashes the matching seat with a sound the moment
+one hits.
 
 📋 **Resolution independent** — layout slots are stored as fractional rects, so one profile
 works at 1440p, 4K, or any AMD VSR / Nvidia DSR virtual resolution, with an optional
