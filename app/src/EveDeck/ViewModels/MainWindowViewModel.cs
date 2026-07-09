@@ -37,11 +37,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
     // Debounce auto-apply so all clients have time to launch and settle before we move them.
     private readonly DispatcherTimer _autoApplyTimer = new() { Interval = TimeSpan.FromSeconds(3) };
 
-    // Dedicated fast cadence for the Mumble Talking UI overlay's position/size tracking -- Mumble
-    // auto-resizes that panel as its speaker roster changes, and waiting for the heavier 5s
-    // _refreshTimer/MaintainUtilityOverlays() reconciliation made the chrome visibly lag behind.
-    // Only runs while the overlay is actually attached (see MainWindowViewModel.UtilityOverlays.cs).
-    private readonly DispatcherTimer _mumbleOverlayRepositionTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly Dictionary<int, nint> _lastFocusedHandle = new();
 
     // Titles of assigned EVE windows seen at the previous refresh, used to detect newly-launched
@@ -210,8 +205,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         // ── Timers ────────────────────────────────────────────────
         _refreshTimer.Tick += (_, _) => Refresh();
         _autoSaveTimer.Tick += (_, _) => { _autoSaveTimer.Stop(); Save(); };
-        _mumbleOverlayRepositionTimer.Tick += (_, _) => MaintainMumbleOverlayPosition();
-        if (_settings.MumbleOverlay.Enabled) _mumbleOverlayRepositionTimer.Start();
         _autoApplyTimer.Tick += (_, _) =>
         {
             _autoApplyTimer.Stop();
@@ -259,9 +252,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Log.Info("EveDeck started.");
         _ = CheckForUpdateAsync();
         InitProfileCopy();
+        InitMumbleBridge();
     }
 
     partial void InitProfileCopy();
+    partial void InitMumbleBridge();
 
     private async Task CheckForUpdateAsync()
     {
@@ -1646,7 +1641,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             // surfaces that snapshot them (they are not data-bound to DisplayLabel directly).
             RebuildMiniMap();
             RaiseIdentityDependents();
-            MaintainUtilityOverlays();
         }
         catch (Exception ex)
         {
@@ -1679,11 +1673,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         _frameTimer.Stop();
         _autoApplyTimer.Stop();
-        _mumbleOverlayRepositionTimer.Stop();
         _launchGroupCts?.Cancel();
         StopChatAlerts();
         StopCornerOverlays();
-        DetachAllUtilityOverlaysOnExit();
+        StopTalkerOverlay();
         if (_frameOverlay is not null)
         {
             _frameOverlay.Close();

@@ -1,0 +1,101 @@
+<Window x:Class="EveDeck.Views.TalkerOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        SizeToContent="WidthAndHeight"
+        MinWidth="180">
+  <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+          BorderThickness="1" CornerRadius="8" Padding="10,7"
+          MouseLeftButtonDown="Root_MouseLeftButtonDown">
+    <StackPanel>
+      <DockPanel Margin="0,0,0,5">
+        <ToggleButton x:Name="LockToggle" DockPanel.Dock="Right"
+                      Width="20" Height="18" Margin="8,0,0,0"
+                      Click="LockToggle_Click"
+                      ToolTip="Lock position">
+          <ToggleButton.Style>
+            <Style TargetType="ToggleButton">
+              <Setter Property="Content" Value="&#x1F513;"/>
+              <Setter Property="Background" Value="Transparent"/>
+              <Setter Property="BorderThickness" Value="1"/>
+              <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+              <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+              <Setter Property="FontSize" Value="10"/>
+              <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                  <Setter Property="Content" Value="&#x1F512;"/>
+                  <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                  <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                  <Setter Property="Foreground" Value="{StaticResource BgBrush}"/>
+                </Trigger>
+              </Style.Triggers>
+            </Style>
+          </ToggleButton.Style>
+        </ToggleButton>
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="&#xE767;" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                     Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+          <TextBlock Text="{Binding TalkerChannelName}" FontWeight="SemiBold" FontSize="12"
+                     Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+        </StackPanel>
+      </DockPanel>
+
+      <ItemsControl ItemsSource="{Binding TalkerRows}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Orientation="Horizontal" Margin="0,1">
+              <Ellipse Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center">
+                <Ellipse.Style>
+                  <Style TargetType="Ellipse">
+                    <Setter Property="Fill" Value="{StaticResource BorderBrush}"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsTalking}" Value="True">
+                        <Setter Property="Fill" Value="#22C55E"/>
+                      </DataTrigger>
+                      <DataTrigger Binding="{Binding State}" Value="4">
+                        <Setter Property="Fill" Value="#F59E0B"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Ellipse.Style>
+              </Ellipse>
+              <TextBlock Text="{Binding Name}" FontSize="12">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsTalking}" Value="True">
+                        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock x:Name="QuietText" Text="listening..." FontSize="11" FontStyle="Italic"
+                 Foreground="{StaticResource MutedBrush}">
+        <TextBlock.Style>
+          <Style TargetType="TextBlock">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding TalkerRows.Count}" Value="0">
+                <Setter Property="Visibility" Value="Visible"/>
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </TextBlock.Style>
+      </TextBlock>
+    </StackPanel>
+  </Border>
+</Window>

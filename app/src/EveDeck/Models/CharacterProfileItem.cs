@@ -12,6 +12,31 @@ public sealed class CharacterProfileItem : INotifyPropertyChanged
     // as "Account <id>"). False for per-character core_char files.
     public bool IsAccount { get; init; }
 
+    // Last-write time of the underlying .dat file. The last client closed has the freshest
+    // settings, so lists are sorted by this (newest first) and it is shown in the subtitle.
+    public DateTime LastWriteUtc { get; init; }
+
+    // For char items: the core_user account id this character was paired with (mtime
+    // correlation, optionally overridden by the user). Null when unpaired.
+    private string? _accountId;
+    public string? AccountId
+    {
+        get => _accountId;
+        set { _accountId = value; OnPropertyChanged(); OnPropertyChanged(nameof(Subtitle)); }
+    }
+
+    public string Subtitle
+    {
+        get
+        {
+            var time = LastWriteUtc == default ? "" : LastWriteUtc.ToLocalTime().ToString("g");
+            if (IsAccount)
+                return time.Length > 0 ? $"last saved {time}" : "";
+            var acct = _accountId is null ? "account unknown" : $"Account {_accountId}";
+            return time.Length > 0 ? $"{CharacterId}  |  {acct}  |  {time}" : $"{CharacterId}  |  {acct}";
+        }
+    }
+
     private string _characterName = "";
     public string CharacterName
     {

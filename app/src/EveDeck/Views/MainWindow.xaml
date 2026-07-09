@@ -1743,37 +1743,43 @@ Watches EVE's chatlog files (Documents\EVE\logs\Chatlogs) for a keyword and play
             </StackPanel>
           </TabItem.Header>
           <StackPanel Margin="12">
-            <TextBlock Text="Comms Overlays" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,4"/>
+            <TextBlock Text="Comms Overlay" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,4"/>
             <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,16" MaxWidth="640">
-              Pins Mumble's "Talking UI" panel to a free-form position on screen -- borderless, always on
-              top, fully interactive. Drag the top strip to move it, drag the bottom-right corner to
-              resize, and use the lock icon on the overlay itself to stop accidental drags. Your original
-              window size/position is restored automatically when you disable it or close EveDeck.
-              Mumble's Talking UI must be enabled first, in Mumble's own Settings -&gt; User Interface tab
-              -- and its "Always show" option turned on there too, or the panel (and this overlay
-              around it) will sit off-screen with nothing to show whenever nobody's currently talking.
+              EveDeck's own who-is-talking panel for Mumble, fed by a small companion plugin that
+              runs inside your Mumble client. Drag it anywhere on screen and use the lock icon to
+              stop accidental drags. Requires installing the plugin once (below) and enabling it
+              inside Mumble.
             </TextBlock>
 
+            <!-- Native talker overlay: EveDeck's own panel fed by the bundled Mumble plugin. -->
             <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="1" CornerRadius="6" Padding="14" MaxWidth="480">
               <StackPanel>
                 <DockPanel>
-                  <CheckBox DockPanel.Dock="Right" Content="Enabled" IsChecked="{Binding MumbleOverlayEnabled}"/>
-                  <TextBlock Text="Mumble (Talking UI)" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                  <CheckBox DockPanel.Dock="Right" Content="Enabled" IsChecked="{Binding TalkerOverlayEnabled}"/>
+                  <TextBlock Text="Talker Overlay (Mumble plugin)" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
                 </DockPanel>
-                <TextBlock Text="{Binding MumbleOverlayStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0"/>
+                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0">
+                  EveDeck's own who-is-talking panel, styled to match the app — no Mumble window
+                  wrangling. Needs the EveDeck plugin installed once and enabled inside Mumble
+                  (Configure &gt; Plugins &gt; "EveDeck Talker Bridge"). Read-only: the plugin only
+                  reports names and talking state, never audio or messages.
+                </TextBlock>
+                <TextBlock Text="{Binding TalkerOverlayStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center">
                   <TextBlock Text="Opacity" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}"/>
                   <Slider Minimum="20" Maximum="100"
-                          Value="{Binding MumbleOverlayOpacity}"
+                          Value="{Binding TalkerOverlayOpacity}"
                           Width="180"
                           VerticalAlignment="Center"
                           IsSnapToTickEnabled="True"
                           TickFrequency="5"/>
-                  <TextBlock Text="{Binding MumbleOverlayOpacity, StringFormat={}{0}%}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                  <TextBlock Text="{Binding TalkerOverlayOpacity, StringFormat={}{0}%}" VerticalAlignment="Center" Margin="8,0,0,0"/>
                 </StackPanel>
-                <TextBlock Text="Tip: drag the title strip to move; drag any side border or corner to resize."
-                           Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                  <Button Content="Install plugin into Mumble" Command="{Binding InstallMumblePluginCommand}" Padding="10,4"/>
+                </StackPanel>
+                <TextBlock Text="{Binding MumblePluginInstallStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
           </StackPanel>
@@ -1916,7 +1922,8 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
                   <StackPanel>
                     <TextBlock Text="SOURCE" FontSize="10" FontWeight="Bold"
                                Foreground="{StaticResource AccentBrush}" Margin="0,0,0,2"/>
-                    <TextBlock Text="Copy settings from this character" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                    <TextBlock Text="Copy settings from this character. Tip: the last client you closed has the freshest settings (sorted newest first)."
+                               Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap"/>
                   </StackPanel>
                 </Border>
                 <ListBox Grid.Row="1"
@@ -1933,20 +1940,23 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
                         </Ellipse>
                         <StackPanel VerticalAlignment="Center">
                           <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"/>
-                          <TextBlock Text="{Binding CharacterId}" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                          <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
                         </StackPanel>
                       </StackPanel>
                     </DataTemplate>
                   </ListBox.ItemTemplate>
                 </ListBox>
-                <TextBlock Grid.Row="2" Text="Account file (window positions live here)"
+                <TextBlock Grid.Row="2" Text="Account file (window positions live here) — auto-selected to match the source character"
                            Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="2,8,0,4"/>
                 <ListBox Grid.Row="3" MaxHeight="140"
                          ItemsSource="{Binding AccountProfiles}"
                          SelectedItem="{Binding SourceAccountProfile}">
                   <ListBox.ItemTemplate>
                     <DataTemplate>
-                      <TextBlock Text="{Binding DisplayName}" FontSize="12" Margin="2,3"/>
+                      <StackPanel Margin="2,3">
+                        <TextBlock Text="{Binding DisplayName}" FontSize="12"/>
+                        <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                      </StackPanel>
                     </DataTemplate>
                   </ListBox.ItemTemplate>
                 </ListBox>
@@ -1995,14 +2005,14 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
                           </Ellipse>
                           <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"/>
-                            <TextBlock Text="{Binding CharacterId}" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                            <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
                           </StackPanel>
                         </StackPanel>
                       </CheckBox>
                     </DataTemplate>
                   </ListBox.ItemTemplate>
                 </ListBox>
-                <TextBlock Grid.Row="2" Text="Account files to receive the account settings"
+                <TextBlock Grid.Row="2" Text="Account files to receive the account settings — auto-checked with their characters"
                            Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="2,8,0,4"/>
                 <ListBox Grid.Row="3" MaxHeight="140"
                          ItemsSource="{Binding AccountProfiles}">
@@ -2015,7 +2025,10 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
                     <DataTemplate>
                       <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="2,3"
                                 VerticalContentAlignment="Center">
-                        <TextBlock Text="{Binding DisplayName}" FontSize="12"/>
+                        <StackPanel>
+                          <TextBlock Text="{Binding DisplayName}" FontSize="12"/>
+                          <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                        </StackPanel>
                       </CheckBox>
                     </DataTemplate>
                   </ListBox.ItemTemplate>

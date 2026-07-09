@@ -37,5 +37,13 @@
     <Content Include="Assets\Fonts\Acens-LICENSE.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Native Mumble plugin (built out-of-band from src\MumblePlugin via MSVC; see its
+         EveDeckMumblePlugin.cpp header comment). Shipped next to the exe so the Comms tab's
+         "Install plugin into Mumble" button can copy it into %APPDATA%\Mumble\Plugins. -->
+    <Content Include="..\MumblePlugin\bin\EveDeckMumblePlugin.dll"
+             Link="MumblePlugin\EveDeckMumblePlugin.dll"
+             Condition="Exists('..\MumblePlugin\bin\EveDeckMumblePlugin.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 </Project>

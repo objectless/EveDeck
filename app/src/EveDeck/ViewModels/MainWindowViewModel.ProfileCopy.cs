@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using EveDeck.Models;
 using EveDeck.Services;
 using EveDeck.Utilities;
@@ -36,6 +37,9 @@ public sealed partial class MainWindowViewModel
         private set { _characterProfiles = value; OnPropertyChanged(); }
     }
 
+    // Reentrancy guard for the char <-> account selection sync below.
+    private bool _syncingProfileSelection;
+
     private CharacterProfileItem? _sourceProfile;
     public CharacterProfileItem? SourceProfile
     {
@@ -43,7 +47,20 @@ public sealed partial class MainWindowViewModel
         set
         {
             if (SetProperty(ref _sourceProfile, value))
+            {
+                // Picking a source character auto-selects its paired account file.
+                if (!_syncingProfileSelection && value?.AccountId is string acct)
+                {
+                    var match = AccountProfiles.FirstOrDefault(a => a.CharacterId == acct);
+                    if (match is not null)
+                    {
+                        _syncingProfileSelection = true;
+                        SourceAccountProfile = match;
+                        _syncingProfileSelection = false;
+                    }
+                }
                 ExecuteCopyProfilesCommand.RaiseCanExecuteChanged();
+            }
         }
     }
 
@@ -63,7 +80,18 @@ public sealed partial class MainWindowViewModel
         set
         {
             if (SetProperty(ref _sourceAccountProfile, value))
+            {
+                // A manual account pick while a source character is selected corrects that
+                // character's pairing; persist it so it survives restarts and stale mtimes.
+                if (!_syncingProfileSelection && value is not null && _sourceProfile is not null
+                    && _sourceProfile.AccountId != value.CharacterId)
+                {
+                    _sourceProfile.AccountId = value.CharacterId;
+                    _settings.ProfileCharAccountOverrides[_sourceProfile.CharacterId] = value.CharacterId;
+                    Save();
+                }
                 ExecuteCopyProfilesCommand.RaiseCanExecuteChanged();
+            }
         }
     }
 
@@ -145,11 +173,25 @@ public sealed partial class MainWindowViewModel
         ProfileCopyStatus = "Loading characters...";
         ExecuteCopyProfilesCommand.RaiseCanExecuteChanged();
 
-        foreach (var userFile in _eveSettings.GetUserFiles(folderPath))
+        var userFiles = _eveSettings.GetUserFiles(folderPath);
+        var files = _eveSettings.GetCharacterFiles(folderPath);
+
+        // Accounts aren't exposed by ESI, so char -> account pairing comes from file-mtime
+        // correlation (EVE writes both files together on logout), with persisted manual
+        // overrides taking precedence.
+        var pairs = EveSettingsService.PairCharactersToAccounts(files, userFiles);
+
+        foreach (var userFile in userFiles.OrderByDescending(File.GetLastWriteTimeUtc))
         {
             var userId = EveSettingsService.GetUserId(userFile);
             if (userId is null) continue;
-            var account = new CharacterProfileItem { FilePath = userFile, CharacterId = userId, IsAccount = true };
+            var account = new CharacterProfileItem
+            {
+                FilePath = userFile,
+                CharacterId = userId,
+                IsAccount = true,
+                LastWriteUtc = File.GetLastWriteTimeUtc(userFile),
+            };
             account.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(CharacterProfileItem.IsSelected))
@@ -158,18 +200,31 @@ public sealed partial class MainWindowViewModel
             AccountProfiles.Add(account);
         }
 
-        var files = _eveSettings.GetCharacterFiles(folderPath);
+        var accountIds = AccountProfiles.Select(a => a.CharacterId).ToHashSet();
         var items = new List<CharacterProfileItem>();
 
-        foreach (var file in files)
+        foreach (var file in files.OrderByDescending(File.GetLastWriteTimeUtc))
         {
             var id = EveSettingsService.GetCharacterId(file);
             if (id is null) continue;
-            var item = new CharacterProfileItem { FilePath = file, CharacterId = id };
+            var item = new CharacterProfileItem
+            {
+                FilePath = file,
+                CharacterId = id,
+                LastWriteUtc = File.GetLastWriteTimeUtc(file),
+            };
+            if (_settings.ProfileCharAccountOverrides.TryGetValue(id, out var overrideAcct)
+                && accountIds.Contains(overrideAcct))
+                item.AccountId = overrideAcct;
+            else if (pairs.TryGetValue(id, out var pairedAcct))
+                item.AccountId = pairedAcct;
             item.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(CharacterProfileItem.IsSelected))
+                {
+                    SyncTargetAccountSelection(item);
                     ExecuteCopyProfilesCommand.RaiseCanExecuteChanged();
+                }
             };
             items.Add(item);
             CharacterProfiles.Add(item);
@@ -179,7 +234,24 @@ public sealed partial class MainWindowViewModel
 
         await Task.WhenAll(items.Select(ResolveNameAsync));
 
-        ProfileCopyStatus = $"Ready — {items.Count} character(s) loaded. Pick a source on the left, check targets on the right.";
+        ProfileCopyStatus = $"Ready - {items.Count} character(s) loaded, sorted newest first. "
+            + "The last client you closed has the freshest settings - pick it as the source.";
+    }
+
+    // Checking a target character also checks its paired account file; unchecking releases the
+    // account only when no other checked character maps to it.
+    private void SyncTargetAccountSelection(CharacterProfileItem charItem)
+    {
+        if (_syncingProfileSelection || charItem.AccountId is null) return;
+        var account = AccountProfiles.FirstOrDefault(a => a.CharacterId == charItem.AccountId);
+        if (account is null) return;
+
+        _syncingProfileSelection = true;
+        if (charItem.IsSelected)
+            account.IsSelected = true;
+        else if (!CharacterProfiles.Any(c => c.IsSelected && c.AccountId == charItem.AccountId))
+            account.IsSelected = false;
+        _syncingProfileSelection = false;
     }
 
     private async Task ResolveNameAsync(CharacterProfileItem item)

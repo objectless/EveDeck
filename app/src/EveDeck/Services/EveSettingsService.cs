@@ -77,6 +77,39 @@ public sealed class EveSettingsService
         return match.Success ? match.Groups[1].Value : null;
     }
 
+    // Pairs each core_char file with the core_user (account) file whose last-write time is
+    // closest. EVE writes both files together when a client logs out, so the mtimes of a
+    // char/user pair land within seconds of each other. ESI cannot provide this mapping --
+    // accounts are deliberately not exposed by any public API -- so mtime correlation is the
+    // only automatic signal available. Pairs outside the tolerance are left unmapped.
+    public static IReadOnlyDictionary<string, string> PairCharactersToAccounts(
+        IEnumerable<string> charFiles,
+        IEnumerable<string> userFiles,
+        TimeSpan? tolerance = null)
+    {
+        var tol = tolerance ?? TimeSpan.FromSeconds(60);
+        var users = userFiles
+            .Select(f => (Id: GetUserId(f), Time: File.GetLastWriteTimeUtc(f)))
+            .Where(u => u.Id is not null)
+            .ToList();
+
+        var result = new Dictionary<string, string>();
+        if (users.Count == 0) return result;
+
+        foreach (var charFile in charFiles)
+        {
+            var charId = GetCharacterId(charFile);
+            if (charId is null) continue;
+
+            var charTime = File.GetLastWriteTimeUtc(charFile);
+            var best = users.MinBy(u => (u.Time - charTime).Duration());
+            if ((best.Time - charTime).Duration() <= tol)
+                result[charId] = best.Id!;
+        }
+
+        return result;
+    }
+
     public async Task<string?> ResolveCharacterNameAsync(string characterId, CancellationToken ct = default)
     {
         try

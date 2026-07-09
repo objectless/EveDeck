@@ -17,10 +17,6 @@ public sealed class AppSettings
     public string ActiveCharacterSetId { get; set; } = "";
     public Dictionary<string, StyleSnapshot> StyleSnapshotsByTitle { get; set; } = new();
 
-    // Free-form, always-on-top Mumble "Talking UI" utility overlay -- global, not tied to a
-    // layout profile or character. See Views/UtilityOverlayChrome and Models/UtilityOverlaySlot.
-    public UtilityOverlaySlot MumbleOverlay { get; set; } = new();
-
     public bool ActiveFrameEnabled { get; set; } = true;
     public int ActiveFrameThickness { get; set; } = 4;
     public int ActiveFrameGlowRadius { get; set; } = 8;
@@ -93,4 +89,13 @@ public sealed class AppSettings
 
     // Chat/event keyword alert rules watched by ChatLogWatcherService.
     public ObservableCollection<ChatAlertRule> ChatAlertRules { get; set; } = new();
+
+    // EveDeck-rendered Mumble talker overlay (fed by the EveDeck Mumble plugin over a named
+    // pipe). Only Enabled/Locked/X/Y/OpacityPercent are used -- the window owns its own size.
+    public UtilityOverlaySlot TalkerOverlay { get; set; } = new();
+
+    // Profile Sync: manual character-id -> account (core_user) id overrides. Auto-pairing uses
+    // file-mtime correlation, which the user can correct in the UI; corrections are kept here
+    // so they survive restarts and stale mtimes.
+    public Dictionary<string, string> ProfileCharAccountOverrides { get; set; } = new();
 }
