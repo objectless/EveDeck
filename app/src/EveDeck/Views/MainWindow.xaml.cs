@@ -205,6 +205,7 @@ public partial class MainWindow : Window
         var contextMenu = new System.Windows.Forms.ContextMenuStrip();
         contextMenu.Items.Add("Open EveDeck", null, (_, _) => ShowFromTray());
         contextMenu.Items.Add("Reload active profile", null, (_, _) => ReloadActiveProfileFromTray());
+        contextMenu.Items.Add("Check for Updates", null, (_, _) => _viewModel.CheckForUpdateCommand.Execute(null));
         contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         contextMenu.Items.Add("Exit", null, (_, _) => ExitFromTray());
         _notifyIcon.ContextMenuStrip = contextMenu;

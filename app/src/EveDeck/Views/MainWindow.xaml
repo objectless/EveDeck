@@ -137,12 +137,12 @@
                   FontSize="14" Padding="8,0" Cursor="Hand"
                   ToolTip="Dismiss">&#x2715;</Button>
           <Button DockPanel.Dock="Right"
-                  Command="{Binding OpenUpdateUrlCommand}"
+                  Command="{Binding InstallUpdateCommand}"
                   Background="#163527" Foreground="#22C55E"
                   BorderThickness="0"
                   FontSize="11" FontWeight="SemiBold"
                   Padding="10,4" Margin="0,0,8,0" Cursor="Hand"
-                  ToolTip="Open EveDeck download page">Download</Button>
+                  ToolTip="Update now">Update</Button>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <TextBlock Text="&#xE8A9;" FontFamily="Segoe MDL2 Assets" FontSize="11"
                        Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -1647,6 +1647,29 @@ Watches EVE's chatlog files (Documents\EVE\logs\Chatlogs) for a keyword and play
               </ItemsControl>
               <Button Content="+ Add Rule" Command="{Binding AddChatAlertRuleCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
 
+              <!-- ── Overlay Allow List ──────────────────────────────── -->
+              <TextBlock Text="Overlay Allow List" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+              <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
+Apps listed here stay visually above EveDeck's corner-overlay tiles/labels even while an EVE client has focus -- useful if you keep a voice chat, intel, or fitting tool window positioned over the game. Matched by process name (case-insensitive, partial match, no ".exe") -- e.g. "discord" matches Discord.exe.
+              </TextBlock>
+              <ItemsControl ItemsSource="{Binding OverlayAllowedApps}" Margin="0,0,0,6">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <DockPanel Margin="0,3">
+                      <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
+                                VerticalAlignment="Center" Margin="0,0,8,0"/>
+                      <Button DockPanel.Dock="Right" Content="Remove" Padding="7,3" FontSize="11" Margin="6,0,0,0"
+                              Command="{Binding DataContext.RemoveOverlayAllowedAppCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding}"/>
+                      <TextBox Text="{Binding ProcessName, UpdateSourceTrigger=PropertyChanged}"
+                               Width="180" Padding="6,4" FontSize="12"
+                               ToolTip="Process name substring, case-insensitive (e.g. mumble, discord, pyfa)"/>
+                    </DockPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Button Content="+ Add App" Command="{Binding AddOverlayAllowedAppCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
+
             </StackPanel>
           </ScrollViewer>
         </TabItem>
@@ -2080,6 +2103,23 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
                     <TextBlock Text="EULA-conscious · no input broadcasting"
                                Foreground="{StaticResource MutedBrush}" FontSize="11"
                                VerticalAlignment="Center" Margin="10,0,0,0"/>
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Command="{Binding CheckForUpdateCommand}"
+                            Padding="8,3" FontSize="11" Content="Check for Updates">
+                      <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCheckingForUpdate}" Value="True">
+                              <Setter Property="IsEnabled" Value="False"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Button.Style>
+                    </Button>
+                    <TextBlock Text="{Binding UpdateCheckStatusText}"
+                               Foreground="{StaticResource MutedBrush}" FontSize="11"
+                               VerticalAlignment="Center" Margin="8,0,0,0"/>
                   </StackPanel>
                 </StackPanel>
               </StackPanel>

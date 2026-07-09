@@ -98,4 +98,16 @@ public sealed class AppSettings
     // file-mtime correlation, which the user can correct in the UI; corrections are kept here
     // so they survive restarts and stale mtimes.
     public Dictionary<string, string> ProfileCharAccountOverrides { get; set; } = new();
+
+    // Apps allowed to visually sit above the corner-overlay tile/pill surfaces even while an EVE
+    // client has focus (e.g. voice/intel tools the user keeps positioned over the game). Matched
+    // by case-insensitive substring against the window's owning process name.
+    public ObservableCollection<OverlayAllowedApp> OverlayAllowedApps { get; set; } = new()
+    {
+        new() { ProcessName = "mumble" },
+        new() { ProcessName = "rift" },
+        new() { ProcessName = "pyfa" },
+        new() { ProcessName = "discord" },
+        new() { ProcessName = "pidgin" },
+    };
 }

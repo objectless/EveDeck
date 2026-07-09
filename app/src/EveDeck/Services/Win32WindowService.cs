@@ -223,6 +223,37 @@ public sealed class Win32WindowService
             SwpNoMove | SwpNoSize | SwpNoActivate);
     }
 
+    // Re-asserts HWND_TOPMOST on every visible top-level window whose owning process name
+    // contains one of the given substrings (case-insensitive), so those windows land above
+    // EveDeck's own topmost overlay surfaces in the topmost band (the most recently asserted
+    // HWND_TOPMOST window sits highest). Call this AFTER our own surfaces are made topmost.
+    // Dangerous API: modifies Z-order of other processes' windows at OS level only; does not
+    // inject code or send input.
+    public void BumpMatchingProcessesAboveOverlay(IReadOnlyList<string> processNameSubstrings)
+    {
+        if (processNameSubstrings.Count == 0) return;
+
+        EnumWindows((handle, _) =>
+        {
+            if (!IsWindowVisible(handle) || GetWindow(handle, 4) != IntPtr.Zero)
+            {
+                return true;
+            }
+
+            GetWindowThreadProcessId(handle, out var processId);
+            Process? process;
+            try { process = Process.GetProcessById((int)processId); }
+            catch { return true; }
+
+            if (processNameSubstrings.Any(p => process.ProcessName.Contains(p, StringComparison.OrdinalIgnoreCase)))
+            {
+                SetWindowTopmost(handle, true);
+            }
+
+            return true;
+        }, IntPtr.Zero);
+    }
+
     public bool TryGetWindowRect(nint handle, out WindowRect rect)
     {
         if (handle != 0 && IsWindow(handle) && GetWindowRect(handle, out var native))

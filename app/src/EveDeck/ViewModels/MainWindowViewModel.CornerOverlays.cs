@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using EveDeck.Models;
 using EveDeck.Views;
 
@@ -773,6 +774,34 @@ public sealed partial class MainWindowViewModel
         _surfacesTopmost = topmost;
         _tileSurface?.SetZ(topmost);
         _labelSurface?.SetZ(topmost);
+        if (topmost) BumpAllowedAppsAboveOverlaySurfaces();
+    }
+
+    // Allow-listed apps (Options tab) that should stay visually above our overlay surfaces even
+    // while an EVE client has focus -- e.g. a Mumble or RIFT window docked in a screen corner.
+    public ObservableCollection<OverlayAllowedApp> OverlayAllowedApps => _settings.OverlayAllowedApps;
+
+    private void BumpAllowedAppsAboveOverlaySurfaces()
+    {
+        var names = _settings.OverlayAllowedApps
+            .Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.ProcessName))
+            .Select(a => a.ProcessName.Trim())
+            .ToList();
+        if (names.Count == 0) return;
+        _windowService.BumpMatchingProcessesAboveOverlay(names);
+    }
+
+    private void AddOverlayAllowedApp()
+    {
+        _settings.OverlayAllowedApps.Add(new OverlayAllowedApp { ProcessName = "" });
+        Save();
+    }
+
+    private void RemoveOverlayAllowedApp(object? parameter)
+    {
+        if (parameter is not OverlayAllowedApp app) return;
+        _settings.OverlayAllowedApps.Remove(app);
+        Save();
     }
 
     // -- Per-tick upkeep ---------------------------------------------------------
@@ -783,9 +812,12 @@ public sealed partial class MainWindowViewModel
 
         var eveOrEwcFg = IsEveOrEwcForeground();
         // Focus gating is event-driven (the foreground WinEvent hook in MainWindow); this is only a
-        // fallback for a missed transition. No unconditional per-tick SetWindowPos calls -- that
-        // churn was the historical source of every "labels flicker" report.
+        // fallback for a missed transition. No unconditional per-tick SetWindowPos calls on OUR OWN
+        // surfaces -- that churn was the historical source of every "labels flicker" report. The
+        // allow-list bump below only touches OTHER processes' windows, not ours, so it's safe to
+        // re-run each tick while already topmost (catches an allow-listed app launched mid-session).
         if (eveOrEwcFg != _surfacesTopmost) ApplySurfaceZOrder(eveOrEwcFg);
+        else if (_surfacesTopmost) BumpAllowedAppsAboveOverlaySurfaces();
 
         if (!eveOrEwcFg && (_peekPosition >= 0 || _pendingHoverPosition >= 0 || _cursorOverPosition >= 0))
         {
