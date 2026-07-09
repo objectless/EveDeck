@@ -16,9 +16,8 @@ public sealed record TalkerRow(string Name, int State)
 
 // Native Mumble integration: EveDeck hosts a named-pipe server (MumbleBridgeService) that a tiny
 // plugin inside the user's own Mumble client feeds with talking-state events, and renders its own
-// themed talker panel (TalkerOverlayWindow). This replaces fighting Mumble's Qt "Talking UI"
-// window for users who install the plugin; the window-pinning overlay remains as the
-// zero-install fallback.
+// themed talker panel (TalkerOverlayWindow). Replaces an earlier window-pinning approach (wrapping
+// Mumble's own Qt "Talking UI" window) that was removed entirely once this plugin path proved out.
 public sealed partial class MainWindowViewModel
 {
     private MumbleBridgeService? _mumbleBridge;
@@ -85,7 +84,13 @@ public sealed partial class MainWindowViewModel
     partial void InitMumbleBridge()
     {
         InstallMumblePluginCommand = new RelayCommand(InstallMumblePlugin);
-        _talkerPruneTimer.Tick += (_, _) => RefreshTalkerRows();
+        _talkerPruneTimer.Tick += (_, _) =>
+        {
+            RefreshTalkerRows();
+            // Keep the panel pinned above pinned EVE clients / corner surfaces, which re-assert
+            // their own HWND_TOPMOST on their tick and can otherwise bury it (see BringToTop).
+            if (_talkerWindow?.IsVisible == true) _talkerWindow.BringToTop();
+        };
         if (_settings.TalkerOverlay.Enabled) StartTalkerOverlay();
     }
 

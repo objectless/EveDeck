@@ -9,6 +9,7 @@ TestResults/
 
 # Build / publish output
 publish/
+installer/output/
 
 # Local Claude Code settings
 .claude/settings.local.json

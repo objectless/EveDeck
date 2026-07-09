@@ -13,4 +13,7 @@ public sealed class UtilityOverlaySlot
     // Applied to the overlay window (100 = fully opaque). Clamped to a sane floor at apply time
     // so a bad persisted value can't make the overlay effectively invisible and ungrabbable.
     public int OpacityPercent { get; set; } = 100;
+
+    // Uniform size scale for TalkerOverlayWindow's corner-grip resize (100 = normal size).
+    public int ScalePercent { get; set; } = 100;
 }

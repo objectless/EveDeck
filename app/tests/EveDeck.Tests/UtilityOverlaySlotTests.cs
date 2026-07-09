@@ -15,5 +15,6 @@ public class UtilityOverlaySlotTests
         Assert.Equal(0, slot.X);
         Assert.Equal(0, slot.Y);
         Assert.Equal(100, slot.OpacityPercent);
+        Assert.Equal(100, slot.ScalePercent);
     }
 }

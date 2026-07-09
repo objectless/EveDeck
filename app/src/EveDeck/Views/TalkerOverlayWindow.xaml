@@ -13,6 +13,12 @@
   <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
           BorderThickness="1" CornerRadius="8" Padding="10,7"
           MouseLeftButtonDown="Root_MouseLeftButtonDown">
+    <Border.LayoutTransform>
+      <!-- LayoutTransform (not RenderTransform) so SizeToContent measures the SCALED size:
+           dragging the corner grip changes ScaleX/Y and the window resizes to match automatically. -->
+      <ScaleTransform x:Name="ContentScale" ScaleX="1" ScaleY="1"/>
+    </Border.LayoutTransform>
+    <Grid>
     <StackPanel>
       <DockPanel Margin="0,0,0,5">
         <ToggleButton x:Name="LockToggle" DockPanel.Dock="Right"
@@ -97,5 +103,17 @@
         </TextBlock.Style>
       </TextBlock>
     </StackPanel>
+
+    <!-- Resize grip: same visual language as the old chrome's corner grip. Dragging scales the
+         whole panel (text, icons, everything) uniformly rather than stretching whitespace, since
+         the panel auto-sizes to its roster and a literal width/height resize wouldn't make the
+         content any more readable. Inset (Margin 3,3, not flush) so the Border's CornerRadius=8
+         clip doesn't cut into the hit-test area the way a flush corner square would; sized 14x14
+         (not 10x10) to stay comfortably clickable, matching the old chrome's grip size. -->
+    <Rectangle Width="14" Height="14" Fill="{StaticResource AccentBrush}"
+               HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,3,3"
+               Cursor="SizeNWSE"
+               MouseLeftButtonDown="ResizeGrip_MouseLeftButtonDown"/>
+    </Grid>
   </Border>
 </Window>

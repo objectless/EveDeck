@@ -76,6 +76,19 @@ jobs:
           (Get-Content $proj) -replace '<Version>[^<]+</Version>', "<Version>$ver</Version>" |
             Set-Content $proj
 
+      - name: Setup MSVC toolchain
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Compile Mumble plugin
+        shell: cmd
+        # The csproj's Content item for the plugin DLL is conditioned on this exact output path
+        # existing at publish time (see EveDeck.csproj) -- must run before "Publish self-contained".
+        run: |
+          cd app\src\MumblePlugin
+          cl /nologo /LD /O2 /EHsc /std:c++17 /W4 /DUNICODE /D_UNICODE EveDeckMumblePlugin.cpp /Fe:bin\EveDeckMumblePlugin.dll /Fo:bin\
+
       - name: Publish self-contained
         shell: pwsh
         run: |
@@ -87,6 +100,21 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path publish-ci\* -DestinationPath "EveDeck-v${{ steps.ver.outputs.version }}.zip"
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        # windows-latest usually ships Inno Setup 6 already, but install via choco (always present
+        # on GH-hosted runners) if it's ever missing rather than assuming the image's software list.
+        # MySourceDir points the .iss at publish-ci (repo root) instead of its local-dev default of
+        # app\publish.
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc app/installer/EveDeck.iss `
+            "/DMyAppVersion=${{ steps.ver.outputs.version }}" `
+            "/DMySourceDir=$PWD\publish-ci"
 
       - name: Scan release zip with VirusTotal
         id: vt
@@ -172,17 +200,23 @@ jobs:
           body: |
             ${{ steps.notes.outputs.notes }}
 
-            Download **EveDeck-v${{ steps.ver.outputs.version }}.zip** below, extract, and run **EveDeck.exe**.
+            **Two ways to install:**
+            - **EveDeck-Setup-v${{ steps.ver.outputs.version }}.exe** — normal Windows installer (Start Menu
+              shortcut, proper uninstaller, no admin rights needed). Recommended for most people.
+            - **EveDeck-v${{ steps.ver.outputs.version }}.zip** — portable, just extract and run
+              **EveDeck.exe**.
 
-            No installer or .NET runtime required — everything is bundled.
+            No .NET runtime required either way — everything is bundled.
 
             > **Windows SmartScreen:** click **More info → Run anyway** on first launch.
             > Right-click → Properties → Unblock also removes the prompt permanently.
 
             ---
 
-            🛡️ **VirusTotal:** [${{ steps.vt.outputs.vt_summary }}](${{ steps.vt.outputs.vt_url }}) (SHA-256 `${{ steps.vt.outputs.sha256 }}`)
-          files: EveDeck-v${{ steps.ver.outputs.version }}.zip
+            🛡️ **VirusTotal** (zip): [${{ steps.vt.outputs.vt_summary }}](${{ steps.vt.outputs.vt_url }}) (SHA-256 `${{ steps.vt.outputs.sha256 }}`)
+          files: |
+            EveDeck-v${{ steps.ver.outputs.version }}.zip
+            app/installer/output/EveDeck-Setup-v${{ steps.ver.outputs.version }}.exe
 
   update-site:
     needs: build-and-release
