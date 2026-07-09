@@ -44,9 +44,9 @@ background clients, right in their layout tiles. Hover to *peek* a client into t
 slot; click to swap. It reverts the moment your cursor leaves.
 
 📐 **Layout profiles** — built-in families with resolution and account-count dropdowns:
-**Grid**, **Center Master**, **Whammy Board**, **Side Stack**, **Stacked / 1-Char /
-Overlap** — plus fully custom profiles. An on-monitor WYSIWYG editor lets you drag slots
-to move, drag edges to resize, and snap to the grid. What you draw is exactly what you get.
+**Grid**, **Center Master**, **Whammy Board**, **Side Stack**, **Twin Stack**, **Stacked /
+1-Char / Overlap** — plus fully custom profiles. An on-monitor WYSIWYG editor lets you drag
+slots to move, drag edges to resize, and snap to the grid. What you draw is exactly what you get.
 If a seat's client isn't running, the next seat in line is promoted to master until it returns.
 
 🧑‍🚀 **Character identity &amp; ESI** — character names and portraits via EVE SSO (PKCE
@@ -59,8 +59,10 @@ Gated mode fires keys only while EVE is the active app.
 
 🖥️ **Desktop &amp; system** — borderless toggling, active-window frame glow, focus-aware
 always-on-top pins (only topmost while EVE is foreground), tray mode, auto-apply on client
-launch, in-app update checks, rolling settings backups, per-profile taskbar avoidance,
-background CPU throttling for inactive clients, and full multi-monitor support.
+launch, one-click in-app auto-update (silent installer upgrade or self-updating portable
+build), an overlay allow-list that keeps chosen companion apps like Mumble/Discord above
+the corner overlays, rolling settings backups, per-profile taskbar avoidance, background
+CPU throttling for inactive clients, and full multi-monitor support.
 
 📋 **Profile Sync** — copy one character's EVE settings to any number of alts in a click:
 both per-character (`core_char`) and per-account (`core_user`) files, so window positions
@@ -116,6 +118,13 @@ Pick a family, set a resolution and account count, and EveDeck does the math.
 <img src="images/diagrams/side-stack.svg" width="100%" alt="Side Stack layout diagram, 4 accounts on the left edge" />
 <br /><sub><b>Side Stack</b> — a column of alts down either edge, master takes the rest.</sub>
 </td>
+</tr>
+<tr>
+<td width="50%">
+<img src="images/diagrams/twin-stack.svg" width="100%" alt="Twin Stack layout diagram, 4 accounts split two per edge" />
+<br /><sub><b>Twin Stack</b> — alts stacked two per edge, master bookended in the middle.</sub>
+</td>
+<td width="50%"></td>
 </tr>
 </table>
 

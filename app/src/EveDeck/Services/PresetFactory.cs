@@ -36,6 +36,11 @@ public static class PresetFactory
     // Edges the Side Stack family can stack its tiles on.
     private static readonly string[] SideStackSides = { "Left", "Right" };
 
+    // Client counts the Twin Stack family template offers in its dropdown. Restricted to counts whose
+    // alt count (n-1) is even so both columns are always perfectly symmetric — no tie-break needed for
+    // which side gets an extra tile.
+    private static readonly int[] TwinStackCounts = { 5, 7, 9 };
+
     // Dropdown option lists for the UI (Grid/Center Master resolution + account-count pickers).
     public static IReadOnlyList<DisplayModeOption> GridResolutionOptions { get; } =
         Array.ConvertAll(Resolutions, r => new DisplayModeOption($"{r.W}×{r.H}", r.W, r.H));
@@ -49,11 +54,15 @@ public static class PresetFactory
     public static IReadOnlyList<DisplayModeOption> SideStackResolutionOptions { get; } =
         Array.ConvertAll(CenterMasterResolutions, r => new DisplayModeOption($"{r.W}×{r.H}", r.W, r.H));
 
+    public static IReadOnlyList<DisplayModeOption> TwinStackResolutionOptions { get; } =
+        Array.ConvertAll(CenterMasterResolutions, r => new DisplayModeOption($"{r.W}×{r.H}", r.W, r.H));
+
     public static IReadOnlyList<int> GridCountOptions => GridCounts;
     public static IReadOnlyList<int> CenterMasterCountOptions => CenterMasterCounts;
     public static IReadOnlyList<int> WhammyCountOptions => WhammyCounts;
     public static IReadOnlyList<int> SideStackCountOptions => SideStackCounts;
     public static IReadOnlyList<string> SideStackSideOptions => SideStackSides;
+    public static IReadOnlyList<int> TwinStackCountOptions => TwinStackCounts;
 
     // Declared last: BuildDeprecatedNames() reads Resolutions/CenterMasterResolutions above, and static
     // field initializers run in declaration order, so this must come after them or those fields are
@@ -89,6 +98,10 @@ public static class PresetFactory
         // Side Stack family: a vertical stack of small tiles down one edge (Left/Right dropdown) with
         // the master filling the rest of the monitor.
         list.Add(CreateSideStackTemplate());
+
+        // Twin Stack family: like Side Stack but bookended - alt tiles split evenly into a stacked
+        // column on BOTH edges, with the master filling the gap between them.
+        list.Add(CreateTwinStackTemplate());
 
         return list;
     }
@@ -160,6 +173,22 @@ public static class PresetFactory
         return profile;
     }
 
+    private static LayoutProfile CreateTwinStackTemplate()
+    {
+        var profile = new LayoutProfile
+        {
+            Name = "Twin Stack",
+            IsBuiltIn = true,
+            Category = "Twin Stack",
+            IsFamilyTemplate = true,
+            TemplateWidth = 2560,
+            TemplateHeight = 1440,
+            TemplateCount = 5,
+        };
+        PopulateTwinStackSlots(profile);
+        return profile;
+    }
+
     // A starter custom profile: `count` slots arranged as a simple grid at the given resolution
     // (0,0-based, scaled to the target monitor at apply time). Used by the New Profile flow before
     // the on-monitor editor opens so the user has sensibly-placed slots to drag around.
@@ -217,6 +246,14 @@ public static class PresetFactory
             profile.TemplateCount = NearestCount(SideStackCounts, profile.TemplateCount);
             if (profile.TemplateSide != "Right") profile.TemplateSide = "Left";
             PopulateSideStackSlots(profile);
+        }
+        else if (profile.Category == "Twin Stack")
+        {
+            var (w, h) = NearestResolution(CenterMasterResolutions, profile.TemplateWidth);
+            profile.TemplateWidth = w;
+            profile.TemplateHeight = h;
+            profile.TemplateCount = NearestCount(TwinStackCounts, profile.TemplateCount);
+            PopulateTwinStackSlots(profile);
         }
     }
 
@@ -409,6 +446,42 @@ public static class PresetFactory
 
         // Master fills ALL remaining space - full height, edge to edge against the tile column.
         profile.Slots.Add(Slot(n, right ? 0 : tileW, 0, sw - tileW, sh, "Master"));
+    }
+
+    // Twin Stack: k = n-1 tiles split evenly into TWO stacked columns (one down the left
+    // edge, one down the right edge), with the master filling the gap between them. Only offered for
+    // counts where k is even (TwinStackCounts) so both columns always hold exactly k/2 tiles - no
+    // tie-break for an odd leftover tile needed. tileW = sw/(perSide+2) makes every tile EXACTLY the
+    // same aspect ratio as the master (tile tileW x (sh/perSide) vs master (sw-2*tileW) x sh), same
+    // reasoning as PopulateSideStackSlots: clients run at the master rect's size, so aspect-matched
+    // tiles mean the live previews fill their tiles with no black bars. Master is slot n and always
+    // the largest rect.
+    private static void PopulateTwinStackSlots(LayoutProfile profile)
+    {
+        var n = profile.TemplateCount;
+        var sw = profile.TemplateWidth;
+        var sh = profile.TemplateHeight;
+
+        var tiles = n - 1;
+        var perSide = tiles / 2;
+        var tileW = sw / (perSide + 2);
+
+        profile.Slots.Clear();
+        var slotNum = 1;
+
+        foreach (var (offset, size) in EvenSplit(sh, perSide))
+        {
+            profile.Slots.Add(Slot(slotNum, 0, offset, tileW, size, $"Left {slotNum}"));
+            slotNum++;
+        }
+        foreach (var (offset, size) in EvenSplit(sh, perSide))
+        {
+            profile.Slots.Add(Slot(slotNum, sw - tileW, offset, tileW, size, $"Right {slotNum - perSide}"));
+            slotNum++;
+        }
+
+        // Master fills the gap between the two columns - full height, edge to edge against both.
+        profile.Slots.Add(Slot(n, tileW, 0, sw - 2 * tileW, sh, "Master"));
     }
 
     // Evenly partitions `total` pixels into `count` contiguous, non-overlapping spans (last absorbs the

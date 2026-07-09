@@ -56,7 +56,8 @@ public sealed class LayoutProfile
         "Center Master" => 3,
         "Whammy Board"  => 4,
         "Side Stack"    => 5,
-        "Overlap"       => 6,
+        "Twin Stack"    => 6,
+        "Overlap"       => 7,
         _               => 99
     };
 
