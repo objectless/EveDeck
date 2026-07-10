@@ -36,7 +36,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly DispatcherTimer _frameTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _hoverPeekTimer = new() { IsEnabled = false };
     // Debounce auto-apply so all clients have time to launch and settle before we move them.
-    private readonly DispatcherTimer _autoApplyTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    // Must stay LONGER than _refreshTimer's interval (5s): new-client detection only runs once per
+    // refresh poll, so a debounce shorter than the poll interval can fire before the next poll has
+    // a chance to see a straggler that logged in a couple of seconds late -- exactly what happens
+    // during a mass multi-account login, where the auto-apply then only parks/sizes whichever
+    // subset had appeared by that premature pass, leaving later clients unparked until a manual
+    // reapply catches everyone in one clean pass.
+    private readonly DispatcherTimer _autoApplyTimer = new() { Interval = TimeSpan.FromSeconds(7) };
 
     private readonly Dictionary<int, nint> _lastFocusedHandle = new();
 
@@ -1231,6 +1237,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             if (_settings.HideActiveSeatTile == value) return;
             _settings.HideActiveSeatTile = value;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
+    public int OfflineOverlayTimeoutSeconds
+    {
+        get => _settings.OfflineOverlayTimeoutSeconds;
+        set
+        {
+            var clamped = Math.Max(0, value);
+            if (_settings.OfflineOverlayTimeoutSeconds == clamped) return;
+            _settings.OfflineOverlayTimeoutSeconds = clamped;
             OnPropertyChanged();
             Save();
         }

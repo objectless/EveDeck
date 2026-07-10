@@ -117,6 +117,11 @@ public sealed class AppSettings
     // corner-overlay labels.
     public bool CornerOverlayShowSystem { get; set; } = true;
 
+    // Once every seat has been simultaneously offline (no live window for any seat) for this many
+    // seconds, the corner overlay tears itself down instead of leaving a wall of stale "Name ·
+    // offline" pills on screen after the whole session has ended. 0 = never auto-teardown.
+    public int OfflineOverlayTimeoutSeconds { get; set; } = 60;
+
     // EveDeck-rendered Mumble talker overlay (fed by the EveDeck Mumble plugin over a named
     // pipe). Only Enabled/Locked/X/Y/OpacityPercent are used -- the window owns its own size.
     public UtilityOverlaySlot TalkerOverlay { get; set; } = new();

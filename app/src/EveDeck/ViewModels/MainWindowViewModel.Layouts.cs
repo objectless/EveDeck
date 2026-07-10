@@ -783,12 +783,42 @@ public sealed partial class MainWindowViewModel
 
     // ── Rect resolution ────────────────────────────────────────────────────────
 
+    // True when a (non-built-in) profile's slots were placed across 2+ distinct physical monitors —
+    // via the on-monitor editor or "Capture Current" — both of which tag each slot with its real
+    // MonitorId. Such profiles must never go through single-monitor anchor rescaling: their slot
+    // coordinates are already correct, literal, per-monitor physical-pixel positions.
+    internal static bool IsMultiMonitorProfile(LayoutProfile profile) =>
+        !profile.IsBuiltIn &&
+        profile.Slots.Select(s => s.MonitorId).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().Count() > 1;
+
     // Map a slot to its on-screen rect for the current target monitor. Every path here is
     // resolution-independent: the profile is scaled to whatever the target display reports right now,
     // so the same profile lands correctly on the native panel, a VSR/DSR virtual resolution, or any
     // Windows display-scale — the desktop compositor only ever sees physical-pixel rects.
     private WindowRect ResolvePlacementRect(LayoutSlot slot)
     {
+        // Multi-monitor custom profiles store literal physical-pixel positions per slot (captured or
+        // edited across the real desktop). Any single-monitor anchor rescale would wrongly warp
+        // whichever slots live on a different monitor than the one currently picked as Target Monitor,
+        // so reproduce them exactly as captured/edited instead.
+        if (SelectedProfile is not null && IsMultiMonitorProfile(SelectedProfile))
+        {
+            var literalRect = slot.ToRect();
+            if (UsePhysicalPixels) return literalRect;
+
+            var slotMonitor = Monitors.FirstOrDefault(m => !string.IsNullOrWhiteSpace(slot.MonitorId) && m.Id == slot.MonitorId)
+                ?? Monitors.FirstOrDefault(m => m.IsPrimary)
+                ?? Monitors.FirstOrDefault();
+            var slotDpi = slotMonitor is null ? 1.0 : slotMonitor.DpiX / 96.0;
+            return new WindowRect
+            {
+                X = (int)Math.Round(literalRect.X * slotDpi),
+                Y = (int)Math.Round(literalRect.Y * slotDpi),
+                Width = (int)Math.Round(literalRect.Width * slotDpi),
+                Height = (int)Math.Round(literalRect.Height * slotDpi)
+            };
+        }
+
         var anchor = ResolveLayoutAnchor();
 
         // 1. Custom profile captured on a known monitor: scale proportionally from the capture

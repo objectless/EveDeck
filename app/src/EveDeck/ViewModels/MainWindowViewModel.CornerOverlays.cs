@@ -44,6 +44,12 @@ public sealed partial class MainWindowViewModel
     private WindowRect? _peekMasterRect;  // master rect at peek time (extends hover zone)
     private WindowRect? _peekParkRect;    // park rect the displaced master seat was sent to
 
+    // Set the moment every seat first goes simultaneously offline; cleared the instant any seat's
+    // client is detected again. MaintainCornerOverlays tears the overlay down once this has held
+    // for OfflineOverlayTimeoutSeconds, instead of leaving a wall of stale "Name · offline" pills
+    // on screen after the whole session has ended.
+    private DateTime? _allSeatsOfflineSince;
+
     // Per-group occupancy. In legacy (single-group) mode all dicts have a single key "__single__".
     private readonly Dictionary<string, int> _centeredSeatByGroup = new();
     private readonly Dictionary<string, int> _baseMasterByGroup = new();
@@ -273,9 +279,10 @@ public sealed partial class MainWindowViewModel
 
         var slotRects = SelectedProfile.Slots.ToDictionary(s => s.SlotNumber, s => ResolvePlacementRect(s));
 
-        // Surface bounds: the layout monitor, or the union of the slot rects as a fallback.
+        // Surface bounds: the layout monitor, or (for multi-monitor custom profiles, whose tiles may
+        // land on a second monitor) the union of the slot rects so every tile has surface to render on.
         int surfX, surfY, surfW, surfH;
-        if (monitor is not null)
+        if (monitor is not null && !IsMultiMonitorProfile(SelectedProfile))
         {
             surfX = monitor.Bounds.X; surfY = monitor.Bounds.Y;
             surfW = monitor.Bounds.Width; surfH = monitor.Bounds.Height;
@@ -857,6 +864,22 @@ public sealed partial class MainWindowViewModel
     internal void MaintainCornerOverlays()
     {
         if (_tileSurface is null) return;
+
+        if (_settings.OfflineOverlayTimeoutSeconds > 0 && !Assignments.Any(a => FindAssignedWindows(a).Any()))
+        {
+            _allSeatsOfflineSince ??= DateTime.UtcNow;
+            if ((DateTime.UtcNow - _allSeatsOfflineSince.Value).TotalSeconds >= _settings.OfflineOverlayTimeoutSeconds)
+            {
+                Log.Info("All seats have been offline; tearing down the corner overlay.");
+                StopCornerOverlays();
+                _allSeatsOfflineSince = null;
+                return;
+            }
+        }
+        else
+        {
+            _allSeatsOfflineSince = null;
+        }
 
         var eveOrEwcFg = IsEveOrEwcForeground();
         // Focus gating is event-driven (the foreground WinEvent hook in MainWindow); this is only a

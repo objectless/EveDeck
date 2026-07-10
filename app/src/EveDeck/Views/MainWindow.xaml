@@ -1577,6 +1577,14 @@ Shows your background clients as live mini-previews in the screen corners while 
                         ToolTip="The active client is already on screen full-size; hiding its own tile reduces clutter"
                         Margin="0,0,0,10"/>
               <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                <TextBlock Text="Auto-close overlay after" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <TextBox Width="48"
+                         Text="{Binding OfflineOverlayTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
+                         HorizontalContentAlignment="Center" FontSize="11"/>
+                <TextBlock Text="sec of every seat offline (0 = never, default 60)" VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="6,0,0,0"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
                 <TextBlock Text="Label style" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
                 <ComboBox Width="180" SelectedValuePath="Tag"
                           SelectedValue="{Binding CornerOverlayLabelStyle}">
