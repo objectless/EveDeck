@@ -39,15 +39,17 @@ EVE Online EULA. **It is a window manager only. One input, one client, always.**
 
 ## Everything you need for multiboxing
 
-🪟 **Previews &amp; peek** — high-quality Windows.Graphics.Capture (D3D11) thumbnails of your
-background clients, right in their layout tiles. Hover to *peek* a client into the master
-slot; click to swap. It reverts the moment your cursor leaves.
+🪟 **Previews &amp; peek** — live thumbnails of your background clients right in their layout
+tiles, powered by Windows' own DWM thumbnail compositor (no screen capture involved). Hover
+to *peek* a client into the master slot; click to swap. It reverts the moment your cursor leaves.
 
 📐 **Layout profiles** — built-in families with resolution and account-count dropdowns:
 **Grid**, **Center Master**, **Whammy Board**, **Side Stack**, **Twin Stack**, **Stacked /
-1-Char / Overlap** — plus fully custom profiles. An on-monitor WYSIWYG editor lets you drag
-slots to move, drag edges to resize, and snap to the grid. What you draw is exactly what you get.
-If a seat's client isn't running, the next seat in line is promoted to master until it returns.
+1-Char / Overlap** — each targets a single monitor you pick from a dropdown. Need to span more
+than one screen? Build a **custom profile**: the on-monitor WYSIWYG editor lets you drag slots
+to move, drag edges to resize, snap to the grid, and place slots on *any* connected monitor —
+one profile can cover your whole desktop. What you draw is exactly what you get. If a seat's
+client isn't running, the next seat in line is promoted to master until it returns.
 
 🧑‍🚀 **Character identity &amp; ESI** — character names and portraits via EVE SSO (PKCE
 OAuth). Fixed seats (*Model A*): accounts keep their seat and labels never scramble —
@@ -61,8 +63,15 @@ Gated mode fires keys only while EVE is the active app.
 always-on-top pins (only topmost while EVE is foreground), tray mode, auto-apply on client
 launch, one-click in-app auto-update (silent installer upgrade or self-updating portable
 build), an overlay allow-list that keeps chosen companion apps like Mumble/Discord above
-the corner overlays, rolling settings backups, per-profile taskbar avoidance, background
-CPU throttling for inactive clients, and full multi-monitor support.
+the corner overlays, rolling settings backups, per-profile taskbar avoidance, and background
+CPU throttling for inactive clients.
+
+🚨 **Alerts &amp; pill polish** — flash a seat and play a sound on in-game combat/aggression
+events read straight from EVE's gamelog, not just chat keywords; per-seat system and offline
+pills with a configurable hide timer; minimize-all and auto-minimize hotkeys with a per-seat
+"never minimize" flag for scouts you always want visible; a separate font, size, and color for
+the centered master pill vs. the smaller corner alt pills; a zoom-style hover preview option;
+and an `evedeck://` link handler for one-click deep links from Discord or a browser.
 
 📋 **Profile Sync** — copy one character's EVE settings to any number of alts in a click:
 both per-character (`core_char`) and per-account (`core_user`) files, so window positions
@@ -163,8 +172,27 @@ No. The download is a single self-contained build; everything EveDeck needs is b
 inside. Just extract and run.
 
 **Does it work with multiple monitors?**
-Yes. Run clients across displays and assign them to slots; each profile stores its target
-monitor and scales to that monitor at apply time.
+Yes, two ways. Built-in layout families (Grid, Center Master, etc.) each target a single
+monitor you pick from a dropdown. For a layout that spans two or more monitors, build a
+**custom profile** with the on-monitor editor — drag slots onto any connected display and
+one profile drives the whole desktop; no per-monitor profile juggling.
+
+**Can I add another display without buying a monitor?**
+Yes — a phone or tablet plugged in over USB and running a screen-extension app shows up to
+Windows as a normal monitor, so you can drop an extra seat or two on it like any other
+display. **SuperDisplay** is a popular option for this (a one-time lifetime license runs
+around $15 as of writing) — it's a third-party tool, unaffiliated with EveDeck, but works
+well for exactly this. Combine it with a custom multi-monitor profile (above) and it's a
+one-time drag-and-drop setup.
+
+**Windows or my antivirus flagged the download — is it safe?**
+Every release is built directly from this public repo via GitHub Actions and scanned with
+VirusTotal automatically — see the results on each [release page](https://evedeck.space/releases).
+A single low-signal engine occasionally blacklist-flags a freshly-built, self-contained EXE;
+that's a known false-positive pattern for this class of app, not a verified detection. As
+with any software, downloading, installing, and running EveDeck is ultimately **at your own
+risk** — EveDeck is open source, so you're always free to read the code or build it yourself
+if you want certainty.
 
 **Does it support AMD VSR / Nvidia DSR virtual resolutions?**
 Yes. Slots are stored as fractional rects, so a single profile works at any resolution,
