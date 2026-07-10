@@ -77,9 +77,12 @@ and an `evedeck://` link handler for one-click deep links from Discord or a brow
 both per-character (`core_char`) and per-account (`core_user`) files, so window positions
 and UI are truly 1:1 across every client. Originals are timestamp-backed-up first.
 
-🎙️ **Comms overlay** — pin Mumble's Talking UI on top of your layout: drag it anywhere,
-resize from any edge, lock it in place, and set its transparency. It's the real Mumble
-window — fully interactive, restored untouched when you detach.
+🎙️ **Comms overlay** — a small companion plugin runs inside Mumble and feeds who's-talking
+state to EveDeck over a local pipe; EveDeck draws its own themed panel with it, styled to
+match the app — no Mumble window wrangling. Drag it anywhere, lock it in place, and set its
+transparency. Read-only: the plugin only ever reports names and talking state, never audio
+or messages. One-click install from the Comms tab, then enable it once inside Mumble
+(Configure → Plugins → "EveDeck Talker Bridge").
 
 🔔 **Launch Groups &amp; Chat Alerts** — save multiple named character rosters (Character
 Sets) and launch a whole fleet with staggered EVE Launcher clicks; Chat Alerts watches your
