@@ -1,0 +1,31 @@
+name: Inspect VirusTotal Report
+
+# Manual diagnostic tool: given a file hash already known to VirusTotal, prints which
+# engine(s) flagged it and why, without ever exposing the API key. Useful when a release's
+# VT badge shows a non-zero detection count and the report page (client-rendered SPA) doesn't
+# reveal enough — see the "VT now scans BOTH..." / "Fixed: every upload..." notes in
+# .claude memory for context.
+on:
+  workflow_dispatch:
+    inputs:
+      hash:
+        description: "SHA-256 of the file to inspect (from a release's VirusTotal badge)"
+        required: true
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query VirusTotal and print flagged engines
+        env:
+          VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+          HASH: ${{ inputs.hash }}
+        run: |
+          curl -s -H "x-apikey: $VT_API_KEY" "https://www.virustotal.com/api/v3/files/$HASH" \
+            | jq '{
+                stats: .data.attributes.last_analysis_stats,
+                flagged: (.data.attributes.last_analysis_results
+                  | to_entries
+                  | map(select(.value.category != "undetected" and .value.category != "harmless" and .value.category != "type-unsupported"))
+                  | from_entries)
+              }'
