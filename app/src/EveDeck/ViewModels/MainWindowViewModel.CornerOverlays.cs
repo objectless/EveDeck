@@ -50,6 +50,13 @@ public sealed partial class MainWindowViewModel
     // on screen after the whole session has ended.
     private DateTime? _allSeatsOfflineSince;
 
+    // First-observed-offline timestamp per seat (SlotAssignment.SlotNumber), used by
+    // OfflinePillTimeoutSeconds to hide an individual seat's offline pill after it's been
+    // offline "too long". Updated once per tick in MaintainCornerOverlays, read (never mutated)
+    // by OfflinePillText — keeps a single source of truth instead of scattering timer logic
+    // across every call site that renders a pill.
+    private readonly Dictionary<int, DateTime> _seatOfflineSince = new();
+
     // Per-group occupancy. In legacy (single-group) mode all dicts have a single key "__single__".
     private readonly Dictionary<string, int> _centeredSeatByGroup = new();
     private readonly Dictionary<string, int> _baseMasterByGroup = new();
@@ -338,7 +345,7 @@ public sealed partial class MainWindowViewModel
             if (!slotRects.TryGetValue(groupCenter, out var masterRect)) continue;
             var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
             var centerPillText = FindSeatWindow(centeredSeat) is not null ? CenterPillTextForGroup(group.GroupId) : OfflinePillText(centeredSeat);
-            CreatePill(groupCenter, centeredSeat, masterRect, atTop: true, centered: false, centerPillText, SeatPortraitUrl(centeredSeat));
+            CreatePill(groupCenter, centeredSeat, masterRect, atTop: true, centered: false, centerPillText, SeatPortraitUrl(centeredSeat), isMaster: true);
 
             var groupCenterSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
             if (groupCenterSlot is not null && !HasDominantMasterSlot(groupCenterSlot))
@@ -362,26 +369,55 @@ public sealed partial class MainWindowViewModel
 
     // Effective label font (family, WPF size, colour hex) for a seat: the seat's own overrides win,
     // else the global defaults. Public so the Options / per-seat font pickers can seed their dialog.
-    public (string family, double size, string color) EffectiveSeatLabelFont(SlotAssignment seat)
+    // isMaster=true resolves the MASTER-pill style instead: seat master override -> global master
+    // default -> (if that's also unset) the normal (non-master) resolution below, so a Master style
+    // is a no-op everywhere until someone explicitly sets one.
+    public (string family, double size, string color) EffectiveSeatLabelFont(SlotAssignment seat, bool isMaster = false)
     {
-        var family = !string.IsNullOrWhiteSpace(seat.LabelFontFamily) ? seat.LabelFontFamily! : _settings.CornerOverlayLabelFontFamily;
-        var size = seat.LabelFontSize ?? _settings.CornerOverlayLabelFontSize;
-        var color = !string.IsNullOrWhiteSpace(seat.LabelColor) ? seat.LabelColor! : _settings.CornerOverlayLabelColor;
+        if (isMaster)
+        {
+            var normalFamily = !string.IsNullOrWhiteSpace(seat.LabelFontFamily) ? seat.LabelFontFamily! : _settings.CornerOverlayLabelFontFamily;
+            var normalSize = seat.LabelFontSize ?? _settings.CornerOverlayLabelFontSize;
+            var normalColor = !string.IsNullOrWhiteSpace(seat.LabelColor) ? seat.LabelColor! : _settings.CornerOverlayLabelColor;
+
+            var family = !string.IsNullOrWhiteSpace(seat.LabelFontFamilyMaster) ? seat.LabelFontFamilyMaster!
+                : !string.IsNullOrWhiteSpace(_settings.CornerOverlayLabelFontFamilyMaster) ? _settings.CornerOverlayLabelFontFamilyMaster
+                : normalFamily;
+            var size = seat.LabelFontSizeMaster ?? _settings.CornerOverlayLabelFontSizeMaster ?? normalSize;
+            var color = !string.IsNullOrWhiteSpace(seat.LabelColorMaster) ? seat.LabelColorMaster!
+                : !string.IsNullOrWhiteSpace(_settings.CornerOverlayLabelColorMaster) ? _settings.CornerOverlayLabelColorMaster
+                : normalColor;
+            return (family ?? "", size, color ?? "");
+        }
+
+        var famAlt = !string.IsNullOrWhiteSpace(seat.LabelFontFamily) ? seat.LabelFontFamily! : _settings.CornerOverlayLabelFontFamily;
+        var sizeAlt = seat.LabelFontSize ?? _settings.CornerOverlayLabelFontSize;
+        var colorAlt = !string.IsNullOrWhiteSpace(seat.LabelColor) ? seat.LabelColor! : _settings.CornerOverlayLabelColor;
+        return (famAlt ?? "", sizeAlt, colorAlt ?? "");
+    }
+
+    private (string family, double size, string color) ResolveLabelFont(int seat, bool isMaster = false)
+    {
+        var s = Seat(seat);
+        if (s is not null) return EffectiveSeatLabelFont(s, isMaster);
+        if (!isMaster) return (_settings.CornerOverlayLabelFontFamily ?? "", _settings.CornerOverlayLabelFontSize, _settings.CornerOverlayLabelColor ?? "");
+        var family = !string.IsNullOrWhiteSpace(_settings.CornerOverlayLabelFontFamilyMaster) ? _settings.CornerOverlayLabelFontFamilyMaster : _settings.CornerOverlayLabelFontFamily;
+        var size = _settings.CornerOverlayLabelFontSizeMaster ?? _settings.CornerOverlayLabelFontSize;
+        var color = !string.IsNullOrWhiteSpace(_settings.CornerOverlayLabelColorMaster) ? _settings.CornerOverlayLabelColorMaster : _settings.CornerOverlayLabelColor;
         return (family ?? "", size, color ?? "");
     }
 
-    private (string family, double size, string color) ResolveLabelFont(int seat)
-    {
-        var s = Seat(seat);
-        return s is null
-            ? (_settings.CornerOverlayLabelFontFamily ?? "", _settings.CornerOverlayLabelFontSize, _settings.CornerOverlayLabelColor ?? "")
-            : EffectiveSeatLabelFont(s);
-    }
+    // True when `position` is any swap group's centre/master slot. Needed because for layouts with
+    // no dominant master area (the Grid family), the centre slot is ALSO registered as a plain
+    // corner tile and can be refreshed by the generic per-tick corner loop — without this check
+    // that refresh would use the alt font instead of the master font it was created with.
+    private bool IsGroupCenterPosition(int position) =>
+        EffectiveGroups().Any(g => CenterSlotForGroup(g) == position);
 
-    private void CreatePill(int key, int seat, WindowRect rect, bool atTop, bool centered, string text, string portraitUrl)
+    private void CreatePill(int key, int seat, WindowRect rect, bool atTop, bool centered, string text, string portraitUrl, bool isMaster = false)
     {
         if (_labelSurface is null) return;
-        var (family, size, color) = ResolveLabelFont(seat);
+        var (family, size, color) = ResolveLabelFont(seat, isMaster);
         _labelSurface.SetPill(key, rect, atTop, centered, family, size, color);
         _labelSurface.SetPillContent(key, text, portraitUrl);
     }
@@ -409,6 +445,12 @@ public sealed partial class MainWindowViewModel
     // blank tile ("offline badge"). Empty when the seat itself has no label to show.
     private string OfflinePillText(int seat)
     {
+        var timeout = _settings.OfflinePillTimeoutSeconds;
+        if (timeout == 0) return "";
+        if (timeout > 0 && _seatOfflineSince.TryGetValue(seat, out var since)
+            && (DateTime.UtcNow - since).TotalSeconds >= timeout)
+            return "";
+
         var name = SeatLabel(seat);
         return name.Length > 0 ? $"{name} · offline" : "";
     }
@@ -451,6 +493,7 @@ public sealed partial class MainWindowViewModel
         _surfacesTopmost = false;
         _cornerSourceHandles.Clear();
         _cornerRects.Clear();
+        _seatOfflineSince.Clear();
 
         if (!_settings.ActiveFrameEnabled) _frameTimer.Stop();
     }
@@ -776,7 +819,7 @@ public sealed partial class MainWindowViewModel
         _labelSurface.SetPillContent(position,
             FindSeatWindow(seat) is not null ? PillTextForPosition(position) : OfflinePillText(seat),
             SeatPortraitUrl(seat));
-        var (family, size, color) = ResolveLabelFont(seat);
+        var (family, size, color) = ResolveLabelFont(seat, IsGroupCenterPosition(position));
         _labelSurface.SetPillAppearance(position, family, size, color);
     }
 
@@ -786,7 +829,7 @@ public sealed partial class MainWindowViewModel
         var groupCenter = CenterSlotForGroup(group);
         var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
         _labelSurface.SetPillContent(groupCenter, CenterPillTextForGroup(group.GroupId), SeatPortraitUrl(centeredSeat));
-        var (family, size, color) = ResolveLabelFont(centeredSeat);
+        var (family, size, color) = ResolveLabelFont(centeredSeat, isMaster: true);
         _labelSurface.SetPillAppearance(groupCenter, family, size, color);
     }
 
@@ -879,6 +922,17 @@ public sealed partial class MainWindowViewModel
         else
         {
             _allSeatsOfflineSince = null;
+        }
+
+        // Maintain how long each seat has been continuously offline (for OfflinePillText's
+        // per-seat hide timeout). Single per-tick update, mirrors the whole-overlay
+        // _allSeatsOfflineSince pattern above but per seat; OfflinePillText only reads this.
+        foreach (var assignment in Assignments)
+        {
+            if (FindAssignedWindows(assignment).Any())
+                _seatOfflineSince.Remove(assignment.SlotNumber);
+            else if (!_seatOfflineSince.ContainsKey(assignment.SlotNumber))
+                _seatOfflineSince[assignment.SlotNumber] = DateTime.UtcNow;
         }
 
         var eveOrEwcFg = IsEveOrEwcForeground();

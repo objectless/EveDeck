@@ -156,4 +156,50 @@ public class ConfigServiceTests : IDisposable
         Assert.Single(foundProfile.Slots);
         Assert.Equal(1, foundProfile.Slots[0].SlotNumber);
     }
+
+    [Fact]
+    public void Load_DefaultsOfflinePillTimeoutSecondsToNegativeOne()
+    {
+        var settings = _configService.Load();
+        Assert.Equal(-1, settings.OfflinePillTimeoutSeconds);
+    }
+
+    [Fact]
+    public void Save_ThenLoad_RoundTripsOfflinePillTimeoutSeconds()
+    {
+        var settings = _configService.Load();
+        settings.OfflinePillTimeoutSeconds = 30;
+        _configService.Save(settings);
+
+        var configService2 = new ConfigService(_tempDir);
+        var reloadedSettings = configService2.Load();
+
+        Assert.Equal(30, reloadedSettings.OfflinePillTimeoutSeconds);
+    }
+
+    [Fact]
+    public void Load_DefaultsCornerOverlayLabelFontMasterPropertiesToUnset()
+    {
+        var settings = _configService.Load();
+        Assert.Equal("", settings.CornerOverlayLabelFontFamilyMaster);
+        Assert.Null(settings.CornerOverlayLabelFontSizeMaster);
+        Assert.Equal("", settings.CornerOverlayLabelColorMaster);
+    }
+
+    [Fact]
+    public void Save_ThenLoad_RoundTripsCornerOverlayLabelFontMasterProperties()
+    {
+        var settings = _configService.Load();
+        settings.CornerOverlayLabelFontFamilyMaster = "Arial";
+        settings.CornerOverlayLabelFontSizeMaster = 28.0;
+        settings.CornerOverlayLabelColorMaster = "#FF0000";
+        _configService.Save(settings);
+
+        var configService2 = new ConfigService(_tempDir);
+        var reloadedSettings = configService2.Load();
+
+        Assert.Equal("Arial", reloadedSettings.CornerOverlayLabelFontFamilyMaster);
+        Assert.Equal(28.0, reloadedSettings.CornerOverlayLabelFontSizeMaster);
+        Assert.Equal("#FF0000", reloadedSettings.CornerOverlayLabelColorMaster);
+    }
 }

@@ -700,6 +700,14 @@
                                           Click="SlotLabelFontReset_Click"
                                           Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
                                           ToolTip="Reset this seat's label font to the global default"/>
+                                  <Button DockPanel.Dock="Right" Content="Master Font"
+                                          Click="SlotMasterLabelFontPick_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Set this seat's preview label font, size and colour for when it's the centred MASTER seat (falls back to its normal label font when unset)"/>
+                                  <Button DockPanel.Dock="Right" Content="&#8635;"
+                                          Click="SlotMasterLabelFontReset_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Reset this seat's master label font to the global master default"/>
                                   <Button DockPanel.Dock="Right" Content="Color"
                                           Click="SlotFrameColorPick_Click"
                                           Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
@@ -1585,6 +1593,14 @@ Shows your background clients as live mini-previews in the screen corners while 
                            Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="6,0,0,0"/>
               </StackPanel>
               <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                <TextBlock Text="Hide offline pill after" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <TextBox Width="48"
+                         Text="{Binding OfflinePillTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
+                         HorizontalContentAlignment="Center" FontSize="11"/>
+                <TextBlock Text="sec offline (0 = hide immediately, -1 = never hide, default)" VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="6,0,0,0"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
                 <TextBlock Text="Label style" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
                 <ComboBox Width="180" SelectedValuePath="Tag"
                           SelectedValue="{Binding CornerOverlayLabelStyle}">
@@ -1600,6 +1616,14 @@ Shows your background clients as live mini-previews in the screen corners while 
               <TextBlock Text="Sets the font, size and colour used for preview labels. Override per seat with the 'Font' button on each slot."
                          TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"
                          Foreground="{StaticResource MutedBrush}"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                <TextBlock Text="Master label font" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
+                <Button Content="Choose font..." Click="MasterLabelFontPick_Click" Padding="7,4" Margin="0,0,8,0"/>
+                <TextBlock Text="{Binding MasterLabelFontSummary}" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,8,0"/>
+                <Button Content="&#8635;" Click="MasterLabelFontReset_Click" Padding="5,1" MinWidth="0" MinHeight="0" FontSize="10" ToolTip="Reset to inherit the default label font"/>
+              </StackPanel>
+              <TextBlock Text="Sets a separate font, size and colour for the centred MASTER seat's label (e.g. a bigger label on a full-screen master vs. smaller alt preview labels). Falls back to the default label font above when unset. Override per seat with the 'Master Font' button on each slot."
+                         TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,10"/>
 
               <!-- ── Settings Backup ─────────────────────────────────── -->
               <TextBlock Text="Settings Backup" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>

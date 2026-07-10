@@ -11,6 +11,9 @@ public sealed class SlotAssignment : ObservableObject
     private string? _labelFontFamily;
     private double? _labelFontSize;
     private string? _labelColor;
+    private string? _labelFontFamilyMaster;
+    private double? _labelFontSizeMaster;
+    private string? _labelColorMaster;
     private bool _isMaster;
     private string _positionCode = "";
 
@@ -110,6 +113,26 @@ public sealed class SlotAssignment : ObservableObject
     {
         get => _labelColor;
         set => SetProperty(ref _labelColor, value);
+    }
+
+    // 3c — Optional per-seat MASTER-pill font overrides (null = inherit the global Master default,
+    // which itself falls back to the normal label font/size/color when unset).
+    public string? LabelFontFamilyMaster
+    {
+        get => _labelFontFamilyMaster;
+        set => SetProperty(ref _labelFontFamilyMaster, value);
+    }
+
+    public double? LabelFontSizeMaster
+    {
+        get => _labelFontSizeMaster;
+        set => SetProperty(ref _labelFontSizeMaster, value);
+    }
+
+    public string? LabelColorMaster
+    {
+        get => _labelColorMaster;
+        set => SetProperty(ref _labelColorMaster, value);
     }
 
     // Keep this seat's EVE window pinned topmost (HWND_TOPMOST) at all times.

@@ -52,6 +52,14 @@ public sealed class AppSettings
     public string CornerOverlayLabelColor { get; set; } = "#E5E7EB"; // global default label text color
     public int CornerOverlayLabelHeight { get; set; } = 28; // WPF DIPs
 
+    // Global default label font/size/color for the MASTER (centered, near-full-size) seat's pill.
+    // Empty/null = inherit the normal CornerOverlayLabelFontFamily/FontSize/LabelColor above, so
+    // this is a no-op until explicitly customized. Per-seat overrides on SlotAssignment
+    // (LabelFontFamilyMaster etc.) take precedence over these when set.
+    public string CornerOverlayLabelFontFamilyMaster { get; set; } = "";
+    public double? CornerOverlayLabelFontSizeMaster { get; set; } = null;
+    public string CornerOverlayLabelColorMaster { get; set; } = "";
+
     // Click a corner preview tile to bring that client to the centre (focus switch). Pure window
     // management — the click is NOT forwarded into the EVE client, so it stays EULA-compliant (no
     // input injection). A convenient alternative to the centre-seat hotkeys for users who haven't
@@ -121,6 +129,12 @@ public sealed class AppSettings
     // seconds, the corner overlay tears itself down instead of leaving a wall of stale "Name ·
     // offline" pills on screen after the whole session has ended. 0 = never auto-teardown.
     public int OfflineOverlayTimeoutSeconds { get; set; } = 60;
+
+    // Hides a seat's "Name · offline" pill after it has been continuously offline for this many
+    // seconds. 0 = hide immediately (no offline text ever shown). -1 (default) = never hide,
+    // preserving the original always-on behavior. Independent of OfflineOverlayTimeoutSeconds,
+    // which only tears down the WHOLE overlay once EVERY seat is offline at once.
+    public int OfflinePillTimeoutSeconds { get; set; } = -1;
 
     // EveDeck-rendered Mumble talker overlay (fed by the EveDeck Mumble plugin over a named
     // pipe). Only Enabled/Locked/X/Y/OpacityPercent are used -- the window owns its own size.

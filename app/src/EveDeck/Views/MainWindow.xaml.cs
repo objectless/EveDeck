@@ -575,6 +575,30 @@ public partial class MainWindow : Window
             _viewModel.ApplySeatLabelFont(seat, null, null, null);
     }
 
+    private void MasterLabelFontPick_Click(object sender, RoutedEventArgs e)
+    {
+        var (family, sizeDip, color) = _viewModel.GlobalMasterLabelFont();
+        if (TryPickFont(family, sizeDip, color, out var f, out var s, out var c))
+            _viewModel.ApplyGlobalMasterLabelFont(f, s, c);
+    }
+
+    private void MasterLabelFontReset_Click(object sender, RoutedEventArgs e)
+        => _viewModel.ResetGlobalMasterLabelFont();
+
+    private void SlotMasterLabelFontPick_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SlotAssignment seat }) return;
+        var (family, sizeDip, color) = _viewModel.EffectiveSeatLabelFont(seat, isMaster: true);
+        if (TryPickFont(family, sizeDip, color, out var f, out var s, out var c))
+            _viewModel.ApplySeatMasterLabelFont(seat, f, s, c);
+    }
+
+    private void SlotMasterLabelFontReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: SlotAssignment seat })
+            _viewModel.ApplySeatMasterLabelFont(seat, null, null, null);
+    }
+
     private void SlotFrameColorPick_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: SlotAssignment seat }) return;

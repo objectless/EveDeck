@@ -1154,6 +1154,59 @@ public sealed partial class MainWindowViewModel : ObservableObject
         if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
     }
 
+    // One-line summary of the MASTER label font for the Options tab — shows the concrete effective
+    // values whether they're explicitly set or inherited from the normal default font.
+    public string MasterLabelFontSummary
+    {
+        get
+        {
+            var family = string.IsNullOrWhiteSpace(_settings.CornerOverlayLabelFontFamilyMaster)
+                ? (string.IsNullOrWhiteSpace(_settings.CornerOverlayLabelFontFamily) ? "Segoe UI" : _settings.CornerOverlayLabelFontFamily)
+                : _settings.CornerOverlayLabelFontFamilyMaster;
+            var size = _settings.CornerOverlayLabelFontSizeMaster ?? _settings.CornerOverlayLabelFontSize;
+            return $"{family}, {size:0}px";
+        }
+    }
+
+    // Current global MASTER label font (family, WPF DIP size, colour hex) for seeding the font
+    // dialog — falls back to the normal default's concrete values when unset.
+    public (string family, double sizeDip, string color) GlobalMasterLabelFont() =>
+        (string.IsNullOrWhiteSpace(_settings.CornerOverlayLabelFontFamilyMaster) ? _settings.CornerOverlayLabelFontFamily : _settings.CornerOverlayLabelFontFamilyMaster,
+         _settings.CornerOverlayLabelFontSizeMaster ?? _settings.CornerOverlayLabelFontSize,
+         string.IsNullOrWhiteSpace(_settings.CornerOverlayLabelColorMaster) ? _settings.CornerOverlayLabelColor : _settings.CornerOverlayLabelColorMaster);
+
+    // Applies the global MASTER label font (family + size + colour) chosen in the WinForms font dialog.
+    public void ApplyGlobalMasterLabelFont(string family, double sizeDip, string colorHex)
+    {
+        _settings.CornerOverlayLabelFontFamilyMaster = family ?? "";
+        _settings.CornerOverlayLabelFontSizeMaster = Math.Clamp(sizeDip, 6.0, 72.0);
+        if (!string.IsNullOrWhiteSpace(colorHex)) _settings.CornerOverlayLabelColorMaster = colorHex;
+        OnPropertyChanged(nameof(MasterLabelFontSummary));
+        Save();
+        if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
+    }
+
+    // Clears the global MASTER label font override so it inherits the normal default again.
+    public void ResetGlobalMasterLabelFont()
+    {
+        _settings.CornerOverlayLabelFontFamilyMaster = "";
+        _settings.CornerOverlayLabelFontSizeMaster = null;
+        _settings.CornerOverlayLabelColorMaster = "";
+        OnPropertyChanged(nameof(MasterLabelFontSummary));
+        Save();
+        if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
+    }
+
+    // Applies (or clears, when args are null) a single seat's MASTER label font overrides.
+    public void ApplySeatMasterLabelFont(SlotAssignment seat, string? family, double? sizeDip, string? colorHex)
+    {
+        seat.LabelFontFamilyMaster = string.IsNullOrWhiteSpace(family) ? null : family;
+        seat.LabelFontSizeMaster = sizeDip.HasValue ? Math.Clamp(sizeDip.Value, 6.0, 72.0) : null;
+        seat.LabelColorMaster = string.IsNullOrWhiteSpace(colorHex) ? null : colorHex;
+        Save();
+        if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
+    }
+
     // Current effective active-window frame colour for a seat (its own override, else the global) --
     // used to seed the per-seat colour picker.
     public string EffectiveSeatFrameColor(SlotAssignment seat)
@@ -1168,11 +1221,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     // Applies both halves of a pasted EVE theme string to a seat in one go: Primary -> frame colour,
-    // Accent -> label colour (see Utilities.EveThemeString, used by the "Paste Theme" seat button).
+    // Accent -> label colour (both the normal/alt pill and the Master pill, so the pasted theme
+    // reads consistently regardless of which one is currently showing for this seat) (see
+    // Utilities.EveThemeString, used by the "Paste Theme" seat button).
     public void ApplySeatTheme(SlotAssignment seat, string frameColorHex, string labelColorHex)
     {
         seat.FrameColor = frameColorHex;
         seat.LabelColor = labelColorHex;
+        seat.LabelColorMaster = labelColorHex;
         _lastFrameHandle = 0;
         Save();
         if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
@@ -1250,6 +1306,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
             var clamped = Math.Max(0, value);
             if (_settings.OfflineOverlayTimeoutSeconds == clamped) return;
             _settings.OfflineOverlayTimeoutSeconds = clamped;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
+    public int OfflinePillTimeoutSeconds
+    {
+        get => _settings.OfflinePillTimeoutSeconds;
+        set
+        {
+            var clamped = Math.Max(-1, value);
+            if (_settings.OfflinePillTimeoutSeconds == clamped) return;
+            _settings.OfflinePillTimeoutSeconds = clamped;
             OnPropertyChanged();
             Save();
         }
