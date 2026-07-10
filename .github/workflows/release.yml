@@ -175,7 +175,16 @@ jobs:
             if (-not $stats) {
               try {
                 $upResp = Invoke-RestMethod -Uri "https://www.virustotal.com/api/v3/files/upload_url" -Headers $headers -Method Get
-                $submit = Invoke-RestMethod -Uri $upResp.data -Headers $headers -Method Post -Form @{ file = Get-Item -Path $Path }
+                # Invoke-RestMethod's -Form quotes the multipart boundary in the Content-Type
+                # header (PowerShell/PowerShell#9241); VirusTotal's API rejects a quoted
+                # boundary with "Malformed multipart body." every time, so every upload since
+                # this scan was added has silently failed. Shell out to the curl.exe that
+                # ships on the Windows runner instead -- it sends an unquoted boundary VT accepts.
+                $submitJson = & curl.exe -s -S -X POST -H "x-apikey: $($env:VT_API_KEY)" -F "file=@$Path" "$($upResp.data)"
+                if ($LASTEXITCODE -ne 0) {
+                  throw "curl.exe exited with code $LASTEXITCODE"
+                }
+                $submit = $submitJson | ConvertFrom-Json
                 $analysisId = $submit.data.id
 
                 # Fresh files typically finish in 2-4 minutes; give it up to 10 before moving on
