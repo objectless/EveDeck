@@ -180,10 +180,10 @@ one profile drives the whole desktop; no per-monitor profile juggling.
 **Can I add another display without buying a monitor?**
 Yes — a phone or tablet plugged in over USB and running a screen-extension app shows up to
 Windows as a normal monitor, so you can drop an extra seat or two on it like any other
-display. **SuperDisplay** is a popular option for this (a one-time lifetime license runs
-around $15 as of writing) — it's a third-party tool, unaffiliated with EveDeck, but works
-well for exactly this. Combine it with a custom multi-monitor profile (above) and it's a
-one-time drag-and-drop setup.
+display. [SuperDisplay](https://superdisplay.app/) is a popular option for this (a one-time lifetime
+license runs around $15 as of writing) — it's a third-party tool, unaffiliated with EveDeck,
+but works well for exactly this. Combine it with a custom multi-monitor profile (above) and
+it's a one-time drag-and-drop setup.
 
 **Windows or my antivirus flagged the download — is it safe?**
 Every release is built directly from this public repo via GitHub Actions and scanned with
