@@ -692,39 +692,43 @@
                                       </Style>
                                     </ToggleButton.Style>
                                   </ToggleButton>
-                                  <Button DockPanel.Dock="Right" Content="Font"
-                                          Click="SlotLabelFontPick_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Set this seat's preview label font, size and colour"/>
-                                  <Button DockPanel.Dock="Right" Content="&#8635;"
-                                          Click="SlotLabelFontReset_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Reset this seat's label font to the global default"/>
-                                  <Button DockPanel.Dock="Right" Content="Master Font"
-                                          Click="SlotMasterLabelFontPick_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Set this seat's preview label font, size and colour for when it's the centred MASTER seat (falls back to its normal label font when unset)"/>
-                                  <Button DockPanel.Dock="Right" Content="&#8635;"
-                                          Click="SlotMasterLabelFontReset_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Reset this seat's master label font to the global master default"/>
-                                  <Button DockPanel.Dock="Right" Content="Color"
-                                          Click="SlotFrameColorPick_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Set this seat's active-window frame colour (the highlight around the focused client)"/>
-                                  <Button DockPanel.Dock="Right" Content="&#8635;"
-                                          Click="SlotFrameColorReset_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Reset this seat's frame colour to the global default"/>
-                                  <Button DockPanel.Dock="Right" Content="Theme"
-                                          Click="SlotPasteTheme_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Paste a copied EVE 'Edit Theme' string to set this seat's frame + label colour (Primary -&gt; frame, Accent -&gt; label)"/>
                                   <TextBox Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}"
                                            Style="{StaticResource InlineSlotLabel}"
                                            FontSize="14" FontWeight="SemiBold"
                                            ToolTip="Slot label — auto-filled from 'EVE - Name'. Also editable in Options &gt; Character Names."/>
                                 </DockPanel>
+
+                                <!-- Style buttons row: wraps onto additional lines so it never forces the window wider -->
+                                <WrapPanel Margin="0,3,0,0">
+                                  <Button Content="Font"
+                                          Click="SlotLabelFontPick_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Set this seat's preview label font, size and colour"/>
+                                  <Button Content="&#8635;"
+                                          Click="SlotLabelFontReset_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Reset this seat's label font to the global default"/>
+                                  <Button Content="Master Font"
+                                          Click="SlotMasterLabelFontPick_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Set this seat's preview label font, size and colour for when it's the centred MASTER seat (falls back to its normal label font when unset)"/>
+                                  <Button Content="&#8635;"
+                                          Click="SlotMasterLabelFontReset_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Reset this seat's master label font to the global master default"/>
+                                  <Button Content="Color"
+                                          Click="SlotFrameColorPick_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Set this seat's active-window frame colour (the highlight around the focused client)"/>
+                                  <Button Content="&#8635;"
+                                          Click="SlotFrameColorReset_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Reset this seat's frame colour to the global default"/>
+                                  <Button Content="Theme"
+                                          Click="SlotPasteTheme_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Paste a copied EVE 'Edit Theme' string to set this seat's frame + label colour (Primary -&gt; frame, Accent -&gt; label)"/>
+                                </WrapPanel>
 
                                 <!-- Live indicator: who's actually logged into this seat right now, when
                                      it differs from the seat's stable configured Label (e.g. an alt). -->
