@@ -68,12 +68,30 @@ public sealed class AppSettings
     // prevents accidental peeks when the cursor merely passes over a tile. 0 = instant.
     public int HoverPreviewDelayMs { get; set; } = 250;
 
+    // What hovering a corner tile does: "Peek" temporarily raises the real client over the master
+    // (the original behaviour); "Zoom" magnifies just the preview thumbnail in place — the real
+    // window is never moved. Zoom is the eve-o-preview-style option.
+    public string HoverPreviewStyle { get; set; } = "Peek";
+
+    // Preview magnification factor for the Zoom hover style (1.5–4x).
+    public double HoverZoomFactor { get; set; } = 2.0;
+
     // Only fire hotkeys when an EVE client is in the foreground.
     public bool RequireEveFocusForHotkeys { get; set; } = true;
 
     // Throttle background EVE client processes to BELOW_NORMAL CPU priority while another is focused.
     // Reduces GPU/CPU competition so the active client gets more frame budget.
     public bool ThrottleBackgroundProcesses { get; set; } = true;
+
+    // Auto-minimize EVE clients that are not foreground (skipping NeverMinimize seats). Flat
+    // layouts only — corner-overlay mode needs unminimized windows for live thumbnails, so the
+    // option is ignored while corner overlays are live.
+    public bool AutoMinimizeInactiveClients { get; set; } = false;
+
+    // Hide a corner tile's live preview while that seat's client IS the foreground window (it's
+    // already on screen full-size, the tile is redundant clutter). eve-o-preview's
+    // "hide active client thumbnail" equivalent.
+    public bool HideActiveSeatTile { get; set; } = false;
 
     // First-run setup wizard has been completed (controls whether it auto-shows on launch).
     public bool SetupCompleted { get; set; } = false;
@@ -89,6 +107,15 @@ public sealed class AppSettings
 
     // Chat/event keyword alert rules watched by ChatLogWatcherService.
     public ObservableCollection<ChatAlertRule> ChatAlertRules { get; set; } = new();
+
+    // Structured game-event alert rules watched by GameLogWatcherService (Gamelogs, not Chatlogs).
+    // Seeded with defaults for fresh installs / pre-feature saves; JSON round-trip replaces the
+    // collection, so user edits (including deleting every rule) persist as-is.
+    public ObservableCollection<GameEventRule> GameEventRules { get; set; } = new(GameEventRule.Defaults());
+
+    // Append the character's current solar system (tracked from Local chatlog headers) to the
+    // corner-overlay labels.
+    public bool CornerOverlayShowSystem { get; set; } = true;
 
     // EveDeck-rendered Mumble talker overlay (fed by the EveDeck Mumble plugin over a named
     // pipe). Only Enabled/Locked/X/Y/OpacityPercent are used -- the window owns its own size.

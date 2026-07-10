@@ -323,6 +323,47 @@ public sealed partial class MainWindowViewModel
         return Windows.FirstOrDefault(w => w.Handle == handle);
     }
 
+    // Handles of windows on seats marked NeverMinimize — exempt from every bulk-minimize path.
+    private HashSet<nint> ProtectedWindowHandles()
+        => Assignments.Where(a => a.NeverMinimize)
+            .SelectMany(FindAssignedWindows)
+            .Select(w => w.Handle)
+            .ToHashSet();
+
+    // Boss key: minimize every EVE client at once, except protected seats. Window-state change
+    // only (ShowWindow) — no input is ever sent to a client.
+    private void MinimizeAllClients()
+    {
+        Refresh();
+        var protectedHandles = ProtectedWindowHandles();
+        var count = 0;
+        foreach (var window in Windows)
+        {
+            if (protectedHandles.Contains(window.Handle)) continue;
+            _windowService.MinimizeWindow(window.Handle);
+            count++;
+        }
+        Log.Info($"Minimized {count} EVE client(s) ({protectedHandles.Count} protected seat window(s) skipped).");
+    }
+
+    // Optional eve-o-preview-style auto-minimize: whenever an EVE client takes the foreground,
+    // minimize the others (except protected seats). Only active in flat layouts — corner-overlay
+    // mode parks alts off-screen and needs them UNminimized so DWM keeps compositing their live
+    // thumbnails (minimized windows stop rendering).
+    internal void AutoMinimizeInactive(nint foregroundHwnd)
+    {
+        if (!_settings.AutoMinimizeInactiveClients || CornerOverlaysLive) return;
+        if (!Windows.Any(w => w.Handle == foregroundHwnd)) return;
+
+        var protectedHandles = ProtectedWindowHandles();
+        foreach (var window in Windows)
+        {
+            if (window.Handle == foregroundHwnd || protectedHandles.Contains(window.Handle)) continue;
+            if (_windowService.IsWindowMinimized(window.Handle)) continue;
+            _windowService.MinimizeWindow(window.Handle);
+        }
+    }
+
     private bool IsWindowAssigned(EveWindowInfo w)
         => Assignments.Any(a => a.AssignedWindows.Any(e => e.Title.Equals(w.Title, StringComparison.OrdinalIgnoreCase)));
 

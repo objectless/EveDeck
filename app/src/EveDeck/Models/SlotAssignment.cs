@@ -129,6 +129,15 @@ public sealed class SlotAssignment : ObservableObject
         set => SetProperty(ref _isDragSwapTarget, value);
     }
 
+    // Protect this seat from bulk-minimize operations (the "Minimize all EVE clients" hotkey and
+    // the auto-minimize-inactive option) — e.g. keep a scout or market alt always visible.
+    private bool _neverMinimize;
+    public bool NeverMinimize
+    {
+        get => _neverMinimize;
+        set => SetProperty(ref _neverMinimize, value);
+    }
+
     // UI-only chat-alert flash state — not persisted. Set true on a keyword match, auto-reset to
     // false a couple seconds later by the ViewModel (see MainWindowViewModel.ChatAlerts.cs).
     private bool _isAlerting;

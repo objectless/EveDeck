@@ -27,6 +27,10 @@ public partial class MainWindow : Window
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private Point _windowDragStart;
 
+    // evedeck:// URL commands forwarded from App (protocol pipe / startup args); routed through
+    // the view-model's SafetyGuard-validated dispatcher.
+    internal void HandleProtocolUrl(string url) => _viewModel.HandleProtocolUrl(url);
+
     public MainWindow()
     {
         InitializeComponent();
@@ -36,6 +40,7 @@ public partial class MainWindow : Window
         _hotkeyService.ForegroundChanged += (_, hwnd) =>
         {
             _viewModel.ApplyProcessPriorities(hwnd);
+            _viewModel.AutoMinimizeInactive(hwnd);
             _viewModel.RefreshTopmostForForeground(hwnd);
             // RefreshTopmostForForeground can freshly raise a pinned seat's window to HWND_TOPMOST,
             // in front of the overlay surfaces. Re-assert the surfaces (tile window, then its owned

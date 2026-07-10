@@ -235,7 +235,7 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
-        var masterRect = ApplyMasterResOverride(ResolvePlacementRect(centerSlot));
+        var masterRect = ResolveMasterRect(centerSlot);
         var masterAssignment = Assignments.FirstOrDefault(a => a.SlotNumber == ActiveMasterSeat);
         var masterWindow = masterAssignment is null ? null : FindAssignedWindows(masterAssignment).FirstOrDefault();
 
@@ -734,6 +734,34 @@ public sealed partial class MainWindowViewModel
     // Hotkey entry point (SwapSlotWithMasterN / Ctrl+Shift+N) — centre the seat. Kept under the old
     // name for hotkey routing + SafetyGuard compatibility.
     private void SwapSlotWithMaster(int slotNumber) => CenterSeat(slotNumber);
+
+    // Whether the profile's centre slot is meaningfully larger (>= 1.5x area) than every other slot
+    // in the group -- true for Center Master/Whammy/Side Stack/Twin Stack, which are built with one
+    // deliberately oversized master cell. Grid-family and custom equal-cell layouts have no such
+    // cell -- every slot is roughly the same size, so the "centre" is just one arbitrary cell among
+    // equals.
+    private bool HasDominantMasterSlot(LayoutSlot centerSlot)
+    {
+        var centerArea = (long)centerSlot.Width * centerSlot.Height;
+        return SelectedProfile is null || SelectedProfile.Slots
+            .Where(s => s.SlotNumber != centerSlot.SlotNumber)
+            .All(s => centerArea >= (long)s.Width * s.Height * 3 / 2);
+    }
+
+    // Resolve the real, physical size/position the master's EVE window should be moved to. For
+    // layouts with a dominant master cell this is just that cell (scaled/overridden as before). For
+    // equal-cell layouts (Grid family) resizing the real window down to one small grid cell would
+    // shrink EVE's actual render resolution to a fraction of the screen -- the "everyone gets
+    // shrunk tiny" bug reported against Grid. Instead the master keeps a full/native resolution
+    // (still subject to any per-profile Master Resolution override) and gets its own preview tile
+    // in the grid just like every other seat -- see StartCornerOverlays.
+    private WindowRect ResolveMasterRect(LayoutSlot centerSlot)
+    {
+        if (HasDominantMasterSlot(centerSlot)) return ApplyMasterResOverride(ResolvePlacementRect(centerSlot));
+
+        var full = ResolveLayoutAnchor() ?? ResolvePlacementRect(centerSlot);
+        return ApplyMasterResOverride(full);
+    }
 
     // If the active profile has a master resolution override, replace the width/height of the given
     // rect with it (keeping X/Y), clamped to the current monitor bounds so the window never

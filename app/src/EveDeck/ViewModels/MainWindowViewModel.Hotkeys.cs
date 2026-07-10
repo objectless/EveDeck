@@ -22,7 +22,8 @@ public sealed partial class MainWindowViewModel
             if (_settings.RequireEveFocusForHotkeys
                 && !actionId.StartsWith("FocusSlot", StringComparison.OrdinalIgnoreCase)
                 && !actionId.StartsWith("FocusDirection", StringComparison.OrdinalIgnoreCase)
-                && !actionId.StartsWith("SwitchToCharacter", StringComparison.OrdinalIgnoreCase))
+                && !actionId.StartsWith("SwitchToCharacter", StringComparison.OrdinalIgnoreCase)
+                && !actionId.Equals("MinimizeAllClients", StringComparison.OrdinalIgnoreCase)) // boss key must work from anywhere
             {
                 var fg = _windowService.GetForegroundWindowHandle();
                 if (!Windows.Any(w => w.Handle == fg)) return;
@@ -58,6 +59,10 @@ public sealed partial class MainWindowViewModel
             {
                 ToggleTopmostForActive();
             }
+            else if (actionId.Equals("MinimizeAllClients", StringComparison.OrdinalIgnoreCase))
+            {
+                MinimizeAllClients();
+            }
             else if (actionId.StartsWith("SwitchCharacterSet", StringComparison.OrdinalIgnoreCase)
                 && int.TryParse(actionId["SwitchCharacterSet".Length..], out var setIndex))
             {
@@ -67,6 +72,70 @@ public sealed partial class MainWindowViewModel
         catch (Exception ex)
         {
             Log.Error($"Hotkey {actionId} failed: {ex.Message}");
+        }
+    }
+
+    // ── evedeck:// protocol routing ────────────────────────────────────────────
+
+    // Dispatch a URL command (Stream Deck buttons, intel-tool links, shell shortcuts). Every verb
+    // maps onto an EXISTING SafetyGuard-allowed hotkey action and is validated the same way —
+    // the protocol is an alternate trigger for the same window-management actions, never a way to
+    // reach anything the hotkey system couldn't. Unlike hotkeys, the EVE-focus gate is skipped:
+    // clicking a link or deck button is always an explicit user action.
+    //
+    //   evedeck://focus/3            — focus seat 3
+    //   evedeck://center/Pilot Name  — centre (or focus) that character wherever it sits
+    //   evedeck://profile/Grid       — select + apply the named layout profile
+    //   evedeck://set/2              — switch to character set 2
+    //   evedeck://minimizeall        — minimize all EVE clients (skips protected seats)
+    public void HandleProtocolUrl(string url)
+    {
+        try
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                || !uri.Scheme.Equals(ProtocolHandlerService.Scheme, StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Warn($"Ignored malformed protocol URL: {url}");
+                return;
+            }
+
+            var verb = uri.Host.ToLowerInvariant();
+            var arg = Uri.UnescapeDataString(uri.AbsolutePath.Trim('/'));
+
+            switch (verb)
+            {
+                case "focus" when int.TryParse(arg, out var slot):
+                    SafetyGuard.ThrowIfInputBroadcastAction($"FocusSlot{slot}");
+                    FocusSlot(slot);
+                    break;
+                case "center" when arg.Length > 0:
+                    SafetyGuard.ThrowIfInputBroadcastAction("SwitchToCharacter");
+                    SwitchToCharacter(arg);
+                    break;
+                case "profile" when arg.Length > 0:
+                    SafetyGuard.ThrowIfInputBroadcastAction("ApplyLayout");
+                    var profile = Profiles.FirstOrDefault(p => p.Name.Equals(arg, StringComparison.OrdinalIgnoreCase));
+                    if (profile is null) { Log.Warn($"Protocol: no layout profile named '{arg}'."); return; }
+                    SelectedProfile = profile;
+                    ApplyActiveProfile();
+                    break;
+                case "set" when int.TryParse(arg, out var setIndex):
+                    SafetyGuard.ThrowIfInputBroadcastAction($"SwitchCharacterSet{setIndex}");
+                    SwitchCharacterSet(setIndex);
+                    break;
+                case "minimizeall":
+                    SafetyGuard.ThrowIfInputBroadcastAction("MinimizeAllClients");
+                    MinimizeAllClients();
+                    break;
+                default:
+                    Log.Warn($"Protocol: unknown command '{verb}' in {url}");
+                    return;
+            }
+            Log.Info($"Protocol command handled: {url}");
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Protocol URL {url} failed: {ex.Message}");
         }
     }
 

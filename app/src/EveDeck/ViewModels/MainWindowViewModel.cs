@@ -29,6 +29,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly AppSettings _settings;
     private readonly ClientLaunchService _clientLaunchService = new();
     private readonly ChatLogWatcherService _chatLogWatcherService = new();
+    private readonly GameLogWatcherService _gameLogWatcherService = new();
     private CancellationTokenSource? _launchGroupCts;
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -185,6 +186,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         LaunchGroupCommand = new RelayCommand(LaunchGroup, parameter => parameter is Models.CharacterSet);
         AddChatAlertRuleCommand = new RelayCommand(AddChatAlertRule);
         RemoveChatAlertRuleCommand = new RelayCommand(RemoveChatAlertRule, parameter => parameter is ChatAlertRule);
+        AddGameEventRuleCommand = new RelayCommand(AddGameEventRule);
+        RemoveGameEventRuleCommand = new RelayCommand(RemoveGameEventRule, parameter => parameter is GameEventRule);
         AddOverlayAllowedAppCommand = new RelayCommand(AddOverlayAllowedApp);
         RemoveOverlayAllowedAppCommand = new RelayCommand(RemoveOverlayAllowedApp, parameter => parameter is Models.OverlayAllowedApp);
 
@@ -391,6 +394,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public RelayCommand LaunchGroupCommand { get; }
     public RelayCommand AddChatAlertRuleCommand { get; }
     public RelayCommand RemoveChatAlertRuleCommand { get; }
+    public RelayCommand AddGameEventRuleCommand { get; }
+    public RelayCommand RemoveGameEventRuleCommand { get; }
     public RelayCommand AddOverlayAllowedAppCommand { get; }
     public RelayCommand RemoveOverlayAllowedAppCommand { get; }
 
@@ -1029,6 +1034,31 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    public string HoverPreviewStyle
+    {
+        get => _settings.HoverPreviewStyle;
+        set
+        {
+            if (_settings.HoverPreviewStyle == value || string.IsNullOrEmpty(value)) return;
+            _settings.HoverPreviewStyle = value;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
+    public double HoverZoomFactor
+    {
+        get => _settings.HoverZoomFactor;
+        set
+        {
+            var clamped = Math.Clamp(value, 1.5, 4.0);
+            if (Math.Abs(_settings.HoverZoomFactor - clamped) < 0.01) return;
+            _settings.HoverZoomFactor = clamped;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
     public bool CornerOverlayShowSlotNumber
     {
         get => _settings.CornerOverlayShowSlotNumber;
@@ -1036,6 +1066,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             if (_settings.CornerOverlayShowSlotNumber == value) return;
             _settings.CornerOverlayShowSlotNumber = value;
+            OnPropertyChanged();
+            Save();
+            if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) RefreshAllPills();
+        }
+    }
+
+    public bool CornerOverlayShowSystem
+    {
+        get => _settings.CornerOverlayShowSystem;
+        set
+        {
+            if (_settings.CornerOverlayShowSystem == value) return;
+            _settings.CornerOverlayShowSystem = value;
             OnPropertyChanged();
             Save();
             if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) RefreshAllPills();
@@ -1169,6 +1212,30 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    public bool AutoMinimizeInactiveClients
+    {
+        get => _settings.AutoMinimizeInactiveClients;
+        set
+        {
+            if (_settings.AutoMinimizeInactiveClients == value) return;
+            _settings.AutoMinimizeInactiveClients = value;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
+    public bool HideActiveSeatTile
+    {
+        get => _settings.HideActiveSeatTile;
+        set
+        {
+            if (_settings.HideActiveSeatTile == value) return;
+            _settings.HideActiveSeatTile = value;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
     internal void ApplyProcessPriorities(nint focusedHandle)
     {
         if (!_settings.ThrottleBackgroundProcesses) return;
@@ -1288,7 +1355,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 FrameColor = a.FrameColor,
                 LabelFontFamily = a.LabelFontFamily,
                 LabelFontSize = a.LabelFontSize,
-                LabelColor = a.LabelColor
+                LabelColor = a.LabelColor,
+                NeverMinimize = a.NeverMinimize
             });
         }
         // Clone hotkey bindings unbound (user should configure them per set).

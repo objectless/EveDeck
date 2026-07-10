@@ -12,6 +12,7 @@ public partial class App : Application
 {
     private Mutex? _singleInstanceMutex;
     private bool _ownsSingleInstanceMutex;
+    private Services.ProtocolHandlerService? _protocolHandler;
 
     // App.xaml is no longer an ApplicationDefinition (see EveDeck.csproj), so this is the real
     // entry point. VelopackApp.Build().Run() must be the very first thing that runs -- it handles
@@ -36,8 +37,19 @@ public partial class App : Application
         var legacyRunning = isFirstInstance && Mutex.TryOpenExisting("EveWindowCommander.SingleInstance", out legacyMutex);
         legacyMutex?.Dispose();
 
+        // The OS starts a fresh instance to service an evedeck:// link; hand the URL to the
+        // running instance over its protocol pipe and exit silently.
+        var protocolUrl = e.Args.FirstOrDefault(a =>
+            a.StartsWith($"{Services.ProtocolHandlerService.Scheme}://", StringComparison.OrdinalIgnoreCase));
+
         if (!isFirstInstance || legacyRunning)
         {
+            if (protocolUrl is not null && Services.ProtocolHandlerService.TryForwardToRunningInstance(protocolUrl))
+            {
+                Shutdown(0);
+                return;
+            }
+
             MessageBox.Show(
                 "EveDeck is already running. Close the existing window before starting another copy.",
                 "EveDeck",
@@ -70,6 +82,19 @@ public partial class App : Application
         MainWindow = mainWindow;
         mainWindow.ContentRendered += (_, _) => CloseSplash(splash);
         mainWindow.Show();
+
+        // evedeck:// protocol: refresh the per-user registration (self-heals a moved exe) and
+        // listen for URLs forwarded by secondary instances. Commands route through the
+        // view-model's SafetyGuard-validated dispatcher only.
+        try { Services.ProtocolHandlerService.RegisterUrlProtocol(); } catch { } // best-effort; registry may be locked down
+        _protocolHandler = new Services.ProtocolHandlerService();
+        _protocolHandler.StartServer(url =>
+            Dispatcher.BeginInvoke(() => mainWindow.HandleProtocolUrl(url)));
+
+        // Launched directly via a link with no prior instance: run the command once the UI is up.
+        if (protocolUrl is not null)
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
+                () => mainWindow.HandleProtocolUrl(protocolUrl));
     }
 
     private static void CloseSplash(Window splash)
@@ -82,6 +107,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _protocolHandler?.Dispose();
         if (_ownsSingleInstanceMutex)
         {
             _singleInstanceMutex?.ReleaseMutex();

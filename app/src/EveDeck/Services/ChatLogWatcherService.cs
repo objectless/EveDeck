@@ -9,12 +9,17 @@ namespace EveDeck.Services;
 // service never sends input into an EVE client — see COMPLIANCE.md.
 public sealed class ChatLogWatcherService : IDisposable
 {
+    private const string LocalSystemMarker = "Channel changed to Local : ";
+
     private readonly string _chatlogsFolder;
     private readonly Dictionary<string, long> _readOffsetByFile = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _listenerByFile = new(StringComparer.OrdinalIgnoreCase);
     private FileSystemWatcher? _watcher;
 
     // Raised for each new line matched against an enabled rule: (rule, best-effort character/channel name).
     public event Action<ChatAlertRule, string>? KeywordMatched;
+    // Raised when a character's Local channel reports a solar-system change: (character, system name).
+    public event Action<string, string>? SystemChanged;
     public event Action<string>? ErrorOccurred;
 
     public Func<IEnumerable<ChatAlertRule>>? RulesProvider { get; set; }
@@ -30,6 +35,29 @@ public sealed class ChatLogWatcherService : IDisposable
         try
         {
             if (!Directory.Exists(_chatlogsFolder)) return;
+
+            // Prime offsets to end-of-file for logs that already exist so keyword rules never fire
+            // on history when the app starts mid-session. Local files still get one full read here
+            // (alert-free) so the CURRENT solar system is known immediately, not only after the
+            // next jump.
+            var cutoff = DateTime.Now.AddHours(-24);
+            foreach (var path in Directory.EnumerateFiles(_chatlogsFolder, "*.txt"))
+            {
+                try
+                {
+                    if (File.GetLastWriteTime(path) < cutoff) continue;
+                    var fileName = Path.GetFileName(path);
+                    if (fileName.StartsWith("Local_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ReadNewLines(path, matchKeywords: false);
+                    }
+                    else
+                    {
+                        _readOffsetByFile[fileName] = new FileInfo(path).Length;
+                    }
+                }
+                catch { } // unreadable file — skip; a later Changed event retries
+            }
 
             _watcher = new FileSystemWatcher(_chatlogsFolder, "*.txt")
             {
@@ -58,7 +86,7 @@ public sealed class ChatLogWatcherService : IDisposable
     {
         try
         {
-            ReadNewLines(e.FullPath);
+            ReadNewLines(e.FullPath, matchKeywords: true);
         }
         catch
         {
@@ -66,7 +94,7 @@ public sealed class ChatLogWatcherService : IDisposable
         }
     }
 
-    private void ReadNewLines(string path)
+    private void ReadNewLines(string path, bool matchKeywords)
     {
         var fileName = Path.GetFileName(path);
         _readOffsetByFile.TryGetValue(fileName, out var offset);
@@ -82,12 +110,40 @@ public sealed class ChatLogWatcherService : IDisposable
 
         if (string.IsNullOrEmpty(text)) return;
 
+        var lines = text.Split('\n');
+
+        if (!_listenerByFile.ContainsKey(fileName))
+        {
+            var listener = GameLogWatcherService.ParseListener(lines);
+            if (listener is not null) _listenerByFile[fileName] = listener;
+        }
+
+        var isLocal = fileName.StartsWith("Local_", StringComparison.OrdinalIgnoreCase);
+        if (isLocal)
+        {
+            // Last system-change line wins (a primed full read may contain several jumps).
+            string? system = null;
+            foreach (var line in lines)
+            {
+                var idx = line.IndexOf(LocalSystemMarker, StringComparison.OrdinalIgnoreCase);
+                if (idx >= 0) system = line[(idx + LocalSystemMarker.Length)..].Trim();
+            }
+            var character = _listenerByFile.GetValueOrDefault(fileName, "");
+            if (!string.IsNullOrEmpty(system) && character.Length > 0)
+                SystemChanged?.Invoke(character, system);
+        }
+
+        if (!matchKeywords) return;
+
         var rules = RulesProvider?.Invoke().Where(r => r.Enabled && !string.IsNullOrWhiteSpace(r.Keyword)).ToList();
         if (rules is null || rules.Count == 0) return;
 
-        foreach (var line in text.Split('\n'))
+        foreach (var line in lines)
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
+            // Only timestamped chat entries ("[ 2026.07.10 04:01:23 ] Name > text") are messages;
+            // session-header/MOTD banner text matching a keyword was a false-positive source on relog.
+            if (!line.TrimStart().StartsWith('[')) continue;
 
             foreach (var rule in rules)
             {

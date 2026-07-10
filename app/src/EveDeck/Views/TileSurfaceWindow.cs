@@ -29,8 +29,15 @@ internal sealed class TileSurfaceWindow : WinForms.Form
 
     private readonly Dictionary<int, Drawing.Rectangle> _tiles = new();      // client-relative rects
     private readonly Dictionary<int, nint> _thumbnails = new();              // DWM thumbnail ids
+    private readonly Dictionary<int, nint> _sources = new();                 // current source hwnd per tile
     private readonly HashSet<int> _hiddenTiles = new();                      // positions with no live source
     private readonly int _physX, _physY, _physWidth, _physHeight;
+
+    // Zoom-on-hover state: at most one tile is magnified at a time; its thumbnail dest rect is
+    // scaled around the tile centre (clamped to the surface) and the thumbnail is re-registered so
+    // it composites ABOVE its neighbours (DWM stacks thumbnails in registration order).
+    private int _zoomedPosition = -1;
+    private Drawing.Rectangle _zoomedRect;
 
     public TileSurfaceWindow(int physX, int physY, int physWidth, int physHeight)
     {
@@ -84,7 +91,10 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     {
         if (!_tiles.TryGetValue(position, out var rect)) return;
 
+        if (_zoomedPosition == position) ClearZoom(); // occupant changed under the cursor
+
         UnregisterThumbnail(position);
+        _sources[position] = sourceHwnd;
 
         if (sourceHwnd == 0)
         {
@@ -92,11 +102,21 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             return;
         }
 
+        if (!RegisterThumbnail(position, sourceHwnd, rect))
+        {
+            if (_hiddenTiles.Add(position)) Invalidate(rect);
+            return;
+        }
+
+        if (_hiddenTiles.Remove(position)) Invalidate(rect);
+    }
+
+    private bool RegisterThumbnail(int position, nint sourceHwnd, Drawing.Rectangle dest)
+    {
         if (Win32Native.DwmRegisterThumbnail(Handle, sourceHwnd, out var id) != 0)
         {
             Log?.Invoke($"DWM thumbnail registration failed for tile {position}.");
-            if (_hiddenTiles.Add(position)) Invalidate(rect);
-            return;
+            return false;
         }
 
         _thumbnails[position] = id;
@@ -105,10 +125,10 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             dwFlags = Win32Native.DwmTnpRectDestination | Win32Native.DwmTnpVisible,
             rcDestination = new Win32Native.NativeRect
             {
-                Left = rect.Left,
-                Top = rect.Top,
-                Right = rect.Right,
-                Bottom = rect.Bottom
+                Left = dest.Left,
+                Top = dest.Top,
+                Right = dest.Right,
+                Bottom = dest.Bottom
             },
             fVisible = true
         };
@@ -116,11 +136,65 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         {
             Log?.Invoke($"DWM thumbnail properties update failed for tile {position}.");
             UnregisterThumbnail(position);
-            if (_hiddenTiles.Add(position)) Invalidate(rect);
+            return false;
+        }
+        return true;
+    }
+
+    // Magnify one tile's PREVIEW around its centre (clamped to the surface). Purely a DWM dest-rect
+    // change — the real EVE window is never touched, unlike hover-peek. Re-registers the thumbnail
+    // so the enlarged preview draws above its neighbours.
+    public void ZoomTile(int position, double factor)
+    {
+        if (_zoomedPosition == position) return;
+        ClearZoom();
+
+        if (!_tiles.TryGetValue(position, out var rect) || _hiddenTiles.Contains(position)) return;
+        if (!_sources.TryGetValue(position, out var src) || src == 0) return;
+
+        var w = (int)Math.Round(rect.Width * factor);
+        var h = (int)Math.Round(rect.Height * factor);
+        var zoom = new Drawing.Rectangle(
+            rect.Left + rect.Width / 2 - w / 2,
+            rect.Top + rect.Height / 2 - h / 2, w, h);
+        zoom.X = Math.Clamp(zoom.X, 0, Math.Max(0, ClientSize.Width - zoom.Width));
+        zoom.Y = Math.Clamp(zoom.Y, 0, Math.Max(0, ClientSize.Height - zoom.Height));
+
+        UnregisterThumbnail(position);
+        if (!RegisterThumbnail(position, src, zoom))
+        {
+            // Restore the normal tile on failure rather than leaving the position blank.
+            RegisterThumbnail(position, src, rect);
             return;
         }
 
-        if (_hiddenTiles.Remove(position)) Invalidate(rect);
+        _zoomedPosition = position;
+        _zoomedRect = zoom;
+        Invalidate();
+    }
+
+    public void ClearZoom()
+    {
+        if (_zoomedPosition < 0) return;
+        var position = _zoomedPosition;
+        _zoomedPosition = -1;
+
+        if (_tiles.TryGetValue(position, out var rect) && _thumbnails.TryGetValue(position, out var id))
+        {
+            var props = new Win32Native.DwmThumbnailProperties
+            {
+                dwFlags = Win32Native.DwmTnpRectDestination,
+                rcDestination = new Win32Native.NativeRect
+                {
+                    Left = rect.Left,
+                    Top = rect.Top,
+                    Right = rect.Right,
+                    Bottom = rect.Bottom
+                }
+            };
+            Win32Native.DwmUpdateThumbnailProperties(id, ref props);
+        }
+        Invalidate();
     }
 
     // Focus-gated stacking: topmost while EVE / EveDeck is foreground so the previews cover other
@@ -153,7 +227,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         foreach (var (position, rect) in _tiles)
         {
             if (_hiddenTiles.Contains(position)) continue;
-            e.Graphics.FillRectangle(fill, rect);
+            e.Graphics.FillRectangle(fill, position == _zoomedPosition ? _zoomedRect : rect);
         }
     }
 

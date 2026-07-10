@@ -19,7 +19,8 @@ public static class SafetyGuard
         "SwitchToCharacter",
         "FocusDirection",
         "ToggleTopmost",
-        "SwitchCharacterSet"
+        "SwitchCharacterSet",
+        "MinimizeAllClients"
     };
 
     public static bool AllowsHotkeyAction(string actionId)

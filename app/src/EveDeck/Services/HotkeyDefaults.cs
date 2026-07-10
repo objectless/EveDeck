@@ -79,6 +79,10 @@ public static class HotkeyDefaults
 
         bindings.Add(new HotkeyBinding { ActionId = "ToggleTopmost", DisplayName = "Toggle always-on-top for focused EVE window", Modifiers = 0, VirtualKey = 0, GestureText = "" });
 
+        // Minimize every EVE client at once (except seats marked "never minimize") — panic button /
+        // boss key. Window-management only; ships unbound.
+        bindings.Add(new HotkeyBinding { ActionId = "MinimizeAllClients", DisplayName = "Minimize all EVE clients (skips protected seats)", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+
         for (var i = 1; i <= 4; i++)
             bindings.Add(new HotkeyBinding { ActionId = $"SwitchCharacterSet{i}", DisplayName = $"Switch to character set {i}", Modifiers = 0, VirtualKey = 0, GestureText = "" });
 

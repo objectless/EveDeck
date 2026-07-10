@@ -9,6 +9,11 @@ namespace EveDeck.ViewModels;
 public sealed partial class MainWindowViewModel
 {
     public ObservableCollection<ChatAlertRule> ChatAlertRules => _settings.ChatAlertRules;
+    public ObservableCollection<GameEventRule> GameEventRules => _settings.GameEventRules;
+
+    // Current solar system per character name (from Local chatlog "Channel changed to Local"
+    // lines). Character names come from EVE's own logs, so exact-name matching is reliable.
+    private readonly Dictionary<string, string> _systemByCharacter = new(StringComparer.OrdinalIgnoreCase);
 
     private void InitChatAlerts()
     {
@@ -20,7 +25,19 @@ public sealed partial class MainWindowViewModel
         {
             Application.Current?.Dispatcher.BeginInvoke(() => OnChatKeywordMatched(rule, channel));
         };
+        _chatLogWatcherService.SystemChanged += (character, system) =>
+        {
+            Application.Current?.Dispatcher.BeginInvoke(() => OnCharacterSystemChanged(character, system));
+        };
         _chatLogWatcherService.Start();
+
+        _gameLogWatcherService.RulesProvider = () => _settings.GameEventRules;
+        _gameLogWatcherService.ErrorOccurred += msg => Log.Warn(msg);
+        _gameLogWatcherService.EventMatched += (rule, character, line) =>
+        {
+            Application.Current?.Dispatcher.BeginInvoke(() => OnGameEventMatched(rule, character, line));
+        };
+        _gameLogWatcherService.Start();
     }
 
     private void OnChatKeywordMatched(ChatAlertRule rule, string channel)
@@ -35,6 +52,50 @@ public sealed partial class MainWindowViewModel
 
         foreach (var seat in matchingSeats)
             FlashSeatAlert(seat);
+    }
+
+    private void OnGameEventMatched(GameEventRule rule, string character, string line)
+    {
+        var seat = FindSeatByCharacter(character);
+
+        if (rule.SuppressWhenFocused && seat is not null)
+        {
+            var window = FindAssignedWindows(seat).FirstOrDefault();
+            if (window is not null && window.Handle == _windowService.GetForegroundWindowHandle())
+                return; // that client is already on screen — no alert needed
+        }
+
+        Log.Info($"Game event '{rule.Name}' for {(character.Length > 0 ? character : "unknown character")}: {line}");
+        if (rule.PlaySound) SystemSounds.Exclamation.Play();
+        if (seat is not null) FlashSeatAlert(seat);
+    }
+
+    // Seat currently running the given character: live window title first (RunningCharacterName),
+    // then the seat's configured main-character Label as a fallback for logged-off clients.
+    private SlotAssignment? FindSeatByCharacter(string character)
+    {
+        if (string.IsNullOrWhiteSpace(character)) return null;
+        return Assignments.FirstOrDefault(a => character.Equals(a.RunningCharacterName, StringComparison.OrdinalIgnoreCase))
+            ?? Assignments.FirstOrDefault(a => character.Equals(a.Label, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void OnCharacterSystemChanged(string character, string system)
+    {
+        if (_systemByCharacter.GetValueOrDefault(character) == system) return;
+        _systemByCharacter[character] = system;
+        if (_settings.CornerOverlayShowSystem && CornerOverlaysLive) RefreshAllPills();
+    }
+
+    // Current solar system for the character seated at the given seat, or "" when unknown.
+    private string SeatSystemName(int seat)
+    {
+        if (!_settings.CornerOverlayShowSystem) return "";
+        var a = Seat(seat);
+        if (a is null) return "";
+        if (!string.IsNullOrWhiteSpace(a.RunningCharacterName)
+            && _systemByCharacter.TryGetValue(a.RunningCharacterName, out var bySession))
+            return bySession;
+        return _systemByCharacter.GetValueOrDefault(a.Label, "");
     }
 
     private void FlashSeatAlert(SlotAssignment seat)
@@ -62,5 +123,22 @@ public sealed partial class MainWindowViewModel
         Save();
     }
 
-    private void StopChatAlerts() => _chatLogWatcherService.Stop();
+    private void AddGameEventRule()
+    {
+        _settings.GameEventRules.Add(new GameEventRule { Name = "Custom", Pattern = "" });
+        Save();
+    }
+
+    private void RemoveGameEventRule(object? parameter)
+    {
+        if (parameter is not GameEventRule rule) return;
+        _settings.GameEventRules.Remove(rule);
+        Save();
+    }
+
+    private void StopChatAlerts()
+    {
+        _chatLogWatcherService.Stop();
+        _gameLogWatcherService.Stop();
+    }
 }

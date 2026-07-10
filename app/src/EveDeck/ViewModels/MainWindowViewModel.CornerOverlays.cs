@@ -319,7 +319,7 @@ public sealed partial class MainWindowViewModel
             var window = FindSeatWindow(seat);
             var pillAtTop = (rect.Y + rect.Height / 2.0) < primaryMasterCenterY;
             CreatePill(position, seat, rect, pillAtTop, centered: true,
-                window is not null ? PillTextForPosition(position) : "", SeatPortraitUrl(seat));
+                window is not null ? PillTextForPosition(position) : OfflinePillText(seat), SeatPortraitUrl(seat));
 
             _tileSurface.SetSource(position, window?.Handle ?? 0);
             _cornerSourceHandles[position] = window?.Handle ?? 0;
@@ -330,8 +330,21 @@ public sealed partial class MainWindowViewModel
             var groupCenter = groupCenterSlots[group.GroupId];
             if (!slotRects.TryGetValue(groupCenter, out var masterRect)) continue;
             var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
-            var centerPillText = FindSeatWindow(centeredSeat) is not null ? CenterPillTextForGroup(group.GroupId) : "";
+            var centerPillText = FindSeatWindow(centeredSeat) is not null ? CenterPillTextForGroup(group.GroupId) : OfflinePillText(centeredSeat);
             CreatePill(groupCenter, centeredSeat, masterRect, atTop: true, centered: false, centerPillText, SeatPortraitUrl(centeredSeat));
+
+            var groupCenterSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
+            if (groupCenterSlot is not null && !HasDominantMasterSlot(groupCenterSlot))
+            {
+                // No dominant master area for this group (e.g. Grid family) -- the real master window
+                // now runs at full resolution (see ResolveMasterRect) rather than being shrunk to this
+                // cell, so the centre needs its own live preview tile just like every corner.
+                var centerWindow = FindSeatWindow(centeredSeat);
+                _tileSurface.AddTile(groupCenter, masterRect.X, masterRect.Y, masterRect.Width, masterRect.Height);
+                _cornerRects[groupCenter] = masterRect;
+                _tileSurface.SetSource(groupCenter, centerWindow?.Handle ?? 0);
+                _cornerSourceHandles[groupCenter] = centerWindow?.Handle ?? 0;
+            }
         }
 
         ApplySurfaceZOrder(IsEveOrEwcForeground());
@@ -373,7 +386,24 @@ public sealed partial class MainWindowViewModel
         var occupant = OccupantAtPosition(position);
         var name = SeatLabel(occupant);
         var code = CornerCode(position);
-        return _settings.CornerOverlayShowSlotNumber && !string.IsNullOrEmpty(code) ? $"{code} · {name}" : name;
+        var text = _settings.CornerOverlayShowSlotNumber && !string.IsNullOrEmpty(code) ? $"{code} · {name}" : name;
+        return AppendSystem(text, occupant);
+    }
+
+    // "Name · Jita" when the seat's current solar system is known (Local chatlog tracking) and the
+    // option is on; the bare text otherwise.
+    private string AppendSystem(string text, int seat)
+    {
+        var system = SeatSystemName(seat);
+        return system.Length > 0 && text.Length > 0 ? $"{text} · {system}" : text;
+    }
+
+    // Label for a seat whose client window is gone — keeps the seat identifiable instead of a
+    // blank tile ("offline badge"). Empty when the seat itself has no label to show.
+    private string OfflinePillText(int seat)
+    {
+        var name = SeatLabel(seat);
+        return name.Length > 0 ? $"{name} · offline" : "";
     }
 
     private string CornerCode(int position)
@@ -394,7 +424,8 @@ public sealed partial class MainWindowViewModel
     {
         var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(groupId, 0);
         var name = SeatLabel(centeredSeat);
-        return _settings.CornerOverlayShowSlotNumber ? $"Master · {name}" : name;
+        var text = _settings.CornerOverlayShowSlotNumber ? $"Master · {name}" : name;
+        return AppendSystem(text, centeredSeat);
     }
 
     // -- Stop / teardown ---------------------------------------------------------
@@ -469,7 +500,7 @@ public sealed partial class MainWindowViewModel
 
         var incoming = FindSeatWindow(seat);
         var outgoing = FindSeatWindow(currentCenteredSeat);
-        var masterRect = ResolvePlacementRect(masterSlot);
+        var masterRect = ResolveMasterRect(masterSlot);
         var parkRect = ResolveParkRect(masterRect);
 
         if (incoming is not null && outgoing is not null)
@@ -492,6 +523,7 @@ public sealed partial class MainWindowViewModel
 
         var outgoingSeat = currentCenteredSeat;
         _centeredSeatByGroup[groupId] = seat;
+        if (_cornerRects.ContainsKey(groupCenter)) UpdateCornerOverlay(groupCenter, incoming?.Handle ?? 0);
 
         var cornerSeat = _cornerSeatByGroup.TryGetValue(groupId, out var cs) ? cs : new Dictionary<int, int>();
         foreach (var (position, newSeat) in target)
@@ -573,6 +605,7 @@ public sealed partial class MainWindowViewModel
         if (!_settings.FocusPreviewOnClick) return;
         // Clear peek tracking without reverting — CenterSeat re-positions everything via HWNDs.
         ClearPeekState();
+        _tileSurface?.ClearZoom();
         var seat = OccupantAtPosition(position);
         CenterSeat(seat);
     }
@@ -606,6 +639,14 @@ public sealed partial class MainWindowViewModel
     {
         if (SelectedProfile is null) return;
 
+        // Zoom style: magnify the preview thumbnail in place. Real windows are never touched, so
+        // none of the peek-swap state below applies.
+        if (_settings.HoverPreviewStyle.Equals("Zoom", StringComparison.OrdinalIgnoreCase))
+        {
+            _tileSurface?.ZoomTile(position, Math.Clamp(_settings.HoverZoomFactor, 1.5, 4.0));
+            return;
+        }
+
         var seat = OccupantAtPosition(position);
 
         var seatGroup = FindGroupForSeat(seat) ?? EffectiveGroups().FirstOrDefault();
@@ -620,13 +661,17 @@ public sealed partial class MainWindowViewModel
 
         var centerSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
         if (centerSlot is null) return;
-        var masterRect = ResolvePlacementRect(centerSlot);
+        var masterRect = ResolveMasterRect(centerSlot);
         var parkRect = ResolveParkRect(masterRect);
 
-        // Gate: don't fire while cursor is already over the master rect.
+        // Gate: don't fire while cursor is already over the master's own on-screen area. That area
+        // is its preview tile when it has one (equal-cell layouts like Grid, where the real window
+        // now runs at full resolution off in `masterRect` -- see ResolveMasterRect), otherwise the
+        // master's own visible rect (dominant-master layouts like Center Master).
+        var centerVisibleRect = _cornerRects.TryGetValue(groupCenter, out var selfTileRect) ? selfTileRect : masterRect;
         if (Utilities.Win32Native.GetCursorPos(out var gateCur) &&
-            gateCur.X >= masterRect.X && gateCur.X < masterRect.X + masterRect.Width &&
-            gateCur.Y >= masterRect.Y && gateCur.Y < masterRect.Y + masterRect.Height)
+            gateCur.X >= centerVisibleRect.X && gateCur.X < centerVisibleRect.X + centerVisibleRect.Width &&
+            gateCur.Y >= centerVisibleRect.Y && gateCur.Y < centerVisibleRect.Y + centerVisibleRect.Height)
             return;
 
         var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(groupId, 0);
@@ -662,6 +707,7 @@ public sealed partial class MainWindowViewModel
     {
         _hoverPeekTimer.Stop();
         _pendingHoverPosition = -1;
+        _tileSurface?.ClearZoom();
         RevertPeekSwap();
     }
 
@@ -720,7 +766,9 @@ public sealed partial class MainWindowViewModel
     {
         if (_labelSurface is null || !_cornerRects.ContainsKey(position)) return;
         var seat = OccupantAtPosition(position);
-        _labelSurface.SetPillContent(position, PillTextForPosition(position), SeatPortraitUrl(seat));
+        _labelSurface.SetPillContent(position,
+            FindSeatWindow(seat) is not null ? PillTextForPosition(position) : OfflinePillText(seat),
+            SeatPortraitUrl(seat));
         var (family, size, color) = ResolveLabelFont(seat);
         _labelSurface.SetPillAppearance(position, family, size, color);
     }
@@ -847,7 +895,11 @@ public sealed partial class MainWindowViewModel
         }
 
         // Source liveness: point each tile at its occupant's current window (clients relaunch with
-        // new handles; a missing client hides the tile and blanks its label until it returns).
+        // new handles; a missing client hides the tile and shows an offline label until it returns).
+        // With HideActiveSeatTile on, a tile whose occupant IS the foreground window is suppressed
+        // (source 0 + blank pill) — it's already on screen full-size. The transition guard
+        // (desired != lastHandle) keeps this a state change, not a per-tick churn.
+        var fgHandle = _windowService.GetForegroundWindowHandle();
         foreach (var position in _cornerRects.Keys)
         {
             var seat = OccupantAtPosition(position);
@@ -857,18 +909,21 @@ public sealed partial class MainWindowViewModel
                 if (_cornerSourceHandles.GetValueOrDefault(position) != 0)
                 {
                     _tileSurface.SetSource(position, 0);
-                    _labelSurface?.SetPillContent(position, "", SeatPortraitUrl(seat));
+                    _labelSurface?.SetPillContent(position, OfflinePillText(seat), SeatPortraitUrl(seat));
                     _cornerSourceHandles[position] = 0;
                 }
                 continue;
             }
 
+            var hiddenAsActive = _settings.HideActiveSeatTile && window.Handle == fgHandle;
+            var desiredHandle = hiddenAsActive ? 0 : window.Handle;
             _cornerSourceHandles.TryGetValue(position, out var lastHandle);
-            if (window.Handle != lastHandle)
+            if (desiredHandle != lastHandle)
             {
-                _tileSurface.SetSource(position, window.Handle);
-                RefreshPositionPill(position);
-                _cornerSourceHandles[position] = window.Handle;
+                _tileSurface.SetSource(position, desiredHandle);
+                if (hiddenAsActive) _labelSurface?.SetPillContent(position, "", SeatPortraitUrl(seat));
+                else RefreshPositionPill(position);
+                _cornerSourceHandles[position] = desiredHandle;
             }
         }
 
@@ -878,7 +933,7 @@ public sealed partial class MainWindowViewModel
             var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
             var centeredWindow = FindSeatWindow(centeredSeat);
             _labelSurface?.SetPillContent(groupCenter,
-                centeredWindow is null ? "" : CenterPillTextForGroup(group.GroupId),
+                centeredWindow is null ? OfflinePillText(centeredSeat) : CenterPillTextForGroup(group.GroupId),
                 SeatPortraitUrl(centeredSeat));
         }
     }

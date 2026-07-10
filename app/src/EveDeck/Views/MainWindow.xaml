@@ -845,6 +845,9 @@
                                           CommandParameter="{Binding}" Padding="6,3" Margin="4,2" FontSize="11"
                                           ToolTip="Designate this slot as master for the swap-focused hotkey"/>
                                 </StackPanel>
+                                <CheckBox Content="Never minimize" FontSize="10" Margin="4,2"
+                                          IsChecked="{Binding NeverMinimize, UpdateSourceTrigger=PropertyChanged}"
+                                          ToolTip="Protect this seat from the Minimize-all hotkey and auto-minimize (e.g. a scout you always keep visible)"/>
                               </StackPanel>
                             </Grid>
                           </Border>
@@ -1536,6 +1539,21 @@ Shows your background clients as live mini-previews in the screen corners while 
               <TextBlock Text="Moving your mouse over a preview temporarily raises that client over the master so you can see it at a glance. It returns to its parked position when you move away."
                          TextWrapping="Wrap" FontSize="11" Margin="20,0,0,6"
                          Foreground="{StaticResource MutedBrush}"/>
+              <StackPanel Orientation="Horizontal" Margin="20,0,0,4" VerticalAlignment="Center"
+                          IsEnabled="{Binding HoverPreviewEnabled}">
+                <TextBlock Text="Hover style" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <ComboBox Width="220" SelectedValuePath="Tag" FontSize="11"
+                          SelectedValue="{Binding HoverPreviewStyle}">
+                  <ComboBoxItem Tag="Peek" Content="Peek (raise the real client over the master)"/>
+                  <ComboBoxItem Tag="Zoom" Content="Zoom (magnify just the preview in place)"/>
+                </ComboBox>
+                <TextBlock Text="Zoom" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="10,0,4,0"/>
+                <TextBox Width="36"
+                         Text="{Binding HoverZoomFactor, UpdateSourceTrigger=PropertyChanged}"
+                         HorizontalContentAlignment="Center" FontSize="11"
+                         ToolTip="Preview magnification for the Zoom style (1.5–4)"/>
+                <TextBlock Text="x" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="2,0,0,0"/>
+              </StackPanel>
               <StackPanel Orientation="Horizontal" Margin="20,0,0,10" VerticalAlignment="Center"
                           IsEnabled="{Binding HoverPreviewEnabled}">
                 <TextBlock Text="Peek delay" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
@@ -1550,6 +1568,13 @@ Shows your background clients as live mini-previews in the screen corners while 
                         Margin="0,0,0,6"/>
               <CheckBox Content="Prefix pills with position code (e.g. TL · Name)"
                         IsChecked="{Binding CornerOverlayShowSlotNumber}"
+                        Margin="0,0,0,6"/>
+              <CheckBox Content="Show current solar system on pills (from Local chat logs)"
+                        IsChecked="{Binding CornerOverlayShowSystem}"
+                        Margin="0,0,0,6"/>
+              <CheckBox Content="Hide a preview tile while that client is the active window"
+                        IsChecked="{Binding HideActiveSeatTile}"
+                        ToolTip="The active client is already on screen full-size; hiding its own tile reduces clutter"
                         Margin="0,0,0,10"/>
               <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
                 <TextBlock Text="Label style" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
@@ -1611,6 +1636,12 @@ When on, swap/cycle/apply-layout hotkeys only work while an EVE client is the ac
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
 EveDeck lowers the OS scheduling priority of inactive EVE clients whenever another client is in the foreground, so the active one gets more CPU and GPU headroom. Tip: also set Options &gt; Display &amp; Graphics &gt; Limit background framerate to 1-5 FPS inside EVE itself for the biggest gain -- EVE handles its own render loop; EveDeck handles OS scheduling.
               </TextBlock>
+              <CheckBox Content="Auto-minimize EVE clients that are not the active window"
+                        IsChecked="{Binding AutoMinimizeInactiveClients}"
+                        Margin="0,0,0,4"/>
+              <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
+Flat layouts only: whenever an EVE client takes focus, the others are minimized to save GPU/CPU. Ignored while corner overlays are live (minimized windows stop rendering, which would freeze the live previews). Seats marked "never minimize" on their slot card are always skipped -- as they are for the "Minimize all EVE clients" hotkey.
+              </TextBlock>
 
               <!-- ── EVE Launcher path ───────────────────────────────── -->
               <TextBlock Text="EVE Launcher" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
@@ -1646,6 +1677,37 @@ Watches EVE's chatlog files (Documents\EVE\logs\Chatlogs) for a keyword and play
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
               <Button Content="+ Add Rule" Command="{Binding AddChatAlertRuleCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
+
+              <!-- ── Game Event Alerts ───────────────────────────────── -->
+              <TextBlock Text="Game Event Alerts" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+              <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
+Watches EVE's gamelog files (Documents\EVE\logs\Gamelogs) for events on your OTHER clients -- combat, mining crystal breaks, fleet invites -- and flashes that seat (plus an optional sound). Passive log reading only -- never sends anything into an EVE client. Pattern is a case-insensitive text match against new log lines; "Focused" skips the alert when that character's window is already active.
+              </TextBlock>
+              <ItemsControl ItemsSource="{Binding GameEventRules}" Margin="0,0,0,6">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <DockPanel Margin="0,3">
+                      <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
+                                VerticalAlignment="Center" Margin="0,0,8,0"/>
+                      <Button DockPanel.Dock="Right" Content="Remove" Padding="7,3" FontSize="11" Margin="6,0,0,0"
+                              Command="{Binding DataContext.RemoveGameEventRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding}"/>
+                      <CheckBox DockPanel.Dock="Right" Content="Focused" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"
+                                IsChecked="{Binding SuppressWhenFocused, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="Skip the alert when this character's window is already in the foreground"/>
+                      <CheckBox DockPanel.Dock="Right" Content="Sound" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"
+                                IsChecked="{Binding PlaySound, UpdateSourceTrigger=PropertyChanged}"/>
+                      <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                               Width="130" Padding="6,4" FontSize="12" Margin="0,0,8,0"
+                               ToolTip="Display name for this event"/>
+                      <TextBox Text="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}"
+                               Padding="6,4" FontSize="12"
+                               ToolTip="Text to match in new gamelog lines (case-insensitive)"/>
+                    </DockPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Button Content="+ Add Event" Command="{Binding AddGameEventRuleCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
 
               <!-- ── Overlay Allow List ──────────────────────────────── -->
               <TextBlock Text="Overlay Allow List" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
