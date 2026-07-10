@@ -1577,18 +1577,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        var slots = profile.Slots;
-        var minX = slots.Min(s => s.X);
-        var minY = slots.Min(s => s.Y);
-        var totalW = Math.Max(1, slots.Max(s => s.X + s.Width) - minX);
-        var totalH = Math.Max(1, slots.Max(s => s.Y + s.Height) - minY);
-
-        // Pure geometric codes per position slot — no seat-identity overrides.
+        // Pure geometric codes per position slot — no seat-identity overrides. Computed per swap
+        // group via GroupGridCodes (shared with CornerCode) so a collision or a skewed bounding box
+        // in one group's ring (e.g. a different-monitor master) can't affect another group's
+        // otherwise-clean codes.
         var codes = new Dictionary<int, string>();
-        foreach (var slot in slots)
-            codes[slot.SlotNumber] = GridCode(slot, minX, minY, totalW, totalH);
-
-        var hasCollision = codes.Values.GroupBy(c => c, StringComparer.Ordinal).Any(g => g.Count() > 1);
+        foreach (var group in EffectiveGroups())
+            foreach (var (slotNum, code) in GroupGridCodes(profile, group))
+                codes[slotNum] = code;
 
         // In corner-overlay mode with live occupancy, each seat card shows WHERE THAT SEAT'S
         // WINDOW CURRENTLY IS on screen: "Master" if centred, or the corner's geometric arrow.
@@ -1608,8 +1604,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             {
                 if (centeredSeats.Contains(a.SlotNumber))
                     a.PositionCode = "Master";
-                else if (!hasCollision
-                         && seatToPosition.TryGetValue(a.SlotNumber, out var pos)
+                else if (seatToPosition.TryGetValue(a.SlotNumber, out var pos)
                          && codes.TryGetValue(pos, out var posCode))
                     a.PositionCode = posCode;
                 else
@@ -1620,9 +1615,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         // Flat / no-overlay: seat numbers double as position keys (identity home arrangement).
         foreach (var a in Assignments)
-            a.PositionCode = (!hasCollision && codes.TryGetValue(a.SlotNumber, out var code))
-                ? code
-                : a.SlotNumber.ToString();
+            a.PositionCode = codes.TryGetValue(a.SlotNumber, out var code) ? code : a.SlotNumber.ToString();
     }
 
     // Map a slot to a directional arrow symbol from its centre within the layout bounds.

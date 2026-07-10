@@ -299,12 +299,26 @@ public sealed partial class MainWindowViewModel
         };
         if (targetRow == "?") return;
 
-        var minX   = profile.Slots.Min(s => s.X);
-        var minY   = profile.Slots.Min(s => s.Y);
-        var totalW = Math.Max(1, profile.Slots.Max(s => s.X + s.Width)  - minX);
-        var totalH = Math.Max(1, profile.Slots.Max(s => s.Y + s.Height) - minY);
+        // "C" (dead centre) searches the full slot set -- a symmetric Center-Master layout's master
+        // sits in the middle of the *whole* bounding box, not the ring's. Every other direction
+        // searches the ring only (every slot minus each group's own centre): including the centre
+        // slot(s) there would skew the bounding box for layouts where the master is a very different
+        // size/monitor than its ring (e.g. a full-monitor master + a same-monitor 2x2 alt grid),
+        // collapsing distinct ring corners onto the same bucket.
+        IReadOnlyList<LayoutSlot> searchSlots = profile.Slots;
+        if (targetRow != "M" || targetCol != "C")
+        {
+            var centerSlotNums = EffectiveGroups().Select(CenterSlotForGroup).ToHashSet();
+            var ring = profile.Slots.Where(s => !centerSlotNums.Contains(s.SlotNumber)).ToList();
+            if (ring.Count > 0) searchSlots = ring;
+        }
 
-        var positionId = profile.Slots
+        var minX   = searchSlots.Min(s => s.X);
+        var minY   = searchSlots.Min(s => s.Y);
+        var totalW = Math.Max(1, searchSlots.Max(s => s.X + s.Width)  - minX);
+        var totalH = Math.Max(1, searchSlots.Max(s => s.Y + s.Height) - minY);
+
+        var positionId = searchSlots
             .Where(s => GridBucket(s, minX, minY, totalW, totalH) == (targetRow, targetCol))
             .OrderBy(s => s.SlotNumber)
             .Select(s => s.SlotNumber)

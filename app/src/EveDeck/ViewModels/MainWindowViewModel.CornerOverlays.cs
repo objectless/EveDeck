@@ -455,18 +455,45 @@ public sealed partial class MainWindowViewModel
         return name.Length > 0 ? $"{name} · offline" : "";
     }
 
+    // Directional arrow for a live-overlay pill, scoped to the seat's own swap group and excluding
+    // that group's centre/master slot from the bounding box. A group's master can sit on a totally
+    // different monitor/scale than its own ring (e.g. a full-monitor master + a same-monitor 2x2 alt
+    // grid) -- including it would skew the ring's L/R/T/B math and collapse distinct corners onto the
+    // same bucket. GroupGridCodes is shared with UpdatePositionCodes so their arrow math can never
+    // diverge again.
     private string CornerCode(int position)
     {
         var profile = SelectedProfile;
         if (profile is null || profile.Slots.Count == 0) return position.ToString();
 
-        var slots = profile.Slots;
-        var minX = slots.Min(s => s.X);
-        var minY = slots.Min(s => s.Y);
-        var totalW = Math.Max(1, slots.Max(s => s.X + s.Width) - minX);
-        var totalH = Math.Max(1, slots.Max(s => s.Y + s.Height) - minY);
-        var slot = slots.FirstOrDefault(s => s.SlotNumber == position);
-        return slot is null ? position.ToString() : GridCode(slot, minX, minY, totalW, totalH);
+        var group = EffectiveGroups().FirstOrDefault(g => g.SlotNumbers.Count == 0 || g.SlotNumbers.Contains(position))
+            ?? EffectiveGroups().FirstOrDefault();
+        if (group is null) return position.ToString();
+
+        var codes = GroupGridCodes(profile, group);
+        return codes.TryGetValue(position, out var code) ? code : position.ToString();
+    }
+
+    // Directional-arrow code for every ring slot (i.e. every slot in the group except its own
+    // centre/master slot), computed from a bounding box scoped to just that ring, with any bucket
+    // collision degraded to plain slot numbers rather than showing a misleading duplicate arrow.
+    private Dictionary<int, string> GroupGridCodes(LayoutProfile profile, SwapGroup group)
+    {
+        var centerSlotNum = CenterSlotForGroup(group);
+        var groupSlots = group.SlotNumbers.Count == 0 ? profile.Slots : profile.Slots.Where(s => group.SlotNumbers.Contains(s.SlotNumber));
+        var ringSlots = groupSlots.Where(s => s.SlotNumber != centerSlotNum).ToList();
+        if (ringSlots.Count == 0) return new Dictionary<int, string>();
+
+        var minX = ringSlots.Min(s => s.X);
+        var minY = ringSlots.Min(s => s.Y);
+        var totalW = Math.Max(1, ringSlots.Max(s => s.X + s.Width) - minX);
+        var totalH = Math.Max(1, ringSlots.Max(s => s.Y + s.Height) - minY);
+
+        var codes = ringSlots.ToDictionary(s => s.SlotNumber, s => GridCode(s, minX, minY, totalW, totalH));
+        var hasCollision = codes.Values.GroupBy(c => c, StringComparer.Ordinal).Any(g => g.Count() > 1);
+        if (hasCollision)
+            foreach (var s in ringSlots) codes[s.SlotNumber] = s.SlotNumber.ToString();
+        return codes;
     }
 
     private string CenterPillTextForGroup(string groupId)
