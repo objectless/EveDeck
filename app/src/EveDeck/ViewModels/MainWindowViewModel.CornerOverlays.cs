@@ -333,7 +333,7 @@ public sealed partial class MainWindowViewModel
             var window = FindSeatWindow(seat);
             var pillAtTop = (rect.Y + rect.Height / 2.0) < primaryMasterCenterY;
             CreatePill(position, seat, rect, pillAtTop, centered: true,
-                window is not null ? PillTextForPosition(position) : OfflinePillText(seat), SeatPortraitUrl(seat));
+                window is not null ? PillTextForPosition(position) : OfflinePillText(seat), SeatPortrait(seat));
 
             _tileSurface.SetSource(position, window?.Handle ?? 0);
             _cornerSourceHandles[position] = window?.Handle ?? 0;
@@ -345,7 +345,7 @@ public sealed partial class MainWindowViewModel
             if (!slotRects.TryGetValue(groupCenter, out var masterRect)) continue;
             var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
             var centerPillText = FindSeatWindow(centeredSeat) is not null ? CenterPillTextForGroup(group.GroupId) : OfflinePillText(centeredSeat);
-            CreatePill(groupCenter, centeredSeat, masterRect, atTop: true, centered: false, centerPillText, SeatPortraitUrl(centeredSeat), isMaster: true);
+            CreatePill(groupCenter, centeredSeat, masterRect, atTop: true, centered: false, centerPillText, SeatPortrait(centeredSeat), isMaster: true);
 
             var groupCenterSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
             if (groupCenterSlot is not null && !HasDominantMasterSlot(groupCenterSlot))
@@ -365,7 +365,7 @@ public sealed partial class MainWindowViewModel
         _frameTimer.Start();
     }
 
-    private string SeatPortraitUrl(int seat) => Seat(seat)?.PortraitUrl ?? "";
+    private CharacterPortrait? SeatPortrait(int seat) => Seat(seat)?.RunningPortrait;
 
     // Effective label font (family, WPF size, colour hex) for a seat: the seat's own overrides win,
     // else the global defaults. Public so the Options / per-seat font pickers can seed their dialog.
@@ -410,32 +410,35 @@ public sealed partial class MainWindowViewModel
     // Effective label style flags (bold, italic, drop shadow, outline) for a seat. Mirrors
     // EffectiveSeatLabelFont's seat-override -> global-master -> global-default fallback chain,
     // kept as a separate method/tuple so the existing font (family/size/color) API is untouched.
-    public (bool bold, bool italic, bool dropShadow, bool outline) EffectiveSeatLabelStyle(SlotAssignment seat, bool isMaster = false)
+    public (bool bold, bool italic, bool dropShadow, bool outline, int opacity) EffectiveSeatLabelStyle(SlotAssignment seat, bool isMaster = false)
     {
         var normalBold = seat.LabelBold ?? _settings.CornerOverlayLabelBold;
         var normalItalic = seat.LabelItalic ?? _settings.CornerOverlayLabelItalic;
         var normalShadow = seat.LabelDropShadow ?? _settings.CornerOverlayLabelDropShadow;
         var normalOutline = seat.LabelOutline ?? _settings.CornerOverlayLabelOutline;
+        var normalOpacity = seat.LabelOpacity ?? _settings.CornerOverlayLabelOpacity;
 
-        if (!isMaster) return (normalBold, normalItalic, normalShadow, normalOutline);
+        if (!isMaster) return (normalBold, normalItalic, normalShadow, normalOutline, normalOpacity);
 
         var bold = seat.LabelBoldMaster ?? _settings.CornerOverlayLabelBoldMaster ?? normalBold;
         var italic = seat.LabelItalicMaster ?? _settings.CornerOverlayLabelItalicMaster ?? normalItalic;
         var shadow = seat.LabelDropShadowMaster ?? _settings.CornerOverlayLabelDropShadowMaster ?? normalShadow;
         var outline = seat.LabelOutlineMaster ?? _settings.CornerOverlayLabelOutlineMaster ?? normalOutline;
-        return (bold, italic, shadow, outline);
+        var opacity = seat.LabelOpacityMaster ?? _settings.CornerOverlayLabelOpacityMaster ?? normalOpacity;
+        return (bold, italic, shadow, outline, opacity);
     }
 
-    private (bool bold, bool italic, bool dropShadow, bool outline) ResolveLabelStyle(int seat, bool isMaster = false)
+    private (bool bold, bool italic, bool dropShadow, bool outline, int opacity) ResolveLabelStyle(int seat, bool isMaster = false)
     {
         var s = Seat(seat);
         if (s is not null) return EffectiveSeatLabelStyle(s, isMaster);
-        if (!isMaster) return (_settings.CornerOverlayLabelBold, _settings.CornerOverlayLabelItalic, _settings.CornerOverlayLabelDropShadow, _settings.CornerOverlayLabelOutline);
+        if (!isMaster) return (_settings.CornerOverlayLabelBold, _settings.CornerOverlayLabelItalic, _settings.CornerOverlayLabelDropShadow, _settings.CornerOverlayLabelOutline, _settings.CornerOverlayLabelOpacity);
         var bold = _settings.CornerOverlayLabelBoldMaster ?? _settings.CornerOverlayLabelBold;
         var italic = _settings.CornerOverlayLabelItalicMaster ?? _settings.CornerOverlayLabelItalic;
         var shadow = _settings.CornerOverlayLabelDropShadowMaster ?? _settings.CornerOverlayLabelDropShadow;
         var outline = _settings.CornerOverlayLabelOutlineMaster ?? _settings.CornerOverlayLabelOutline;
-        return (bold, italic, shadow, outline);
+        var opacity = _settings.CornerOverlayLabelOpacityMaster ?? _settings.CornerOverlayLabelOpacity;
+        return (bold, italic, shadow, outline, opacity);
     }
 
     // True when `position` is any swap group's centre/master slot. Needed because for layouts with
@@ -445,13 +448,13 @@ public sealed partial class MainWindowViewModel
     private bool IsGroupCenterPosition(int position) =>
         EffectiveGroups().Any(g => CenterSlotForGroup(g) == position);
 
-    private void CreatePill(int key, int seat, WindowRect rect, bool atTop, bool centered, string text, string portraitUrl, bool isMaster = false)
+    private void CreatePill(int key, int seat, WindowRect rect, bool atTop, bool centered, string text, CharacterPortrait? portrait, bool isMaster = false)
     {
         if (_labelSurface is null) return;
         var (family, size, color) = ResolveLabelFont(seat, isMaster);
-        var (bold, italic, dropShadow, outline) = ResolveLabelStyle(seat, isMaster);
-        _labelSurface.SetPill(key, rect, atTop, centered, family, size, color, bold, italic, dropShadow, outline);
-        _labelSurface.SetPillContent(key, text, portraitUrl);
+        var (bold, italic, dropShadow, outline, opacity) = ResolveLabelStyle(seat, isMaster);
+        _labelSurface.SetPill(key, rect, atTop, centered, family, size, color, bold, italic, dropShadow, outline, opacity);
+        _labelSurface.SetPillContent(key, text, portrait);
     }
 
     // -- Pill captions -----------------------------------------------------------
@@ -877,11 +880,11 @@ public sealed partial class MainWindowViewModel
         var seat = OccupantAtPosition(position);
         _labelSurface.SetPillContent(position,
             FindSeatWindow(seat) is not null ? PillTextForPosition(position) : OfflinePillText(seat),
-            SeatPortraitUrl(seat));
+            SeatPortrait(seat));
         var isMasterPosition = IsGroupCenterPosition(position);
         var (family, size, color) = ResolveLabelFont(seat, isMasterPosition);
-        var (bold, italic, dropShadow, outline) = ResolveLabelStyle(seat, isMasterPosition);
-        _labelSurface.SetPillAppearance(position, family, size, color, bold, italic, dropShadow, outline);
+        var (bold, italic, dropShadow, outline, opacity) = ResolveLabelStyle(seat, isMasterPosition);
+        _labelSurface.SetPillAppearance(position, family, size, color, bold, italic, dropShadow, outline, opacity);
     }
 
     private void RefreshGroupCenterPill(SwapGroup group)
@@ -889,10 +892,10 @@ public sealed partial class MainWindowViewModel
         if (_labelSurface is null) return;
         var groupCenter = CenterSlotForGroup(group);
         var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
-        _labelSurface.SetPillContent(groupCenter, CenterPillTextForGroup(group.GroupId), SeatPortraitUrl(centeredSeat));
+        _labelSurface.SetPillContent(groupCenter, CenterPillTextForGroup(group.GroupId), SeatPortrait(centeredSeat));
         var (family, size, color) = ResolveLabelFont(centeredSeat, isMaster: true);
-        var (bold, italic, dropShadow, outline) = ResolveLabelStyle(centeredSeat, isMaster: true);
-        _labelSurface.SetPillAppearance(groupCenter, family, size, color, bold, italic, dropShadow, outline);
+        var (bold, italic, dropShadow, outline, opacity) = ResolveLabelStyle(centeredSeat, isMaster: true);
+        _labelSurface.SetPillAppearance(groupCenter, family, size, color, bold, italic, dropShadow, outline, opacity);
     }
 
     internal void RefreshAllPills()
@@ -1048,7 +1051,7 @@ public sealed partial class MainWindowViewModel
                 if (_cornerSourceHandles.GetValueOrDefault(position) != 0)
                 {
                     _tileSurface.SetSource(position, 0);
-                    _labelSurface?.SetPillContent(position, OfflinePillText(seat), SeatPortraitUrl(seat));
+                    _labelSurface?.SetPillContent(position, OfflinePillText(seat), SeatPortrait(seat));
                     _cornerSourceHandles[position] = 0;
                 }
                 continue;
@@ -1060,7 +1063,7 @@ public sealed partial class MainWindowViewModel
             if (desiredHandle != lastHandle)
             {
                 _tileSurface.SetSource(position, desiredHandle);
-                if (hiddenAsActive) _labelSurface?.SetPillContent(position, "", SeatPortraitUrl(seat));
+                if (hiddenAsActive) _labelSurface?.SetPillContent(position, "", SeatPortrait(seat));
                 else RefreshPositionPill(position);
                 _cornerSourceHandles[position] = desiredHandle;
             }
@@ -1073,7 +1076,7 @@ public sealed partial class MainWindowViewModel
             var centeredWindow = FindSeatWindow(centeredSeat);
             _labelSurface?.SetPillContent(groupCenter,
                 centeredWindow is null ? OfflinePillText(centeredSeat) : CenterPillTextForGroup(group.GroupId),
-                SeatPortraitUrl(centeredSeat));
+                SeatPortrait(centeredSeat));
         }
     }
 }

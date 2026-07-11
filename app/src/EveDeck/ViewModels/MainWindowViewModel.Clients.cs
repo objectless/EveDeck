@@ -24,7 +24,7 @@ public sealed partial class MainWindowViewModel
         Assignments
             .Where(a => !string.IsNullOrWhiteSpace(a.Label))
             .GroupBy(a => a.Label, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new CharacterIdentity(g.Key, g.First().PortraitUrl))
+            .Select(g => new CharacterIdentity(g.Key, g.First().MainCharacter?.Portrait))
             .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase);
 
     // ── Master-seat branding (title bar) ───────────────────────────────────────
@@ -46,8 +46,10 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    public string MasterPortraitUrl => MasterSeatAssignment?.PortraitUrl ?? "";
-    public bool HasMasterPortrait => !string.IsNullOrEmpty(MasterPortraitUrl);
+    // The master's title-bar portrait follows the same character MasterCharacterName resolves to --
+    // whoever is actually logged into the master seat right now, else its ESI main.
+    public CharacterPortrait? MasterPortrait => MasterSeatAssignment?.RunningPortrait;
+    public bool HasMasterPortrait => MasterPortrait is not null;
     public bool HasMasterCharacter => !string.IsNullOrWhiteSpace(MasterCharacterName);
 
     // Raise everything the title-bar branding + hotkey picker depend on.
@@ -57,7 +59,7 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(CharacterIdentities));
         OnPropertyChanged(nameof(MasterSeatAssignment));
         OnPropertyChanged(nameof(MasterCharacterName));
-        OnPropertyChanged(nameof(MasterPortraitUrl));
+        OnPropertyChanged(nameof(MasterPortrait));
         OnPropertyChanged(nameof(HasMasterPortrait));
         OnPropertyChanged(nameof(HasMasterCharacter));
     }

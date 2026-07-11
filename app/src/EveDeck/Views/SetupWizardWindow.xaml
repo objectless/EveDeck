@@ -166,7 +166,7 @@ Press "+ Add via ESI" on a slot to sign in with EVE SSO and attach a character. 
                                   </Grid.ColumnDefinitions>
                                   <Ellipse Grid.Column="0" Width="22" Height="22" Margin="0,0,7,0" VerticalAlignment="Center">
                                     <Ellipse.Fill>
-                                      <ImageBrush ImageSource="{Binding PortraitUrlSmall}" Stretch="UniformToFill"/>
+                                      <ImageBrush ImageSource="{Binding Portrait.Image}" Stretch="UniformToFill"/>
                                     </Ellipse.Fill>
                                   </Ellipse>
                                   <Border Grid.Column="1" Background="#0E2A47" CornerRadius="3" Padding="4,1" Margin="0,0,6,0" VerticalAlignment="Center">

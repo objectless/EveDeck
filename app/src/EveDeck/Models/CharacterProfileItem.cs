@@ -55,6 +55,11 @@ public sealed class CharacterProfileItem : INotifyPropertyChanged
         ? $"https://images.evetech.net/characters/{id}/portrait?size=64"
         : "";
 
+    // Cache-backed, auto-refreshing portrait for the profile-copy lists (null for account rows).
+    public CharacterPortrait? Portrait => !IsAccount && long.TryParse(CharacterId, out var id) && id > 0
+        ? Services.PortraitCacheService.Instance.ForId(id)
+        : null;
+
     public string DisplayName => IsAccount
         ? $"Account {CharacterId}"
         : string.IsNullOrEmpty(_characterName) ? $"ID {CharacterId}" : _characterName;

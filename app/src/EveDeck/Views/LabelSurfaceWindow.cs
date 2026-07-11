@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using EveDeck.Models;
 using EveDeck.Utilities;
@@ -116,7 +115,7 @@ internal sealed class LabelSurfaceWindow : Window
     // atTop/centered pick the strip placement exactly as the old PillOverlay did.
     public void SetPill(int key, WindowRect physRect, bool atTop, bool centered,
                         string fontFamily, double fontSize, string colorHex,
-                        bool bold, bool italic, bool dropShadow, bool outline)
+                        bool bold, bool italic, bool dropShadow, bool outline, int opacity = 100)
     {
         if (!_pills.TryGetValue(key, out var pill))
         {
@@ -124,21 +123,31 @@ internal sealed class LabelSurfaceWindow : Window
             _pills[key] = pill;
             _canvas.Children.Add(pill.Container);
         }
-        pill.ApplyAppearance(fontFamily, fontSize, colorHex, bold, italic, dropShadow, outline);
+        pill.ApplyAppearance(fontFamily, fontSize, colorHex, bold, italic, dropShadow, outline, opacity);
         pill.Place(physRect.X - _physX, physRect.Y - _physY, physRect.Width, physRect.Height);
     }
 
-    public void SetPillContent(int key, string text, string portraitUrl)
+    public void SetPillContent(int key, string text, CharacterPortrait? portrait)
     {
-        if (_pills.TryGetValue(key, out var pill)) pill.SetContent(text, portraitUrl);
+        if (_pills.TryGetValue(key, out var pill)) pill.SetContent(text, portrait);
+    }
+
+    // Each PillElement subscribes to its shared, permanently-cached CharacterPortrait's
+    // PropertyChanged so a background download or refresh updates the pill later. Those portrait
+    // objects outlive this window (StartCornerOverlays recreates it on nearly every settings tweak),
+    // so without detaching here every rebuild leaks the previous batch of pills.
+    protected override void OnClosed(EventArgs e)
+    {
+        foreach (var pill in _pills.Values) pill.Detach();
+        base.OnClosed(e);
     }
 
     public void SetPillAppearance(int key, string fontFamily, double fontSize, string colorHex,
-                                  bool bold, bool italic, bool dropShadow, bool outline)
+                                  bool bold, bool italic, bool dropShadow, bool outline, int opacity = 100)
     {
         if (_pills.TryGetValue(key, out var pill))
         {
-            pill.ApplyAppearance(fontFamily, fontSize, colorHex, bold, italic, dropShadow, outline);
+            pill.ApplyAppearance(fontFamily, fontSize, colorHex, bold, italic, dropShadow, outline, opacity);
             pill.RePlace();
         }
     }
@@ -171,10 +180,8 @@ internal sealed class LabelSurfaceWindow : Window
         private readonly bool _centered;
         private double _pillHeightDip;
         private double _portraitDip;
-        private string _portraitUrl = "";
+        private CharacterPortrait? _portrait;
         private double _tileXDip, _tileYDip, _tileWDip, _tileHDip;
-        private BitmapImage? _pendingPortrait;
-        private EventHandler? _pendingPortraitHandler;
 
         public PillElement(bool iconStyle, int baseHeight, double dpiScale, bool atTop, bool centered)
         {
@@ -239,7 +246,7 @@ internal sealed class LabelSurfaceWindow : Window
         // Font family, size, colour and style (bold/italic/drop shadow/outline) for this label;
         // height/portrait scale with the font so large sizes are never clipped.
         public void ApplyAppearance(string family, double fontSize, string colorHex,
-                                    bool bold, bool italic, bool dropShadow, bool outline)
+                                    bool bold, bool italic, bool dropShadow, bool outline, int opacity = 100)
         {
             var fontFamily = ResolveFontFamily(family);
             var weight = bold ? FontWeights.Bold : FontWeights.SemiBold;
@@ -277,6 +284,10 @@ internal sealed class LabelSurfaceWindow : Window
             var content = _iconStyle ? Math.Max(fontSize * 1.7, _portraitDip) : fontSize * 1.7;
             _pillHeightDip = Math.Max(_baseHeight, content) + 8;
             if (_iconStyle) ApplyPortrait();
+
+            // Whole-label fade: multiplies uniformly across background chip, text, outline copies and
+            // drop shadow since they all live under this one Container.
+            Container.Opacity = Math.Clamp(opacity, 0, 100) / 100.0;
         }
 
         // Positions the strip within the surface canvas (tile rect given relative to the surface
@@ -300,30 +311,40 @@ internal sealed class LabelSurfaceWindow : Window
                 : _atTop ? _tileYDip : _tileYDip + _tileHDip - _pillHeightDip);
         }
 
-        // Label plus an optional rounded character portrait (empty text hides the whole label).
-        public void SetContent(string label, string portraitUrl)
+        // Label plus an optional rounded character portrait (empty text hides the whole label). The
+        // portrait is the seat's shared, cache-backed CharacterPortrait (see SlotAssignment.RunningPortrait) --
+        // whoever is actually logged into the seat right now, not necessarily its configured main.
+        public void SetContent(string label, CharacterPortrait? portrait)
         {
             _text.Text = label;
             foreach (var copy in _outlineCopies) copy.Text = label;
             Container.Visibility = string.IsNullOrWhiteSpace(label) ? Visibility.Collapsed : Visibility.Visible;
 
-            if (portraitUrl != _portraitUrl)
+            if (!ReferenceEquals(portrait, _portrait))
             {
-                _portraitUrl = portraitUrl ?? "";
+                if (_portrait is not null) _portrait.PropertyChanged -= OnPortraitChanged;
+                _portrait = portrait;
+                if (_portrait is not null) _portrait.PropertyChanged += OnPortraitChanged;
                 ApplyPortrait();
             }
         }
 
+        private void OnPortraitChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is nameof(CharacterPortrait.Image) or null) ApplyPortrait();
+        }
+
+        // Detach from the shared portrait's event so this (otherwise-dead) pill isn't kept alive by
+        // it. Called when the owning LabelSurfaceWindow closes.
+        public void Detach()
+        {
+            if (_portrait is not null) _portrait.PropertyChanged -= OnPortraitChanged;
+            _portrait = null;
+        }
+
         private void ApplyPortrait()
         {
-            // A rebuild can supersede a still-downloading portrait from the previous one; detach its
-            // handler so it can't land on _portraitDot after a newer portrait already applied.
-            if (_pendingPortrait is not null && _pendingPortraitHandler is not null)
-                _pendingPortrait.DownloadCompleted -= _pendingPortraitHandler;
-            _pendingPortrait = null;
-            _pendingPortraitHandler = null;
-
-            if (!_iconStyle || string.IsNullOrEmpty(_portraitUrl))
+            if (!_iconStyle || _portrait is null)
             {
                 _portraitDot.Visibility = Visibility.Collapsed;
                 _portraitDot.Width = _portraitDot.Height = 0;
@@ -334,38 +355,12 @@ internal sealed class LabelSurfaceWindow : Window
             _portraitDot.Width = _portraitDot.Height = _portraitDip;
             _portraitDot.Visibility = Visibility.Visible;
 
-            try
-            {
-                // Request a higher-resolution portrait (the seat url is the 64px variant) and decode
-                // once at the on-screen physical size, so the icon stays sharp without live-rescale jitter.
-                var url = _portraitUrl.Replace("size=64", "size=128");
-                var bmp = new BitmapImage();
-                bmp.BeginInit();
-                bmp.CacheOption = BitmapCacheOption.OnLoad;
-                var physSize = Math.Max(1, (int)Math.Round(_portraitDip * _dpiScale));
-                bmp.DecodePixelWidth = physSize;
-                bmp.DecodePixelHeight = physSize;
-                bmp.UriSource = new Uri(url);
-                bmp.EndInit();
-
-                // Keep whatever portrait is currently showing until the new one is actually ready.
-                if (bmp.IsDownloading)
-                {
-                    _pendingPortrait = bmp;
-                    _pendingPortraitHandler = (_, _) =>
-                    {
-                        _portraitDot.Fill = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill };
-                        _pendingPortrait = null;
-                        _pendingPortraitHandler = null;
-                    };
-                    bmp.DownloadCompleted += _pendingPortraitHandler;
-                }
-                else
-                {
-                    _portraitDot.Fill = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill };
-                }
-            }
-            catch { /* keep showing the previous portrait rather than blanking on a transient failure */ }
+            // PortraitCacheService owns downloading/decoding/freshness; the pill just reflects the
+            // shared portrait's current image (null while it's still loading -- keeps showing blank
+            // rather than flashing a placeholder, then fills in once ready).
+            _portraitDot.Fill = _portrait.Image is { } image
+                ? new ImageBrush(image) { Stretch = Stretch.UniformToFill }
+                : null;
         }
 
         // "Acens" (the shipped default) is bundled as an app resource so it renders correctly even

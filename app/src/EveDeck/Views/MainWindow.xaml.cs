@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private readonly HotkeyService _hotkeyService = new();
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private Point _windowDragStart;
+    private bool _seedingSeatOpacitySlider;
 
     // evedeck:// URL commands forwarded from App (protocol pipe / startup args); routed through
     // the view-model's SafetyGuard-validated dispatcher.
@@ -569,11 +570,6 @@ public partial class MainWindow : Window
             _viewModel.ApplySeatLabelFont(seat, f, s, c);
     }
 
-    private void SlotLabelFontReset_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: SlotAssignment seat })
-            _viewModel.ApplySeatLabelFont(seat, null, null, null);
-    }
 
     private void MasterLabelFontPick_Click(object sender, RoutedEventArgs e)
     {
@@ -593,14 +589,17 @@ public partial class MainWindow : Window
             _viewModel.ApplySeatMasterLabelFont(seat, f, s, c);
     }
 
-    private void SlotMasterLabelFontReset_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: SlotAssignment seat })
-            _viewModel.ApplySeatMasterLabelFont(seat, null, null, null);
-    }
 
     private void MasterLabelStyleReset_Click(object sender, RoutedEventArgs e)
         => _viewModel.ResetGlobalMasterLabelStyle();
+
+    // Combined "reset to normal" for the Options-page MASTER label section: clears both the font
+    // override and the style/opacity overrides in one click (was two separate buttons before).
+    private void MasterLabelStyleAndFontReset_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.ResetGlobalMasterLabelFont();
+        _viewModel.ResetGlobalMasterLabelStyle();
+    }
 
     // Seeds a per-seat style ToggleButton's IsChecked from the seat's current effective value
     // (seat override ?? global) when its card first renders. Tag encodes which flag/tier: "Bold",
@@ -616,7 +615,7 @@ public partial class MainWindow : Window
         if (tb.Tag is not string tag) return;
         var isMaster = tag.EndsWith("Master", StringComparison.Ordinal);
         var flag = isMaster ? tag[..^"Master".Length] : tag;
-        var (bold, italic, shadow, outline) = _viewModel.EffectiveSeatLabelStyle(seat, isMaster);
+        var (bold, italic, shadow, outline, _) = _viewModel.EffectiveSeatLabelStyle(seat, isMaster);
         tb.IsChecked = flag switch
         {
             "Bold" => bold,
@@ -643,11 +642,52 @@ public partial class MainWindow : Window
         }
     }
 
-    // Resets one seat's style overrides then re-seeds every style ToggleButton in the same
-    // WrapPanel so the UI reflects the now-inherited values immediately (Loaded only fires once).
+    // Toggles the per-seat style Popup open/closed. The Popup is named inside the same
+    // DataTemplate instance as the button, so FrameworkElement.FindName resolves it via the
+    // template's local NameScope (works per-seat-card, not just the first one).
+    private void SlotStylePopup_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe) return;
+        if (fe.FindName("SeatStylePopup") is System.Windows.Controls.Primitives.Popup popup)
+            popup.IsOpen = !popup.IsOpen;
+    }
+
+    // Seeds a per-seat opacity Slider from the seat's current effective value (mirrors
+    // SeedStyleToggle). Tag: "Opacity" for the normal tier, "OpacityMaster" for the MASTER tier.
+    // Guards ValueChanged during the programmatic seed so opening the popup doesn't write an
+    // override for seats that don't have one yet.
+    private void SlotOpacitySlider_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Slider { DataContext: SlotAssignment seat } slider)
+            SeedOpacitySlider(slider, seat);
+    }
+
+    private void SeedOpacitySlider(System.Windows.Controls.Slider slider, SlotAssignment seat)
+    {
+        if (slider.Tag is not string tag) return;
+        var isMaster = tag.EndsWith("Master", StringComparison.Ordinal);
+        var (_, _, _, _, opacity) = _viewModel.EffectiveSeatLabelStyle(seat, isMaster);
+        _seedingSeatOpacitySlider = true;
+        slider.Value = opacity;
+        _seedingSeatOpacitySlider = false;
+    }
+
+    private void SlotOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_seedingSeatOpacitySlider) return;
+        if (sender is not System.Windows.Controls.Slider { DataContext: SlotAssignment seat } slider) return;
+        if (slider.Tag is not string tag) return;
+        var isMaster = tag.EndsWith("Master", StringComparison.Ordinal);
+        _viewModel.ApplySeatLabelOpacity(seat, isMaster, (int)Math.Round(e.NewValue));
+    }
+
+    // Resets one seat's font + style + opacity overrides for one tier (normal or MASTER) in a
+    // single click, then re-seeds every control in the same row so the popup reflects the
+    // now-inherited values immediately (Loaded only fires once).
     private void SlotLabelStyleReset_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: SlotAssignment seat } el) return;
+        _viewModel.ApplySeatLabelFont(seat, null, null, null);
         _viewModel.ResetSeatLabelStyle(seat, isMaster: false);
         ReseedSeatStyleToggles(el, seat);
     }
@@ -655,6 +695,7 @@ public partial class MainWindow : Window
     private void SlotMasterLabelStyleReset_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: SlotAssignment seat } el) return;
+        _viewModel.ApplySeatMasterLabelFont(seat, null, null, null);
         _viewModel.ResetSeatLabelStyle(seat, isMaster: true);
         ReseedSeatStyleToggles(el, seat);
     }
@@ -666,6 +707,8 @@ public partial class MainWindow : Window
         {
             if (child is System.Windows.Controls.Primitives.ToggleButton tb && tb.Tag is string)
                 SeedStyleToggle(tb, seat);
+            else if (child is System.Windows.Controls.Slider slider && slider.Tag is string)
+                SeedOpacitySlider(slider, seat);
         }
     }
 

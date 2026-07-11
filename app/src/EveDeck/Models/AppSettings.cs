@@ -79,6 +79,11 @@ public sealed class AppSettings
     public bool? CornerOverlayLabelDropShadowMaster { get; set; } = null;
     public bool? CornerOverlayLabelOutlineMaster { get; set; } = null;
 
+    // Global default label opacity (0-100%, WPF-Opacity-style whole-label fade) and its MASTER-pill
+    // override. null master = inherit the normal opacity (same fallback pattern as the style toggles).
+    public int CornerOverlayLabelOpacity { get; set; } = 100;
+    public int? CornerOverlayLabelOpacityMaster { get; set; } = null;
+
     // Click a corner preview tile to bring that client to the centre (focus switch). Pure window
     // management — the click is NOT forwarded into the EVE client, so it stays EULA-compliant (no
     // input injection). A convenient alternative to the centre-seat hotkeys for users who haven't

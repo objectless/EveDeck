@@ -43,6 +43,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     // subset had appeared by that premature pass, leaving later clients unparked until a manual
     // reapply catches everyone in one clean pass.
     private readonly DispatcherTimer _autoApplyTimer = new() { Interval = TimeSpan.FromSeconds(7) };
+    // Re-checks linked characters' on-disk portraits against the cache TTL hourly, on top of the
+    // per-character check PortraitCacheService.ForId already does whenever a surface asks for one.
+    private readonly DispatcherTimer _portraitSweepTimer = new() { Interval = TimeSpan.FromHours(1) };
 
     private readonly Dictionary<int, nint> _lastFocusedHandle = new();
 
@@ -105,6 +108,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         // ── Commands ──────────────────────────────────────────────
         RefreshCommand = new RelayCommand(Refresh);
+        RefreshPortraitsCommand = new RelayCommand(() =>
+        {
+            PortraitCacheService.Instance.RefreshAll();
+            Log.Info("Refreshing character portraits from the image server.");
+        });
         AssignSelectedCommand = new RelayCommand(AssignSelected, () => SelectedWindow is not null && SelectedAssignment is not null);
         AssignWindowToSlotCommand = new RelayCommand(AssignWindowToSlot, _ => SelectedWindow is not null);
         RemoveWindowFromSlotCommand = new RelayCommand(RemoveWindowFromSlot);
@@ -227,6 +235,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
         RaiseIdentityDependents();
         SubscribeToAssignmentChanges();
         SubscribeToHotkeyChanges();
+
+        // A portrait finishing its download, or a running character's name resolving to an id, can
+        // change what RunningPortrait/EsiCharacter.Portrait resolve to for surfaces that aren't
+        // data-bound to the shared CharacterPortrait directly (the corner-overlay label window).
+        PortraitCacheService.Instance.Changed += OnPortraitCacheChanged;
+        PortraitCacheService.Instance.Warm(Assignments.SelectMany(a => a.EsiCharacters).Select(c => c.CharacterId));
+        _portraitSweepTimer.Tick += (_, _) =>
+            PortraitCacheService.Instance.Warm(Assignments.SelectMany(a => a.EsiCharacters).Select(c => c.CharacterId));
+        _portraitSweepTimer.Start();
 
         _frameBrush = ParseFrameBrush(_settings.ActiveFrameColor);
         _frameTimer.Tick += OnFrameTick;
@@ -360,6 +377,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     // ── Commands ───────────────────────────────────────────────────────────────
 
     public RelayCommand RefreshCommand { get; }
+    public RelayCommand RefreshPortraitsCommand { get; }
     public RelayCommand AssignSelectedCommand { get; }
     public RelayCommand AssignWindowToSlotCommand { get; }
     public RelayCommand RemoveWindowFromSlotCommand { get; }
@@ -1215,10 +1233,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(LabelItalic));
         OnPropertyChanged(nameof(LabelDropShadow));
         OnPropertyChanged(nameof(LabelOutline));
+        OnPropertyChanged(nameof(LabelOpacity));
         OnPropertyChanged(nameof(MasterLabelBold));
         OnPropertyChanged(nameof(MasterLabelItalic));
         OnPropertyChanged(nameof(MasterLabelDropShadow));
         OnPropertyChanged(nameof(MasterLabelOutline));
+        OnPropertyChanged(nameof(MasterLabelOpacity));
     }
 
     private void SaveAndRefreshOverlays()
@@ -1251,6 +1271,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
         set { if (_settings.CornerOverlayLabelOutline == value) return; _settings.CornerOverlayLabelOutline = value; OnPropertyChanged(); SaveAndRefreshOverlays(); }
     }
 
+    public int LabelOpacity
+    {
+        get => _settings.CornerOverlayLabelOpacity;
+        set
+        {
+            var clamped = Math.Clamp(value, 20, 100);
+            if (_settings.CornerOverlayLabelOpacity == clamped) return;
+            _settings.CornerOverlayLabelOpacity = clamped;
+            OnPropertyChanged();
+            SaveAndRefreshOverlays();
+        }
+    }
+
     // MASTER-pill style toggles: always shows/sets the EFFECTIVE value (falls back to the normal
     // toggle above when no master override is set yet), mirroring MasterLabelFontSummary. Setting
     // one always writes an explicit master override; ResetGlobalMasterLabelStyle clears all four.
@@ -1278,13 +1311,21 @@ public sealed partial class MainWindowViewModel : ObservableObject
         set { _settings.CornerOverlayLabelOutlineMaster = value; OnPropertyChanged(); SaveAndRefreshOverlays(); }
     }
 
-    // Clears the global MASTER style overrides so all four inherit the normal toggles again.
+    public int MasterLabelOpacity
+    {
+        get => _settings.CornerOverlayLabelOpacityMaster ?? _settings.CornerOverlayLabelOpacity;
+        set { _settings.CornerOverlayLabelOpacityMaster = Math.Clamp(value, 20, 100); OnPropertyChanged(); SaveAndRefreshOverlays(); }
+    }
+
+    // Clears the global MASTER style overrides so all four (plus opacity) inherit the normal
+    // toggles again.
     public void ResetGlobalMasterLabelStyle()
     {
         _settings.CornerOverlayLabelBoldMaster = null;
         _settings.CornerOverlayLabelItalicMaster = null;
         _settings.CornerOverlayLabelDropShadowMaster = null;
         _settings.CornerOverlayLabelOutlineMaster = null;
+        _settings.CornerOverlayLabelOpacityMaster = null;
         RaiseLabelStyleChanged();
         SaveAndRefreshOverlays();
     }
@@ -1316,6 +1357,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SaveAndRefreshOverlays();
     }
 
+    public void ApplySeatLabelOpacity(SlotAssignment seat, bool isMaster, int? value)
+    {
+        var clamped = value.HasValue ? Math.Clamp(value.Value, 20, 100) : (int?)null;
+        if (isMaster) seat.LabelOpacityMaster = clamped; else seat.LabelOpacity = clamped;
+        SaveAndRefreshOverlays();
+    }
+
     // Clears a seat's style overrides (normal or master tier) back to inherit.
     public void ResetSeatLabelStyle(SlotAssignment seat, bool isMaster)
     {
@@ -1325,6 +1373,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             seat.LabelItalicMaster = null;
             seat.LabelDropShadowMaster = null;
             seat.LabelOutlineMaster = null;
+            seat.LabelOpacityMaster = null;
         }
         else
         {
@@ -1332,6 +1381,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             seat.LabelItalic = null;
             seat.LabelDropShadow = null;
             seat.LabelOutline = null;
+            seat.LabelOpacity = null;
         }
         SaveAndRefreshOverlays();
     }
@@ -2011,8 +2061,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    private void OnPortraitCacheChanged()
+    {
+        RaiseIdentityDependents();
+        if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) RefreshAllPills();
+    }
+
     public void Cleanup()
     {
+        PortraitCacheService.Instance.Changed -= OnPortraitCacheChanged;
+        _portraitSweepTimer.Stop();
         _frameTimer.Stop();
         _autoApplyTimer.Stop();
         _launchGroupCts?.Cancel();

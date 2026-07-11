@@ -72,7 +72,7 @@
                 <Ellipse Width="22" Height="22" Margin="0,0,7,0" Style="{StaticResource PortraitDot}"
                          Visibility="{Binding HasMasterPortrait, Converter={StaticResource BoolToVis}}">
                   <Ellipse.Fill>
-                    <ImageBrush ImageSource="{Binding MasterPortraitUrl}" Stretch="UniformToFill"/>
+                    <ImageBrush ImageSource="{Binding MasterPortrait.Image}" Stretch="UniformToFill"/>
                   </Ellipse.Fill>
                 </Ellipse>
                 <TextBlock Text="MASTER" Foreground="{StaticResource MasterAccentBrush}" FontSize="9" FontWeight="Bold"
@@ -251,6 +251,8 @@
               <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <Button Content="Auto-Assign All" Command="{Binding AutoAssignAllCommand}" ToolTip="Assign all unassigned detected windows to empty slots in order"/>
                 <Button Content="Refresh" Command="{Binding RefreshCommand}"/>
+                <Button Content="Refresh Portraits" Command="{Binding RefreshPortraitsCommand}"
+                        ToolTip="Re-download every cached character portrait, in case one changed in-game."/>
                 <Button Content="Toggle Borderless" Command="{Binding ToggleSelectedBorderlessCommand}"/>
                 <Button Content="Restore Style" Command="{Binding RestoreSelectedStyleCommand}"/>
               </StackPanel>
@@ -698,69 +700,68 @@
                                            ToolTip="Slot label — auto-filled from 'EVE - Name'. Also editable in Options &gt; Character Names."/>
                                 </DockPanel>
 
-                                <!-- Style buttons row: wraps onto additional lines so it never forces the window wider -->
-                                <WrapPanel Margin="0,3,0,0">
-                                  <Button Content="Font"
-                                          Click="SlotLabelFontPick_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Set this seat's preview label font, size and colour"/>
-                                  <Button Content="&#8635;"
-                                          Click="SlotLabelFontReset_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Reset this seat's label font to the global default"/>
-                                  <Button Content="Master Font"
-                                          Click="SlotMasterLabelFontPick_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Set this seat's preview label font, size and colour for when it's the centred MASTER seat (falls back to its normal label font when unset)"/>
-                                  <Button Content="&#8635;"
-                                          Click="SlotMasterLabelFontReset_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Reset this seat's master label font to the global master default"/>
-                                  <ToggleButton Content="B" Tag="Bold" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
-                                                Padding="5,1" Margin="8,0,0,0" MinWidth="0" MinHeight="0" FontSize="10" FontWeight="Bold"
-                                                ToolTip="Bold"/>
-                                  <ToggleButton Content="I" Tag="Italic" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
-                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10" FontStyle="Italic"
-                                                ToolTip="Italic"/>
-                                  <ToggleButton Content="S" Tag="Shadow" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
-                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                                ToolTip="Drop shadow"/>
-                                  <ToggleButton Content="O" Tag="Outline" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
-                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                                ToolTip="Outline"/>
-                                  <Button Content="&#8635;"
-                                          Click="SlotLabelStyleReset_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Reset this seat's label style to the global default"/>
-                                  <ToggleButton Content="B" Tag="BoldMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
-                                                Padding="5,1" Margin="8,0,0,0" MinWidth="0" MinHeight="0" FontSize="10" FontWeight="Bold"
-                                                ToolTip="Bold (MASTER seat)"/>
-                                  <ToggleButton Content="I" Tag="ItalicMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
-                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10" FontStyle="Italic"
-                                                ToolTip="Italic (MASTER seat)"/>
-                                  <ToggleButton Content="S" Tag="ShadowMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
-                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                                ToolTip="Drop shadow (MASTER seat)"/>
-                                  <ToggleButton Content="O" Tag="OutlineMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
-                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                                ToolTip="Outline (MASTER seat)"/>
-                                  <Button Content="&#8635;"
-                                          Click="SlotMasterLabelStyleReset_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Reset this seat's master label style to the global master default"/>
-                                  <Button Content="Color"
-                                          Click="SlotFrameColorPick_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Set this seat's active-window frame colour (the highlight around the focused client)"/>
-                                  <Button Content="&#8635;"
-                                          Click="SlotFrameColorReset_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Reset this seat's frame colour to the global default"/>
-                                  <Button Content="Theme"
-                                          Click="SlotPasteTheme_Click"
-                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
-                                          ToolTip="Paste a copied EVE 'Edit Theme' string to set this seat's frame + label colour (Primary -&gt; frame, Accent -&gt; label)"/>
-                                </WrapPanel>
+                                <!-- Style popup: consolidates label font/style/opacity (normal + MASTER) and frame color behind one button -->
+                                <StackPanel Margin="0,3,0,0">
+                                  <Button x:Name="StyleButton" Content="Style..." Click="SlotStylePopup_Click"
+                                          Padding="7,3" MinWidth="0" MinHeight="0" FontSize="10" HorizontalAlignment="Left"
+                                          ToolTip="Edit this seat's label font/style/opacity (normal + MASTER) and active-frame color"/>
+                                  <Popup x:Name="SeatStylePopup" PlacementTarget="{Binding ElementName=StyleButton}" Placement="Bottom"
+                                         StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade"
+                                         DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                    <Border Background="{StaticResource PanelAltBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1" CornerRadius="6" Padding="14" MinWidth="360">
+                                      <StackPanel>
+                                        <TextBlock Text="Normal label" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,6"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                          <Button Content="Font..." Click="SlotLabelFontPick_Click" Padding="6,2" FontSize="10"
+                                                  ToolTip="Set this seat's preview label font, size and colour"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                                          <CheckBox Content="Bold" Tag="Bold" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click" Margin="0,0,10,0" FontSize="11" VerticalAlignment="Center"/>
+                                          <CheckBox Content="Italic" Tag="Italic" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click" Margin="0,0,10,0" FontSize="11" VerticalAlignment="Center"/>
+                                          <CheckBox Content="Shadow" Tag="Shadow" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click" Margin="0,0,10,0" FontSize="11" VerticalAlignment="Center"/>
+                                          <CheckBox Content="Outline" Tag="Outline" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click" Margin="0,0,10,0" FontSize="11" VerticalAlignment="Center"/>
+                                          <TextBlock Text="Opacity" Margin="0,0,4,0" FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                          <Slider Tag="Opacity" Loaded="SlotOpacitySlider_Loaded" ValueChanged="SlotOpacitySlider_ValueChanged"
+                                                  Minimum="20" Maximum="100" Width="100" VerticalAlignment="Center"/>
+                                          <Button Content="&#8635;" Click="SlotLabelStyleReset_Click" Padding="5,1" Margin="8,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                                  ToolTip="Reset this seat's label font, style and opacity to the global default"/>
+                                        </StackPanel>
+
+                                        <Separator Margin="0,0,0,10"/>
+
+                                        <TextBlock Text="Master label" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource MasterAccentBrush}" Margin="0,0,0,6"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                          <Button Content="Font..." Click="SlotMasterLabelFontPick_Click" Padding="6,2" FontSize="10"
+                                                  ToolTip="Set this seat's label font/size/colour for when it's the centred MASTER seat (falls back to its normal label font when unset)"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                                          <CheckBox Content="Bold" Tag="BoldMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click" Margin="0,0,10,0" FontSize="11" VerticalAlignment="Center"/>
+                                          <CheckBox Content="Italic" Tag="ItalicMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click" Margin="0,0,10,0" FontSize="11" VerticalAlignment="Center"/>
+                                          <CheckBox Content="Shadow" Tag="ShadowMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click" Margin="0,0,10,0" FontSize="11" VerticalAlignment="Center"/>
+                                          <CheckBox Content="Outline" Tag="OutlineMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click" Margin="0,0,10,0" FontSize="11" VerticalAlignment="Center"/>
+                                          <TextBlock Text="Opacity" Margin="0,0,4,0" FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                                          <Slider Tag="OpacityMaster" Loaded="SlotOpacitySlider_Loaded" ValueChanged="SlotOpacitySlider_ValueChanged"
+                                                  Minimum="20" Maximum="100" Width="100" VerticalAlignment="Center"/>
+                                          <Button Content="&#8635;" Click="SlotMasterLabelStyleReset_Click" Padding="5,1" Margin="8,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                                  ToolTip="Reset this seat's MASTER label font, style and opacity to the global master default"/>
+                                        </StackPanel>
+
+                                        <Separator Margin="0,0,0,10"/>
+
+                                        <TextBlock Text="Active frame" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,6"/>
+                                        <StackPanel Orientation="Horizontal">
+                                          <Button Content="Color..." Click="SlotFrameColorPick_Click" Padding="6,2" FontSize="10" Margin="0,0,4,0"
+                                                  ToolTip="Set this seat's active-window frame colour (the highlight around the focused client)"/>
+                                          <Button Content="&#8635;" Click="SlotFrameColorReset_Click" Padding="5,1" MinWidth="0" MinHeight="0" FontSize="10" Margin="0,0,10,0"
+                                                  ToolTip="Reset this seat's frame colour to the global default"/>
+                                          <Button Content="Paste Theme" Click="SlotPasteTheme_Click" Padding="6,2" FontSize="10"
+                                                  ToolTip="Paste a copied EVE 'Edit Theme' string to set this seat's frame + label colour (Primary -&gt; frame, Accent -&gt; label)"/>
+                                        </StackPanel>
+                                      </StackPanel>
+                                    </Border>
+                                  </Popup>
+                                </StackPanel>
 
                                 <!-- Live indicator: who's actually logged into this seat right now, when
                                      it differs from the seat's stable configured Label (e.g. an alt). -->
@@ -795,7 +796,7 @@
                                         </Grid.ColumnDefinitions>
                                         <Ellipse Width="20" Height="20" Margin="0,0,6,0" VerticalAlignment="Center" Style="{StaticResource PortraitDot}">
                                           <Ellipse.Fill>
-                                            <ImageBrush ImageSource="{Binding PortraitUrlSmall}" Stretch="UniformToFill"/>
+                                            <ImageBrush ImageSource="{Binding Portrait.Image}" Stretch="UniformToFill"/>
                                           </Ellipse.Fill>
                                         </Ellipse>
                                         <Border Grid.Column="1" Background="{StaticResource EsiChipBrush}" CornerRadius="3" Padding="4,1" Margin="0,0,5,0" VerticalAlignment="Center">
@@ -1358,7 +1359,7 @@ Both AMD and Nvidia let you set a virtual resolution higher than your panel's na
                               <Ellipse Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center" Style="{StaticResource PortraitDot}"
                                        Visibility="{Binding HasPortrait, Converter={StaticResource BoolToVis}}">
                                 <Ellipse.Fill>
-                                  <ImageBrush ImageSource="{Binding PortraitUrl}" Stretch="UniformToFill"/>
+                                  <ImageBrush ImageSource="{Binding Portrait.Image}" Stretch="UniformToFill"/>
                                 </Ellipse.Fill>
                               </Ellipse>
                               <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
@@ -1450,56 +1451,95 @@ Auto-filled from the EVE window title when a client is assigned — "EVE - Name"
 
               <Separator Margin="0,16,0,16"/>
 
-              <!-- Active Frame section -->
-              <TextBlock Text="Active Client Frame" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,6"/>
+              <!-- Visual Effects section (Active Frame + preview-label font/style/opacity, normal + MASTER) -->
+              <TextBlock Text="Visual Effects" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,6"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,14">
-Draws a soft glowing outline around whichever EVE client you're currently using, so it's easy to tell at a glance which one is active. The glow sits on top of the window but is click-through, so it never gets in the way of the game.
+Styling for the active-client highlight frame and the preview-label pills (font, style, opacity). Per-seat overrides live behind the "Style..." button on each slot below.
               </TextBlock>
 
+              <TextBlock Text="Active frame" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
               <CheckBox Content="Enable active client frame"
                         IsChecked="{Binding ActiveFrameEnabled}"
-                        Margin="0,0,0,12"/>
-
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
-                <TextBlock Text="Thickness" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}"/>
-                <Slider Minimum="1" Maximum="20"
-                        Value="{Binding ActiveFrameThickness}"
-                        Width="180"
-                        VerticalAlignment="Center"
-                        IsSnapToTickEnabled="True"
-                        TickFrequency="1"/>
-                <TextBlock Text="{Binding ActiveFrameThickness}"
-                           VerticalAlignment="Center" Margin="10,0,3,0" Width="22"
-                           HorizontalAlignment="Right"/>
-                <TextBlock Text="px" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        ToolTip="Draws a soft glowing, click-through outline around whichever EVE client you're currently using."
+                        Margin="0,0,0,10"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
+                <TextBlock Text="Thickness" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <Slider Minimum="1" Maximum="20" Value="{Binding ActiveFrameThickness}" Width="150" VerticalAlignment="Center"
+                        IsSnapToTickEnabled="True" TickFrequency="1"/>
+                <TextBlock Text="{Binding ActiveFrameThickness, StringFormat={}{0}px}" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"/>
               </StackPanel>
-
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
-                <TextBlock Text="Glow radius" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}"/>
-                <Slider Minimum="1" Maximum="40"
-                        Value="{Binding ActiveFrameGlowRadius}"
-                        Width="180"
-                        VerticalAlignment="Center"
-                        IsSnapToTickEnabled="True"
-                        TickFrequency="1"/>
-                <TextBlock Text="{Binding ActiveFrameGlowRadius}"
-                           VerticalAlignment="Center" Margin="10,0,3,0" Width="22"
-                           HorizontalAlignment="Right"/>
-                <TextBlock Text="px" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
+                <TextBlock Text="Glow radius" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <Slider Minimum="1" Maximum="40" Value="{Binding ActiveFrameGlowRadius}" Width="150" VerticalAlignment="Center"
+                        IsSnapToTickEnabled="True" TickFrequency="1"/>
+                <TextBlock Text="{Binding ActiveFrameGlowRadius, StringFormat={}{0}px}" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"/>
               </StackPanel>
-
-              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="Color" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}"/>
-                <Border Width="26" Height="26" Margin="0,0,8,0" CornerRadius="4"
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,16" VerticalAlignment="Center">
+                <TextBlock Text="Color" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <Border Width="24" Height="24" Margin="0,0,8,0" CornerRadius="4"
                         Background="{Binding ActiveFrameBrush}"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"/>
-                <Button Content="Pick Color..." Click="FrameColorPick_Click" Padding="7,4" Margin="0,0,10,0"/>
-                <Button Content="Amber" Tag="#F59E0B" Click="FrameColorPreset_Click" Padding="7,4"/>
-                <Button Content="Cyan"  Tag="#22D3EE" Click="FrameColorPreset_Click" Padding="7,4"/>
-                <Button Content="Green" Tag="#22C55E" Click="FrameColorPreset_Click" Padding="7,4"/>
-                <Button Content="Red"   Tag="#EF4444" Click="FrameColorPreset_Click" Padding="7,4"/>
-                <Button Content="White" Tag="#FFFFFF"  Click="FrameColorPreset_Click" Padding="7,4"/>
-                <Button Content="Blue"  Tag="#3B82F6" Click="FrameColorPreset_Click" Padding="7,4"/>
+                <Button Content="Pick Color..." Click="FrameColorPick_Click" Padding="6,3" Margin="0,0,8,0" FontSize="11"/>
+                <Button Content="Amber" Tag="#F59E0B" Click="FrameColorPreset_Click" Padding="6,3" FontSize="11" Margin="0,0,4,0"/>
+                <Button Content="Cyan"  Tag="#22D3EE" Click="FrameColorPreset_Click" Padding="6,3" FontSize="11" Margin="0,0,4,0"/>
+                <Button Content="Green" Tag="#22C55E" Click="FrameColorPreset_Click" Padding="6,3" FontSize="11" Margin="0,0,4,0"/>
+                <Button Content="Red"   Tag="#EF4444" Click="FrameColorPreset_Click" Padding="6,3" FontSize="11" Margin="0,0,4,0"/>
+                <Button Content="White" Tag="#FFFFFF"  Click="FrameColorPreset_Click" Padding="6,3" FontSize="11" Margin="0,0,4,0"/>
+                <Button Content="Blue"  Tag="#3B82F6" Click="FrameColorPreset_Click" Padding="6,3" FontSize="11"/>
+              </StackPanel>
+
+              <TextBlock Text="Preview label — normal" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
+                <TextBlock Text="Style" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <ComboBox Width="170" SelectedValuePath="Tag" FontSize="11"
+                          SelectedValue="{Binding CornerOverlayLabelStyle}"
+                          ToolTip="Pill = a name chip over the tile. Icon+name = character portrait beside plain text.">
+                  <ComboBoxItem Tag="Pill" Content="Pill (name chip)"/>
+                  <ComboBoxItem Tag="IconText" Content="Character icon + name"/>
+                </ComboBox>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
+                <TextBlock Text="Font" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <Button Content="Choose font..." Click="LabelFontPick_Click" Padding="6,3" Margin="0,0,8,0" FontSize="11"/>
+                <TextBlock Text="{Binding LabelFontSummary}" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
+                <TextBlock Text="Style" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <CheckBox Content="Bold" IsChecked="{Binding LabelBold}" Margin="0,0,10,0" FontSize="11"/>
+                <CheckBox Content="Italic" IsChecked="{Binding LabelItalic}" Margin="0,0,10,0" FontSize="11"/>
+                <CheckBox Content="Drop shadow" IsChecked="{Binding LabelDropShadow}" Margin="0,0,10,0" FontSize="11"/>
+                <CheckBox Content="Outline" IsChecked="{Binding LabelOutline}" FontSize="11"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,16" VerticalAlignment="Center">
+                <TextBlock Text="Opacity" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <Slider Minimum="20" Maximum="100" Value="{Binding LabelOpacity}" Width="150" VerticalAlignment="Center"
+                        IsSnapToTickEnabled="True" TickFrequency="5"/>
+                <TextBlock Text="{Binding LabelOpacity, StringFormat={}{0}%}" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"/>
+              </StackPanel>
+
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Text="Preview label — MASTER" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                <Button Content="&#8635; Reset to normal" Click="MasterLabelStyleAndFontReset_Click" Padding="5,1" Margin="10,0,0,0" MinHeight="0" FontSize="10"
+                        ToolTip="Reset the MASTER font, style and opacity overrides so they inherit the normal label settings above"/>
+              </StackPanel>
+              <TextBlock Text="Falls back to the normal label settings above until you customize it here." Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,8"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
+                <TextBlock Text="Font" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <Button Content="Choose font..." Click="MasterLabelFontPick_Click" Padding="6,3" Margin="0,0,8,0" FontSize="11"/>
+                <TextBlock Text="{Binding MasterLabelFontSummary}" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8" VerticalAlignment="Center">
+                <TextBlock Text="Style" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <CheckBox Content="Bold" IsChecked="{Binding MasterLabelBold}" Margin="0,0,10,0" FontSize="11"/>
+                <CheckBox Content="Italic" IsChecked="{Binding MasterLabelItalic}" Margin="0,0,10,0" FontSize="11"/>
+                <CheckBox Content="Drop shadow" IsChecked="{Binding MasterLabelDropShadow}" Margin="0,0,10,0" FontSize="11"/>
+                <CheckBox Content="Outline" IsChecked="{Binding MasterLabelOutline}" FontSize="11"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                <TextBlock Text="Opacity" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <Slider Minimum="20" Maximum="100" Value="{Binding MasterLabelOpacity}" Width="150" VerticalAlignment="Center"
+                        IsSnapToTickEnabled="True" TickFrequency="5"/>
+                <TextBlock Text="{Binding MasterLabelOpacity, StringFormat={}{0}%}" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"/>
               </StackPanel>
 
               <!-- ── 2g: Startup Profile ──────────────────────────────── -->
@@ -1636,51 +1676,6 @@ Shows your background clients as live mini-previews in the screen corners while 
                 <TextBlock Text="sec offline (0 = hide immediately, -1 = never hide, default)" VerticalAlignment="Center"
                            Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="6,0,0,0"/>
               </StackPanel>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
-                <TextBlock Text="Label style" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
-                <ComboBox Width="180" SelectedValuePath="Tag"
-                          SelectedValue="{Binding CornerOverlayLabelStyle}">
-                  <ComboBoxItem Tag="Pill" Content="Pill (name chip)"/>
-                  <ComboBoxItem Tag="IconText" Content="Character icon + name"/>
-                </ComboBox>
-              </StackPanel>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
-                <TextBlock Text="Default label font" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
-                <Button Content="Choose font..." Click="LabelFontPick_Click" Padding="7,4" Margin="0,0,8,0"/>
-                <TextBlock Text="{Binding LabelFontSummary}" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
-              </StackPanel>
-              <TextBlock Text="Sets the font, size and colour used for preview labels. Override per seat with the 'Font' button on each slot."
-                         TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"
-                         Foreground="{StaticResource MutedBrush}"/>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
-                <TextBlock Text="Master label font" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
-                <Button Content="Choose font..." Click="MasterLabelFontPick_Click" Padding="7,4" Margin="0,0,8,0"/>
-                <TextBlock Text="{Binding MasterLabelFontSummary}" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,8,0"/>
-                <Button Content="&#8635;" Click="MasterLabelFontReset_Click" Padding="5,1" MinWidth="0" MinHeight="0" FontSize="10" ToolTip="Reset to inherit the default label font"/>
-              </StackPanel>
-              <TextBlock Text="Sets a separate font, size and colour for the centred MASTER seat's label (e.g. a bigger label on a full-screen master vs. smaller alt preview labels). Falls back to the default label font above when unset. Override per seat with the 'Master Font' button on each slot."
-                         TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,10"/>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
-                <TextBlock Text="Label text style" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
-                <CheckBox Content="Bold" IsChecked="{Binding LabelBold}" Margin="0,0,10,0"/>
-                <CheckBox Content="Italic" IsChecked="{Binding LabelItalic}" Margin="0,0,10,0"/>
-                <CheckBox Content="Drop shadow" IsChecked="{Binding LabelDropShadow}" Margin="0,0,10,0"/>
-                <CheckBox Content="Outline" IsChecked="{Binding LabelOutline}"/>
-              </StackPanel>
-              <TextBlock Text="Applies to every preview label. Override per seat with the style buttons (B/I/S/O) on each slot."
-                         TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"
-                         Foreground="{StaticResource MutedBrush}"/>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
-                <TextBlock Text="Master text style" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
-                <CheckBox Content="Bold" IsChecked="{Binding MasterLabelBold}" Margin="0,0,10,0"/>
-                <CheckBox Content="Italic" IsChecked="{Binding MasterLabelItalic}" Margin="0,0,10,0"/>
-                <CheckBox Content="Drop shadow" IsChecked="{Binding MasterLabelDropShadow}" Margin="0,0,10,0"/>
-                <CheckBox Content="Outline" IsChecked="{Binding MasterLabelOutline}" Margin="0,0,8,0"/>
-                <Button Content="&#8635;" Click="MasterLabelStyleReset_Click" Padding="5,1" MinWidth="0" MinHeight="0" FontSize="10" ToolTip="Reset to inherit the default label text style"/>
-              </StackPanel>
-              <TextBlock Text="Sets a separate text style for the centred MASTER seat's label. Falls back to the default text style above when unset. Override per seat with the master style buttons on each slot."
-                         TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,10"/>
-
               <!-- ── Settings Backup ─────────────────────────────────── -->
               <TextBlock Text="Settings Backup" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
@@ -2108,7 +2103,7 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
                         <Ellipse Width="36" Height="36" Margin="0,0,9,0" VerticalAlignment="Center"
                                  Style="{StaticResource PortraitDot}">
                           <Ellipse.Fill>
-                            <ImageBrush ImageSource="{Binding PortraitUrl}" Stretch="UniformToFill"/>
+                            <ImageBrush ImageSource="{Binding Portrait.Image}" Stretch="UniformToFill"/>
                           </Ellipse.Fill>
                         </Ellipse>
                         <StackPanel VerticalAlignment="Center">
@@ -2173,7 +2168,7 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
                           <Ellipse Width="36" Height="36" Margin="0,0,9,0" VerticalAlignment="Center"
                                    Style="{StaticResource PortraitDot}">
                             <Ellipse.Fill>
-                              <ImageBrush ImageSource="{Binding PortraitUrl}" Stretch="UniformToFill"/>
+                              <ImageBrush ImageSource="{Binding Portrait.Image}" Stretch="UniformToFill"/>
                             </Ellipse.Fill>
                           </Ellipse>
                           <StackPanel VerticalAlignment="Center">

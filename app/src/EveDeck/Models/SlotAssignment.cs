@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using EveDeck.Services;
 using EveDeck.Utilities;
 
 namespace EveDeck.Models;
@@ -22,6 +23,8 @@ public sealed class SlotAssignment : ObservableObject
     private bool? _labelItalicMaster;
     private bool? _labelDropShadowMaster;
     private bool? _labelOutlineMaster;
+    private int? _labelOpacity;
+    private int? _labelOpacityMaster;
     private bool _isMaster;
     private string _positionCode = "";
 
@@ -50,6 +53,7 @@ public sealed class SlotAssignment : ObservableObject
     {
         OnPropertyChanged(nameof(RunningCharacterName));
         OnPropertyChanged(nameof(DisplayLabel));
+        OnPropertyChanged(nameof(RunningPortrait));
     }
 
     private void RaiseCharacterDependents()
@@ -57,6 +61,7 @@ public sealed class SlotAssignment : ObservableObject
         OnPropertyChanged(nameof(MainCharacter));
         OnPropertyChanged(nameof(PortraitUrl));
         OnPropertyChanged(nameof(HasPortrait));
+        OnPropertyChanged(nameof(RunningPortrait));
     }
 
     public int SlotNumber
@@ -195,6 +200,20 @@ public sealed class SlotAssignment : ObservableObject
         set => SetProperty(ref _labelOutlineMaster, value);
     }
 
+    // 3f — Optional per-seat label OPACITY overrides (0-100%; null = inherit the global default /
+    // global Master default, same fallback pattern as the style toggles above).
+    public int? LabelOpacity
+    {
+        get => _labelOpacity;
+        set => SetProperty(ref _labelOpacity, value);
+    }
+
+    public int? LabelOpacityMaster
+    {
+        get => _labelOpacityMaster;
+        set => SetProperty(ref _labelOpacityMaster, value);
+    }
+
     // Keep this seat's EVE window pinned topmost (HWND_TOPMOST) at all times.
     private bool _isTopmost;
     public bool IsTopmost
@@ -265,6 +284,30 @@ public sealed class SlotAssignment : ObservableObject
     // Rounded portrait source for this seat (the main character's), empty when unlinked.
     [System.Text.Json.Serialization.JsonIgnore]
     public string PortraitUrl => MainCharacter?.PortraitUrlSmall ?? "";
+
+    // Cache-backed portrait of the character ACTUALLY running in this seat right now (read-only
+    // surfaces: corner-overlay labels, title-bar master). Prefers a linked ESI character (id already
+    // known), else resolves the live window's character name -> id via ESI, and falls back to the
+    // seat's main character while nothing is running or the name is still resolving -- so a label
+    // always shows a face rather than blanking. Not persisted.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public CharacterPortrait? RunningPortrait
+    {
+        get
+        {
+            var running = _runningCharacterName;
+            if (!string.IsNullOrWhiteSpace(running))
+            {
+                var linked = _esiCharacters.FirstOrDefault(c =>
+                    running.Equals(c.CharacterName, StringComparison.OrdinalIgnoreCase));
+                if (linked is not null) return PortraitCacheService.Instance.ForId(linked.CharacterId);
+
+                var byName = PortraitCacheService.Instance.ForName(running);
+                if (byName is not null) return byName;
+            }
+            return MainCharacter is not null ? PortraitCacheService.Instance.ForId(MainCharacter.CharacterId) : null;
+        }
+    }
 
     [System.Text.Json.Serialization.JsonIgnore]
     public bool HasPortrait => MainCharacter is not null;
