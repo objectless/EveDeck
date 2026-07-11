@@ -14,6 +14,14 @@ public sealed class SlotAssignment : ObservableObject
     private string? _labelFontFamilyMaster;
     private double? _labelFontSizeMaster;
     private string? _labelColorMaster;
+    private bool? _labelBold;
+    private bool? _labelItalic;
+    private bool? _labelDropShadow;
+    private bool? _labelOutline;
+    private bool? _labelBoldMaster;
+    private bool? _labelItalicMaster;
+    private bool? _labelDropShadowMaster;
+    private bool? _labelOutlineMaster;
     private bool _isMaster;
     private string _positionCode = "";
 
@@ -133,6 +141,58 @@ public sealed class SlotAssignment : ObservableObject
     {
         get => _labelColorMaster;
         set => SetProperty(ref _labelColorMaster, value);
+    }
+
+    // 3d — Optional per-seat preview-label STYLE overrides (null = inherit the global default
+    // toggle). Mirrors the LabelFontFamily/LabelColor null-means-inherit pattern above exactly.
+    public bool? LabelBold
+    {
+        get => _labelBold;
+        set => SetProperty(ref _labelBold, value);
+    }
+
+    public bool? LabelItalic
+    {
+        get => _labelItalic;
+        set => SetProperty(ref _labelItalic, value);
+    }
+
+    public bool? LabelDropShadow
+    {
+        get => _labelDropShadow;
+        set => SetProperty(ref _labelDropShadow, value);
+    }
+
+    public bool? LabelOutline
+    {
+        get => _labelOutline;
+        set => SetProperty(ref _labelOutline, value);
+    }
+
+    // 3e — Optional per-seat MASTER-pill STYLE overrides (null = inherit the global Master default,
+    // which itself falls back to the normal per-seat/global style toggle when unset).
+    public bool? LabelBoldMaster
+    {
+        get => _labelBoldMaster;
+        set => SetProperty(ref _labelBoldMaster, value);
+    }
+
+    public bool? LabelItalicMaster
+    {
+        get => _labelItalicMaster;
+        set => SetProperty(ref _labelItalicMaster, value);
+    }
+
+    public bool? LabelDropShadowMaster
+    {
+        get => _labelDropShadowMaster;
+        set => SetProperty(ref _labelDropShadowMaster, value);
+    }
+
+    public bool? LabelOutlineMaster
+    {
+        get => _labelOutlineMaster;
+        set => SetProperty(ref _labelOutlineMaster, value);
     }
 
     // Keep this seat's EVE window pinned topmost (HWND_TOPMOST) at all times.

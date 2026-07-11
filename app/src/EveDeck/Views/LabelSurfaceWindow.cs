@@ -115,7 +115,8 @@ internal sealed class LabelSurfaceWindow : Window
     // Creates (or re-places) the label for a tile / master rect. Rect is physical screen pixels;
     // atTop/centered pick the strip placement exactly as the old PillOverlay did.
     public void SetPill(int key, WindowRect physRect, bool atTop, bool centered,
-                        string fontFamily, double fontSize, string colorHex)
+                        string fontFamily, double fontSize, string colorHex,
+                        bool bold, bool italic, bool dropShadow, bool outline)
     {
         if (!_pills.TryGetValue(key, out var pill))
         {
@@ -123,7 +124,7 @@ internal sealed class LabelSurfaceWindow : Window
             _pills[key] = pill;
             _canvas.Children.Add(pill.Container);
         }
-        pill.ApplyAppearance(fontFamily, fontSize, colorHex);
+        pill.ApplyAppearance(fontFamily, fontSize, colorHex, bold, italic, dropShadow, outline);
         pill.Place(physRect.X - _physX, physRect.Y - _physY, physRect.Width, physRect.Height);
     }
 
@@ -132,11 +133,12 @@ internal sealed class LabelSurfaceWindow : Window
         if (_pills.TryGetValue(key, out var pill)) pill.SetContent(text, portraitUrl);
     }
 
-    public void SetPillAppearance(int key, string fontFamily, double fontSize, string colorHex)
+    public void SetPillAppearance(int key, string fontFamily, double fontSize, string colorHex,
+                                  bool bold, bool italic, bool dropShadow, bool outline)
     {
         if (_pills.TryGetValue(key, out var pill))
         {
-            pill.ApplyAppearance(fontFamily, fontSize, colorHex);
+            pill.ApplyAppearance(fontFamily, fontSize, colorHex, bold, italic, dropShadow, outline);
             pill.RePlace();
         }
     }
@@ -148,7 +150,20 @@ internal sealed class LabelSurfaceWindow : Window
         public readonly Grid Container = new();
         private readonly Border _pill = new();
         private readonly Ellipse _portraitDot;
-        private readonly TextBlock _text = new() { FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        private readonly TextBlock _text = new() { VerticalAlignment = VerticalAlignment.Center };
+        private readonly Grid _textLayer = new();
+        private readonly TextBlock[] _outlineCopies = new TextBlock[8];
+
+        // Unit offsets for the 8 outline copies drawn behind the main text (a "poor man's" stroke --
+        // cheap, works with any font/size, no Geometry/FormattedText needed). Scaled by font size in
+        // ApplyAppearance.
+        private static readonly (double dx, double dy)[] OutlineDirections =
+        {
+            (-1, -1), (0, -1), (1, -1),
+            (-1,  0),          (1,  0),
+            (-1,  1), (0,  1), (1,  1),
+        };
+
         private readonly bool _iconStyle;
         private readonly int _baseHeight;
         private readonly double _dpiScale;
@@ -179,23 +194,31 @@ internal sealed class LabelSurfaceWindow : Window
             };
             RenderOptions.SetBitmapScalingMode(_portraitDot, BitmapScalingMode.HighQuality);
 
+            // Outline copies sit behind the real text in the same Grid cell, each nudged out along
+            // one of the 8 compass directions by ApplyAppearance; collapsed (and free) when unused.
+            foreach (var _ in OutlineDirections)
+            {
+                var copy = new TextBlock
+                {
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = Brushes.Black,
+                    Visibility = Visibility.Collapsed,
+                    IsHitTestVisible = false,
+                };
+                _textLayer.Children.Add(copy);
+            }
+            for (var i = 0; i < OutlineDirections.Length; i++) _outlineCopies[i] = (TextBlock)_textLayer.Children[i];
+            _textLayer.Children.Add(_text); // real text last = drawn on top of the outline copies
+
             var stack = new StackPanel { Orientation = Orientation.Horizontal };
             stack.Children.Add(_portraitDot);
-            stack.Children.Add(_text);
+            stack.Children.Add(_textLayer);
             _pill.Child = stack;
             _pill.HorizontalAlignment = HorizontalAlignment.Center;
             _pill.VerticalAlignment = VerticalAlignment.Center;
 
             if (_iconStyle)
             {
-                // Soft shadow keeps a plain name legible over bright video.
-                _text.Effect = new System.Windows.Media.Effects.DropShadowEffect
-                {
-                    Color = Colors.Black,
-                    BlurRadius = 4,
-                    ShadowDepth = 0,
-                    Opacity = 0.9
-                };
                 _pill.Background = Brushes.Transparent;
                 _pill.CornerRadius = new CornerRadius(0);
                 _pill.Padding = new Thickness(6, 2, 6, 2);
@@ -213,15 +236,42 @@ internal sealed class LabelSurfaceWindow : Window
             Container.Children.Add(_pill);
         }
 
-        // Font family, size and colour for this label; height/portrait scale with the font so large
-        // sizes are never clipped.
-        public void ApplyAppearance(string family, double fontSize, string colorHex)
+        // Font family, size, colour and style (bold/italic/drop shadow/outline) for this label;
+        // height/portrait scale with the font so large sizes are never clipped.
+        public void ApplyAppearance(string family, double fontSize, string colorHex,
+                                    bool bold, bool italic, bool dropShadow, bool outline)
         {
+            var fontFamily = ResolveFontFamily(family);
+            var weight = bold ? FontWeights.Bold : FontWeights.SemiBold;
+            var style = italic ? FontStyles.Italic : FontStyles.Normal;
+
             _text.FontSize = fontSize;
-            _text.FontFamily = ResolveFontFamily(family);
+            _text.FontFamily = fontFamily;
+            _text.FontWeight = weight;
+            _text.FontStyle = style;
             _text.Foreground = BrushFromHex(colorHex, _iconStyle
                 ? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)
                 : Color.FromRgb(0xE5, 0xE7, 0xEB));
+            // Soft shadow keeps text legible over bright video; user-toggleable per style/seat.
+            _text.Effect = dropShadow
+                ? new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, BlurRadius = 4, ShadowDepth = 0, Opacity = 0.9 }
+                : null;
+
+            // "Poor man's" outline: 8 black copies of the same text, nudged out by a font-scaled
+            // offset in every compass direction, sitting behind the real text.
+            var offset = Math.Max(1.0, fontSize * 0.06);
+            for (var i = 0; i < _outlineCopies.Length; i++)
+            {
+                var copy = _outlineCopies[i];
+                copy.FontSize = fontSize;
+                copy.FontFamily = fontFamily;
+                copy.FontWeight = weight;
+                copy.FontStyle = style;
+                copy.Text = _text.Text;
+                copy.Visibility = outline ? Visibility.Visible : Visibility.Collapsed;
+                var (dx, dy) = OutlineDirections[i];
+                copy.RenderTransform = new TranslateTransform(dx * offset, dy * offset);
+            }
 
             _portraitDip = _iconStyle ? fontSize + 8 : 0;
             var content = _iconStyle ? Math.Max(fontSize * 1.7, _portraitDip) : fontSize * 1.7;
@@ -254,6 +304,7 @@ internal sealed class LabelSurfaceWindow : Window
         public void SetContent(string label, string portraitUrl)
         {
             _text.Text = label;
+            foreach (var copy in _outlineCopies) copy.Text = label;
             Container.Visibility = string.IsNullOrWhiteSpace(label) ? Visibility.Collapsed : Visibility.Visible;
 
             if (portraitUrl != _portraitUrl)

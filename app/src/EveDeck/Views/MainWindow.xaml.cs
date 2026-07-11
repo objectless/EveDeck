@@ -599,6 +599,76 @@ public partial class MainWindow : Window
             _viewModel.ApplySeatMasterLabelFont(seat, null, null, null);
     }
 
+    private void MasterLabelStyleReset_Click(object sender, RoutedEventArgs e)
+        => _viewModel.ResetGlobalMasterLabelStyle();
+
+    // Seeds a per-seat style ToggleButton's IsChecked from the seat's current effective value
+    // (seat override ?? global) when its card first renders. Tag encodes which flag/tier: "Bold",
+    // "Italic", "Shadow", "Outline" for the normal seat style, or the same names suffixed "Master".
+    private void SlotStyleToggle_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Primitives.ToggleButton { DataContext: SlotAssignment seat } tb)
+            SeedStyleToggle(tb, seat);
+    }
+
+    private void SeedStyleToggle(System.Windows.Controls.Primitives.ToggleButton tb, SlotAssignment seat)
+    {
+        if (tb.Tag is not string tag) return;
+        var isMaster = tag.EndsWith("Master", StringComparison.Ordinal);
+        var flag = isMaster ? tag[..^"Master".Length] : tag;
+        var (bold, italic, shadow, outline) = _viewModel.EffectiveSeatLabelStyle(seat, isMaster);
+        tb.IsChecked = flag switch
+        {
+            "Bold" => bold,
+            "Italic" => italic,
+            "Shadow" => shadow,
+            "Outline" => outline,
+            _ => false
+        };
+    }
+
+    private void SlotStyleToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Primitives.ToggleButton { DataContext: SlotAssignment seat } tb) return;
+        if (tb.Tag is not string tag) return;
+        var isMaster = tag.EndsWith("Master", StringComparison.Ordinal);
+        var flag = isMaster ? tag[..^"Master".Length] : tag;
+        var value = tb.IsChecked ?? false;
+        switch (flag)
+        {
+            case "Bold": _viewModel.ApplySeatLabelBold(seat, isMaster, value); break;
+            case "Italic": _viewModel.ApplySeatLabelItalic(seat, isMaster, value); break;
+            case "Shadow": _viewModel.ApplySeatLabelDropShadow(seat, isMaster, value); break;
+            case "Outline": _viewModel.ApplySeatLabelOutline(seat, isMaster, value); break;
+        }
+    }
+
+    // Resets one seat's style overrides then re-seeds every style ToggleButton in the same
+    // WrapPanel so the UI reflects the now-inherited values immediately (Loaded only fires once).
+    private void SlotLabelStyleReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SlotAssignment seat } el) return;
+        _viewModel.ResetSeatLabelStyle(seat, isMaster: false);
+        ReseedSeatStyleToggles(el, seat);
+    }
+
+    private void SlotMasterLabelStyleReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SlotAssignment seat } el) return;
+        _viewModel.ResetSeatLabelStyle(seat, isMaster: true);
+        ReseedSeatStyleToggles(el, seat);
+    }
+
+    private void ReseedSeatStyleToggles(FrameworkElement resetButton, SlotAssignment seat)
+    {
+        if (resetButton.Parent is not System.Windows.Controls.Panel panel) return;
+        foreach (var child in panel.Children)
+        {
+            if (child is System.Windows.Controls.Primitives.ToggleButton tb && tb.Tag is string)
+                SeedStyleToggle(tb, seat);
+        }
+    }
+
     private void SlotFrameColorPick_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: SlotAssignment seat }) return;

@@ -1207,6 +1207,135 @@ public sealed partial class MainWindowViewModel : ObservableObject
         if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
     }
 
+    // -- Label style toggles (bold/italic/drop shadow/outline) --------------------------------
+
+    private void RaiseLabelStyleChanged()
+    {
+        OnPropertyChanged(nameof(LabelBold));
+        OnPropertyChanged(nameof(LabelItalic));
+        OnPropertyChanged(nameof(LabelDropShadow));
+        OnPropertyChanged(nameof(LabelOutline));
+        OnPropertyChanged(nameof(MasterLabelBold));
+        OnPropertyChanged(nameof(MasterLabelItalic));
+        OnPropertyChanged(nameof(MasterLabelDropShadow));
+        OnPropertyChanged(nameof(MasterLabelOutline));
+    }
+
+    private void SaveAndRefreshOverlays()
+    {
+        Save();
+        if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
+    }
+
+    public bool LabelBold
+    {
+        get => _settings.CornerOverlayLabelBold;
+        set { if (_settings.CornerOverlayLabelBold == value) return; _settings.CornerOverlayLabelBold = value; OnPropertyChanged(); SaveAndRefreshOverlays(); }
+    }
+
+    public bool LabelItalic
+    {
+        get => _settings.CornerOverlayLabelItalic;
+        set { if (_settings.CornerOverlayLabelItalic == value) return; _settings.CornerOverlayLabelItalic = value; OnPropertyChanged(); SaveAndRefreshOverlays(); }
+    }
+
+    public bool LabelDropShadow
+    {
+        get => _settings.CornerOverlayLabelDropShadow;
+        set { if (_settings.CornerOverlayLabelDropShadow == value) return; _settings.CornerOverlayLabelDropShadow = value; OnPropertyChanged(); SaveAndRefreshOverlays(); }
+    }
+
+    public bool LabelOutline
+    {
+        get => _settings.CornerOverlayLabelOutline;
+        set { if (_settings.CornerOverlayLabelOutline == value) return; _settings.CornerOverlayLabelOutline = value; OnPropertyChanged(); SaveAndRefreshOverlays(); }
+    }
+
+    // MASTER-pill style toggles: always shows/sets the EFFECTIVE value (falls back to the normal
+    // toggle above when no master override is set yet), mirroring MasterLabelFontSummary. Setting
+    // one always writes an explicit master override; ResetGlobalMasterLabelStyle clears all four.
+    public bool MasterLabelBold
+    {
+        get => _settings.CornerOverlayLabelBoldMaster ?? _settings.CornerOverlayLabelBold;
+        set { _settings.CornerOverlayLabelBoldMaster = value; OnPropertyChanged(); SaveAndRefreshOverlays(); }
+    }
+
+    public bool MasterLabelItalic
+    {
+        get => _settings.CornerOverlayLabelItalicMaster ?? _settings.CornerOverlayLabelItalic;
+        set { _settings.CornerOverlayLabelItalicMaster = value; OnPropertyChanged(); SaveAndRefreshOverlays(); }
+    }
+
+    public bool MasterLabelDropShadow
+    {
+        get => _settings.CornerOverlayLabelDropShadowMaster ?? _settings.CornerOverlayLabelDropShadow;
+        set { _settings.CornerOverlayLabelDropShadowMaster = value; OnPropertyChanged(); SaveAndRefreshOverlays(); }
+    }
+
+    public bool MasterLabelOutline
+    {
+        get => _settings.CornerOverlayLabelOutlineMaster ?? _settings.CornerOverlayLabelOutline;
+        set { _settings.CornerOverlayLabelOutlineMaster = value; OnPropertyChanged(); SaveAndRefreshOverlays(); }
+    }
+
+    // Clears the global MASTER style overrides so all four inherit the normal toggles again.
+    public void ResetGlobalMasterLabelStyle()
+    {
+        _settings.CornerOverlayLabelBoldMaster = null;
+        _settings.CornerOverlayLabelItalicMaster = null;
+        _settings.CornerOverlayLabelDropShadowMaster = null;
+        _settings.CornerOverlayLabelOutlineMaster = null;
+        RaiseLabelStyleChanged();
+        SaveAndRefreshOverlays();
+    }
+
+    // Applies (or clears, when value is null) one seat's style-flag override. isMaster picks the
+    // seat's MASTER-pill override instead of its normal one. One flag per call so toggling e.g.
+    // Bold never disturbs the seat's other (Italic/DropShadow/Outline) overrides.
+    public void ApplySeatLabelBold(SlotAssignment seat, bool isMaster, bool? value)
+    {
+        if (isMaster) seat.LabelBoldMaster = value; else seat.LabelBold = value;
+        SaveAndRefreshOverlays();
+    }
+
+    public void ApplySeatLabelItalic(SlotAssignment seat, bool isMaster, bool? value)
+    {
+        if (isMaster) seat.LabelItalicMaster = value; else seat.LabelItalic = value;
+        SaveAndRefreshOverlays();
+    }
+
+    public void ApplySeatLabelDropShadow(SlotAssignment seat, bool isMaster, bool? value)
+    {
+        if (isMaster) seat.LabelDropShadowMaster = value; else seat.LabelDropShadow = value;
+        SaveAndRefreshOverlays();
+    }
+
+    public void ApplySeatLabelOutline(SlotAssignment seat, bool isMaster, bool? value)
+    {
+        if (isMaster) seat.LabelOutlineMaster = value; else seat.LabelOutline = value;
+        SaveAndRefreshOverlays();
+    }
+
+    // Clears a seat's style overrides (normal or master tier) back to inherit.
+    public void ResetSeatLabelStyle(SlotAssignment seat, bool isMaster)
+    {
+        if (isMaster)
+        {
+            seat.LabelBoldMaster = null;
+            seat.LabelItalicMaster = null;
+            seat.LabelDropShadowMaster = null;
+            seat.LabelOutlineMaster = null;
+        }
+        else
+        {
+            seat.LabelBold = null;
+            seat.LabelItalic = null;
+            seat.LabelDropShadow = null;
+            seat.LabelOutline = null;
+        }
+        SaveAndRefreshOverlays();
+    }
+
     // Current effective active-window frame colour for a seat (its own override, else the global) --
     // used to seed the per-seat colour picker.
     public string EffectiveSeatFrameColor(SlotAssignment seat)

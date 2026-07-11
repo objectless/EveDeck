@@ -716,6 +716,38 @@
                                           Click="SlotMasterLabelFontReset_Click"
                                           Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
                                           ToolTip="Reset this seat's master label font to the global master default"/>
+                                  <ToggleButton Content="B" Tag="Bold" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
+                                                Padding="5,1" Margin="8,0,0,0" MinWidth="0" MinHeight="0" FontSize="10" FontWeight="Bold"
+                                                ToolTip="Bold"/>
+                                  <ToggleButton Content="I" Tag="Italic" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
+                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10" FontStyle="Italic"
+                                                ToolTip="Italic"/>
+                                  <ToggleButton Content="S" Tag="Shadow" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
+                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                                ToolTip="Drop shadow"/>
+                                  <ToggleButton Content="O" Tag="Outline" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
+                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                                ToolTip="Outline"/>
+                                  <Button Content="&#8635;"
+                                          Click="SlotLabelStyleReset_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Reset this seat's label style to the global default"/>
+                                  <ToggleButton Content="B" Tag="BoldMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
+                                                Padding="5,1" Margin="8,0,0,0" MinWidth="0" MinHeight="0" FontSize="10" FontWeight="Bold"
+                                                ToolTip="Bold (MASTER seat)"/>
+                                  <ToggleButton Content="I" Tag="ItalicMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
+                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10" FontStyle="Italic"
+                                                ToolTip="Italic (MASTER seat)"/>
+                                  <ToggleButton Content="S" Tag="ShadowMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
+                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                                ToolTip="Drop shadow (MASTER seat)"/>
+                                  <ToggleButton Content="O" Tag="OutlineMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click"
+                                                Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                                ToolTip="Outline (MASTER seat)"/>
+                                  <Button Content="&#8635;"
+                                          Click="SlotMasterLabelStyleReset_Click"
+                                          Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                          ToolTip="Reset this seat's master label style to the global master default"/>
                                   <Button Content="Color"
                                           Click="SlotFrameColorPick_Click"
                                           Padding="5,1" Margin="4,0,0,0" MinWidth="0" MinHeight="0" FontSize="10"
@@ -1627,6 +1659,26 @@ Shows your background clients as live mini-previews in the screen corners while 
                 <Button Content="&#8635;" Click="MasterLabelFontReset_Click" Padding="5,1" MinWidth="0" MinHeight="0" FontSize="10" ToolTip="Reset to inherit the default label font"/>
               </StackPanel>
               <TextBlock Text="Sets a separate font, size and colour for the centred MASTER seat's label (e.g. a bigger label on a full-screen master vs. smaller alt preview labels). Falls back to the default label font above when unset. Override per seat with the 'Master Font' button on each slot."
+                         TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,10"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                <TextBlock Text="Label text style" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
+                <CheckBox Content="Bold" IsChecked="{Binding LabelBold}" Margin="0,0,10,0"/>
+                <CheckBox Content="Italic" IsChecked="{Binding LabelItalic}" Margin="0,0,10,0"/>
+                <CheckBox Content="Drop shadow" IsChecked="{Binding LabelDropShadow}" Margin="0,0,10,0"/>
+                <CheckBox Content="Outline" IsChecked="{Binding LabelOutline}"/>
+              </StackPanel>
+              <TextBlock Text="Applies to every preview label. Override per seat with the style buttons (B/I/S/O) on each slot."
+                         TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"
+                         Foreground="{StaticResource MutedBrush}"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                <TextBlock Text="Master text style" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}"/>
+                <CheckBox Content="Bold" IsChecked="{Binding MasterLabelBold}" Margin="0,0,10,0"/>
+                <CheckBox Content="Italic" IsChecked="{Binding MasterLabelItalic}" Margin="0,0,10,0"/>
+                <CheckBox Content="Drop shadow" IsChecked="{Binding MasterLabelDropShadow}" Margin="0,0,10,0"/>
+                <CheckBox Content="Outline" IsChecked="{Binding MasterLabelOutline}" Margin="0,0,8,0"/>
+                <Button Content="&#8635;" Click="MasterLabelStyleReset_Click" Padding="5,1" MinWidth="0" MinHeight="0" FontSize="10" ToolTip="Reset to inherit the default label text style"/>
+              </StackPanel>
+              <TextBlock Text="Sets a separate text style for the centred MASTER seat's label. Falls back to the default text style above when unset. Override per seat with the master style buttons on each slot."
                          TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,10"/>
 
               <!-- ── Settings Backup ─────────────────────────────────── -->

@@ -407,6 +407,37 @@ public sealed partial class MainWindowViewModel
         return (family ?? "", size, color ?? "");
     }
 
+    // Effective label style flags (bold, italic, drop shadow, outline) for a seat. Mirrors
+    // EffectiveSeatLabelFont's seat-override -> global-master -> global-default fallback chain,
+    // kept as a separate method/tuple so the existing font (family/size/color) API is untouched.
+    public (bool bold, bool italic, bool dropShadow, bool outline) EffectiveSeatLabelStyle(SlotAssignment seat, bool isMaster = false)
+    {
+        var normalBold = seat.LabelBold ?? _settings.CornerOverlayLabelBold;
+        var normalItalic = seat.LabelItalic ?? _settings.CornerOverlayLabelItalic;
+        var normalShadow = seat.LabelDropShadow ?? _settings.CornerOverlayLabelDropShadow;
+        var normalOutline = seat.LabelOutline ?? _settings.CornerOverlayLabelOutline;
+
+        if (!isMaster) return (normalBold, normalItalic, normalShadow, normalOutline);
+
+        var bold = seat.LabelBoldMaster ?? _settings.CornerOverlayLabelBoldMaster ?? normalBold;
+        var italic = seat.LabelItalicMaster ?? _settings.CornerOverlayLabelItalicMaster ?? normalItalic;
+        var shadow = seat.LabelDropShadowMaster ?? _settings.CornerOverlayLabelDropShadowMaster ?? normalShadow;
+        var outline = seat.LabelOutlineMaster ?? _settings.CornerOverlayLabelOutlineMaster ?? normalOutline;
+        return (bold, italic, shadow, outline);
+    }
+
+    private (bool bold, bool italic, bool dropShadow, bool outline) ResolveLabelStyle(int seat, bool isMaster = false)
+    {
+        var s = Seat(seat);
+        if (s is not null) return EffectiveSeatLabelStyle(s, isMaster);
+        if (!isMaster) return (_settings.CornerOverlayLabelBold, _settings.CornerOverlayLabelItalic, _settings.CornerOverlayLabelDropShadow, _settings.CornerOverlayLabelOutline);
+        var bold = _settings.CornerOverlayLabelBoldMaster ?? _settings.CornerOverlayLabelBold;
+        var italic = _settings.CornerOverlayLabelItalicMaster ?? _settings.CornerOverlayLabelItalic;
+        var shadow = _settings.CornerOverlayLabelDropShadowMaster ?? _settings.CornerOverlayLabelDropShadow;
+        var outline = _settings.CornerOverlayLabelOutlineMaster ?? _settings.CornerOverlayLabelOutline;
+        return (bold, italic, shadow, outline);
+    }
+
     // True when `position` is any swap group's centre/master slot. Needed because for layouts with
     // no dominant master area (the Grid family), the centre slot is ALSO registered as a plain
     // corner tile and can be refreshed by the generic per-tick corner loop — without this check
@@ -418,7 +449,8 @@ public sealed partial class MainWindowViewModel
     {
         if (_labelSurface is null) return;
         var (family, size, color) = ResolveLabelFont(seat, isMaster);
-        _labelSurface.SetPill(key, rect, atTop, centered, family, size, color);
+        var (bold, italic, dropShadow, outline) = ResolveLabelStyle(seat, isMaster);
+        _labelSurface.SetPill(key, rect, atTop, centered, family, size, color, bold, italic, dropShadow, outline);
         _labelSurface.SetPillContent(key, text, portraitUrl);
     }
 
@@ -846,8 +878,10 @@ public sealed partial class MainWindowViewModel
         _labelSurface.SetPillContent(position,
             FindSeatWindow(seat) is not null ? PillTextForPosition(position) : OfflinePillText(seat),
             SeatPortraitUrl(seat));
-        var (family, size, color) = ResolveLabelFont(seat, IsGroupCenterPosition(position));
-        _labelSurface.SetPillAppearance(position, family, size, color);
+        var isMasterPosition = IsGroupCenterPosition(position);
+        var (family, size, color) = ResolveLabelFont(seat, isMasterPosition);
+        var (bold, italic, dropShadow, outline) = ResolveLabelStyle(seat, isMasterPosition);
+        _labelSurface.SetPillAppearance(position, family, size, color, bold, italic, dropShadow, outline);
     }
 
     private void RefreshGroupCenterPill(SwapGroup group)
@@ -857,7 +891,8 @@ public sealed partial class MainWindowViewModel
         var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
         _labelSurface.SetPillContent(groupCenter, CenterPillTextForGroup(group.GroupId), SeatPortraitUrl(centeredSeat));
         var (family, size, color) = ResolveLabelFont(centeredSeat, isMaster: true);
-        _labelSurface.SetPillAppearance(groupCenter, family, size, color);
+        var (bold, italic, dropShadow, outline) = ResolveLabelStyle(centeredSeat, isMaster: true);
+        _labelSurface.SetPillAppearance(groupCenter, family, size, color, bold, italic, dropShadow, outline);
     }
 
     internal void RefreshAllPills()

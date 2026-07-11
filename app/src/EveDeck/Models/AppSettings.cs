@@ -60,6 +60,25 @@ public sealed class AppSettings
     public double? CornerOverlayLabelFontSizeMaster { get; set; } = null;
     public string CornerOverlayLabelColorMaster { get; set; } = "";
 
+    // Text style toggles for corner-overlay preview labels. Bold/Italic are plain font-weight/style
+    // switches. DropShadow defaults true because the "IconText" label style has always rendered a
+    // soft black shadow behind its plain-text name for legibility over bright video (this used to be
+    // hardcoded); true preserves that exact look with no action needed, and additionally lets "Pill"
+    // style labels opt in too (harmless there since Pill text already sits on an opaque dark chip).
+    // Outline draws a black stroke around the glyphs; off by default (a new, purely additive look).
+    public bool CornerOverlayLabelBold { get; set; } = false;
+    public bool CornerOverlayLabelItalic { get; set; } = false;
+    public bool CornerOverlayLabelDropShadow { get; set; } = true;
+    public bool CornerOverlayLabelOutline { get; set; } = false;
+
+    // Global MASTER-pill overrides for the style toggles above. null = inherit the normal toggle
+    // (same fallback pattern as CornerOverlayLabelFontFamilyMaster etc.); per-seat overrides on
+    // SlotAssignment (LabelBoldMaster etc.) take precedence over these when set.
+    public bool? CornerOverlayLabelBoldMaster { get; set; } = null;
+    public bool? CornerOverlayLabelItalicMaster { get; set; } = null;
+    public bool? CornerOverlayLabelDropShadowMaster { get; set; } = null;
+    public bool? CornerOverlayLabelOutlineMaster { get; set; } = null;
+
     // Click a corner preview tile to bring that client to the centre (focus switch). Pure window
     // management — the click is NOT forwarded into the EVE client, so it stays EULA-compliant (no
     // input injection). A convenient alternative to the centre-seat hotkeys for users who haven't
