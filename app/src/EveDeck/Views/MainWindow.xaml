@@ -1542,6 +1542,15 @@ Styling for the active-client highlight frame and the preview-label pills (font,
                 <TextBlock Text="{Binding MasterLabelOpacity, StringFormat={}{0}%}" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"/>
               </StackPanel>
 
+              <TextBlock Text="Preview tiles" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,16" VerticalAlignment="Center">
+                <TextBlock Text="Opacity" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <Slider Minimum="10" Maximum="100" Value="{Binding PreviewOpacity}" Width="150" VerticalAlignment="Center"
+                        IsSnapToTickEnabled="True" TickFrequency="5"
+                        ToolTip="Transparency of every DWM preview thumbnail, corners and the master rect alike."/>
+                <TextBlock Text="{Binding PreviewOpacity, StringFormat={}{0}%}" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"/>
+              </StackPanel>
+
               <!-- ── 2g: Startup Profile ──────────────────────────────── -->
               <TextBlock Text="Startup" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
               <CheckBox Content="Apply a layout profile on startup"

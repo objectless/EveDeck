@@ -47,6 +47,7 @@ internal static class Win32Native
 
     // DWM thumbnail property flags
     internal const int DwmTnpRectDestination = 0x00000001;
+    internal const int DwmTnpOpacity = 0x00000004;
     internal const int DwmTnpVisible = 0x00000008;
 
     [StructLayout(LayoutKind.Sequential)]

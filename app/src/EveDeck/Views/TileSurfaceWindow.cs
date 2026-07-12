@@ -33,6 +33,10 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     private readonly HashSet<int> _hiddenTiles = new();                      // positions with no live source
     private readonly int _physX, _physY, _physWidth, _physHeight;
 
+    // Thumbnail opacity (0-255), applied to every tile including the master/center one. Defaults to
+    // fully opaque; SetOpacity re-applies it to already-registered thumbnails immediately.
+    private byte _opacity = 255;
+
     // Zoom-on-hover state: at most one tile is magnified at a time; its thumbnail dest rect is
     // scaled around the tile centre (clamped to the surface) and the thumbnail is re-registered so
     // it composites ABOVE its neighbours (DWM stacks thumbnails in registration order).
@@ -122,7 +126,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         _thumbnails[position] = id;
         var props = new Win32Native.DwmThumbnailProperties
         {
-            dwFlags = Win32Native.DwmTnpRectDestination | Win32Native.DwmTnpVisible,
+            dwFlags = Win32Native.DwmTnpRectDestination | Win32Native.DwmTnpVisible | Win32Native.DwmTnpOpacity,
             rcDestination = new Win32Native.NativeRect
             {
                 Left = dest.Left,
@@ -130,7 +134,8 @@ internal sealed class TileSurfaceWindow : WinForms.Form
                 Right = dest.Right,
                 Bottom = dest.Bottom
             },
-            fVisible = true
+            fVisible = true,
+            opacity = _opacity
         };
         if (Win32Native.DwmUpdateThumbnailProperties(id, ref props) != 0)
         {
@@ -139,6 +144,18 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             return false;
         }
         return true;
+    }
+
+    // Preview transparency (0-100%, same convention as the label opacity slider) for every tile,
+    // including the master/center one. Re-applies immediately to whatever is already registered.
+    public void SetOpacity(int percent)
+    {
+        _opacity = (byte)(Math.Clamp(percent, 0, 100) * 255 / 100);
+        foreach (var id in _thumbnails.Values)
+        {
+            var props = new Win32Native.DwmThumbnailProperties { dwFlags = Win32Native.DwmTnpOpacity, opacity = _opacity };
+            Win32Native.DwmUpdateThumbnailProperties(id, ref props);
+        }
     }
 
     // Magnify one tile's PREVIEW around its centre (clamped to the surface). Purely a DWM dest-rect
@@ -197,24 +214,16 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         Invalidate();
     }
 
-    // Focus-gated stacking: topmost while EVE / EveDeck is foreground so the previews cover other
-    // apps, sunk to the bottom otherwise so they never float over the user's browser. This is the
-    // ONLY z-order call in the whole overlay subsystem, and it runs on focus transitions -- not on
-    // a timer -- so there is nothing left to flicker.
-    public void SetZ(bool topmost)
+    // Always topmost, over EVE, EveDeck, and every other app (browser, Discord, etc.) alike -- the
+    // overlay is meant to stay visible no matter what has focus. Re-asserting HWND_TOPMOST is only
+    // ever called from event-driven triggers (surface creation, layout/swap changes, the foreground
+    // WinEvent hook), never on an unconditional per-tick timer, which is what caused the historical
+    // self-inflicted raise/bury/raise flicker (see project-seat-order-and-frame-flicker memory).
+    public void SetZ()
     {
         if (!IsHandleCreated) return;
         const uint flags = Win32Native.SwpNoMove | Win32Native.SwpNoSize | Win32Native.SwpNoActivate;
-        if (topmost)
-        {
-            Win32Native.SetWindowPos(Handle, Win32Native.HwndTopmost, 0, 0, 0, 0, flags);
-        }
-        else
-        {
-            // HWND_BOTTOM alone won't clear the WS_EX_TOPMOST band, so drop topmost first, then sink.
-            Win32Native.SetWindowPos(Handle, Win32Native.HwndNotTopmost, 0, 0, 0, 0, flags);
-            Win32Native.SetWindowPos(Handle, Win32Native.HwndBottom, 0, 0, 0, 0, flags);
-        }
+        Win32Native.SetWindowPos(Handle, Win32Native.HwndTopmost, 0, 0, 0, 0, flags);
     }
 
     protected override void OnPaint(WinForms.PaintEventArgs e)

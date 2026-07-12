@@ -22,7 +22,6 @@ public sealed partial class MainWindowViewModel
     // centre slot number. With a single HWND per surface there is no per-tile z-order to maintain.
     private TileSurfaceWindow? _tileSurface;
     private LabelSurfaceWindow? _labelSurface;
-    private bool _surfacesTopmost;
     private readonly Dictionary<int, nint> _cornerSourceHandles = new();
     private readonly Dictionary<int, WindowRect> _cornerRects = new();
     private int _cursorOverPosition = -1;
@@ -311,6 +310,7 @@ public sealed partial class MainWindowViewModel
 
         _tileSurface = new TileSurfaceWindow(surfX, surfY, surfW, surfH);
         _tileSurface.TileClicked = OnCornerTileClicked;
+        _tileSurface.SetOpacity(_settings.CornerOverlayPreviewOpacity);
         _tileSurface.Show();
 
         if (_settings.CornerOverlayShowLabel)
@@ -361,7 +361,7 @@ public sealed partial class MainWindowViewModel
             }
         }
 
-        ApplySurfaceZOrder(IsEveOrEwcForeground());
+        ApplySurfaceZOrder();
         _frameTimer.Start();
     }
 
@@ -552,7 +552,6 @@ public sealed partial class MainWindowViewModel
         _labelSurface = null;
         try { _tileSurface?.Close(); } catch { } // window may already be closed
         _tileSurface = null;
-        _surfacesTopmost = false;
         _cornerSourceHandles.Clear();
         _cornerRects.Clear();
         _seatOfflineSince.Clear();
@@ -925,19 +924,20 @@ public sealed partial class MainWindowViewModel
     internal void RefreshCornerOverlayZOrder()
     {
         if (_tileSurface is null) return;
-        ApplySurfaceZOrder(IsEveOrEwcForeground());
+        ApplySurfaceZOrder();
     }
 
-    // The ONLY z-order management left in the overlay subsystem: two windows, moved between the
-    // topmost band (EVE/EveDeck focused) and the bottom (anything else focused), on focus
-    // transitions. The label surface is an owned window of the tile surface, so the window manager
-    // itself keeps labels above tiles at all times -- there is nothing to re-assert per tick.
-    private void ApplySurfaceZOrder(bool topmost)
+    // The overlay (tiles + labels) always stays topmost, over EVE, EveDeck, and every other app
+    // (browser, Discord, etc.) -- it's meant to be visible no matter what has focus. The label
+    // surface is an owned window of the tile surface, so the window manager itself keeps labels
+    // above tiles at all times -- there is nothing to re-assert per tick for THAT relationship.
+    // This method itself is only called from event-driven triggers (surface creation, layout/swap
+    // changes, the foreground WinEvent hook), never an unconditional per-tick timer.
+    private void ApplySurfaceZOrder()
     {
-        _surfacesTopmost = topmost;
-        _tileSurface?.SetZ(topmost);
-        _labelSurface?.SetZ(topmost);
-        if (topmost) BumpAllowedAppsAboveOverlaySurfaces();
+        _tileSurface?.SetZ();
+        _labelSurface?.SetZ();
+        BumpAllowedAppsAboveOverlaySurfaces();
     }
 
     // Allow-listed apps (Options tab) that should stay visually above our overlay surfaces even
@@ -1001,13 +1001,13 @@ public sealed partial class MainWindowViewModel
         }
 
         var eveOrEwcFg = IsEveOrEwcForeground();
-        // Focus gating is event-driven (the foreground WinEvent hook in MainWindow); this is only a
-        // fallback for a missed transition. No unconditional per-tick SetWindowPos calls on OUR OWN
-        // surfaces -- that churn was the historical source of every "labels flicker" report. The
-        // allow-list bump below only touches OTHER processes' windows, not ours, so it's safe to
-        // re-run each tick while already topmost (catches an allow-listed app launched mid-session).
-        if (eveOrEwcFg != _surfacesTopmost) ApplySurfaceZOrder(eveOrEwcFg);
-        else if (_surfacesTopmost) BumpAllowedAppsAboveOverlaySurfaces();
+        // The overlay itself is always topmost now (ApplySurfaceZOrder, called on creation and from
+        // event-driven triggers) -- no per-tick re-assertion of OUR OWN HWND_TOPMOST here, that churn
+        // was the historical source of every "labels flicker" report. The allow-list bump only
+        // touches OTHER processes' windows, so it's safe to re-run every tick (catches an
+        // allow-listed app launched mid-session). eveOrEwcFg below still gates hover-peek, which
+        // moves real EVE windows and must not fire while some other app has focus.
+        BumpAllowedAppsAboveOverlaySurfaces();
 
         if (!eveOrEwcFg && (_peekPosition >= 0 || _pendingHoverPosition >= 0 || _cursorOverPosition >= 0))
         {

@@ -93,22 +93,14 @@ internal sealed class LabelSurfaceWindow : Window
 
     public nint Handle => new WindowInteropHelper(this).Handle;
 
-    // Mirrors TileSurfaceWindow.SetZ so both surfaces ride between the topmost band and the bottom
-    // together. Raised AFTER the tile surface on focus transitions; ownership keeps this one above.
-    public void SetZ(bool topmost)
+    // Mirrors TileSurfaceWindow.SetZ -- always topmost, over every app, not just while EVE/EveDeck
+    // has focus. Raised AFTER the tile surface; ownership keeps this one above it in the z-order.
+    public void SetZ()
     {
         var hwnd = Handle;
         if (hwnd == 0) return;
         const uint flags = Win32Native.SwpNoMove | Win32Native.SwpNoSize | Win32Native.SwpNoActivate;
-        if (topmost)
-        {
-            Win32Native.SetWindowPos(hwnd, Win32Native.HwndTopmost, 0, 0, 0, 0, flags);
-        }
-        else
-        {
-            Win32Native.SetWindowPos(hwnd, Win32Native.HwndNotTopmost, 0, 0, 0, 0, flags);
-            Win32Native.SetWindowPos(hwnd, Win32Native.HwndBottom, 0, 0, 0, 0, flags);
-        }
+        Win32Native.SetWindowPos(hwnd, Win32Native.HwndTopmost, 0, 0, 0, 0, flags);
     }
 
     // Creates (or re-places) the label for a tile / master rect. Rect is physical screen pixels;

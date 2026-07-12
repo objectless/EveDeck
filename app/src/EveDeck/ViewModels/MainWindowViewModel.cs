@@ -1284,6 +1284,23 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    // Preview-tile opacity: one global slider, applied to every DWM preview tile (corners AND the
+    // master/center one) via TileSurfaceWindow.SetOpacity. Unlike LabelOpacity there's no per-seat
+    // or MASTER split -- StartCornerOverlays re-applies it on rebuild via SaveAndRefreshOverlays.
+    public int PreviewOpacity
+    {
+        get => _settings.CornerOverlayPreviewOpacity;
+        set
+        {
+            var clamped = Math.Clamp(value, 10, 100);
+            if (_settings.CornerOverlayPreviewOpacity == clamped) return;
+            _settings.CornerOverlayPreviewOpacity = clamped;
+            OnPropertyChanged();
+            if (CornerOverlaysLive) _tileSurface?.SetOpacity(clamped);
+            Save();
+        }
+    }
+
     // MASTER-pill style toggles: always shows/sets the EFFECTIVE value (falls back to the normal
     // toggle above when no master override is set yet), mirroring MasterLabelFontSummary. Setting
     // one always writes an explicit master override; ResetGlobalMasterLabelStyle clears all four.

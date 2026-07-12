@@ -84,6 +84,10 @@ public sealed class AppSettings
     public int CornerOverlayLabelOpacity { get; set; } = 100;
     public int? CornerOverlayLabelOpacityMaster { get; set; } = null;
 
+    // Preview-tile opacity (0-100%, DWM thumbnail alpha) for every corner/master DWM preview. One
+    // global slider applied uniformly -- no per-seat/master split like the label opacity above.
+    public int CornerOverlayPreviewOpacity { get; set; } = 100;
+
     // Click a corner preview tile to bring that client to the centre (focus switch). Pure window
     // management — the click is NOT forwarded into the EVE client, so it stays EULA-compliant (no
     // input injection). A convenient alternative to the centre-seat hotkeys for users who haven't
