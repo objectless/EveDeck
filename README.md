@@ -197,6 +197,14 @@ with any software, downloading, installing, and running EveDeck is ultimately **
 risk** — EveDeck is open source, so you're always free to read the code or build it yourself
 if you want certainty.
 
+**Why isn't the download code-signed, then?**
+Individual code-signing certificates require the certificate authority to put your real,
+legal name — not a project name — directly in the signature; that's a CA/Browser Forum rule,
+not a choice EveDeck's publisher gets to make. I'm not willing to attach my legal name to
+every release just to quiet a single low-signal AV heuristic. The source is public and the
+build pipeline is auditable (see above), so build it yourself if that matters to you. Run it
+or don't — that's your call to make with the full picture, not mine to make for you.
+
 **Does it support AMD VSR / Nvidia DSR virtual resolutions?**
 Yes. Slots are stored as fractional rects, so a single profile works at any resolution,
 with a per-profile master-resolution override for DSR setups.
