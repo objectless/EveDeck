@@ -16,12 +16,16 @@ public sealed class ConfigService
 
     public string AppDataFolder { get; }
 
+    // The app-data folder used when no override is passed. Exposed so surfaces without a ConfigService
+    // (e.g. the setup wizard) can locate the same folder for the token store.
+    public static string DefaultAppDataFolder => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "EveDeck");
+
     public ConfigService(string? appDataFolder = null)
     {
         _isDefaultFolder = appDataFolder is null;
-        AppDataFolder = appDataFolder ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "EveDeck");
+        AppDataFolder = appDataFolder ?? DefaultAppDataFolder;
     }
 
     public string ConfigPath => Path.Combine(AppDataFolder, "settings.json");

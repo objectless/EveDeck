@@ -15,11 +15,18 @@ public sealed class EsiAuthService
     private const string TokenUrl = "https://login.eveonline.com/v2/oauth/token";
     private const string VerifyUrl = "https://login.eveonline.com/oauth/verify";
     private const string RedirectUri = "http://localhost:4080/callback/";
-    private const string Scope = "publicData";
+
+    public const string ScopePlanets = "esi-planets.manage_planets.v1";
+    public const string ScopeAssets = "esi-assets.read_assets.v1";
+    public const string ScopeSkills = "esi-skills.read_skills.v1";
+
+    // Requested on every login. The PI scopes are read-only in practice (we only GET), but ESI has no
+    // read-only planets scope — manage_planets is the only one that exposes colonies.
+    private const string Scope = "publicData " + ScopePlanets + " " + ScopeAssets + " " + ScopeSkills;
 
     private static readonly HttpClient _http = new();
 
-    public async Task<(long CharacterId, string CharacterName)> AuthorizeAsync(CancellationToken ct)
+    public async Task<EsiToken> AuthorizeAsync(CancellationToken ct)
     {
         var codeVerifier = GenerateCodeVerifier();
         var codeChallenge = ComputeCodeChallenge(codeVerifier);
@@ -79,23 +86,61 @@ public sealed class EsiAuthService
             ["redirect_uri"] = RedirectUri,
             ["code_verifier"] = codeVerifier,
         });
-        var tokenResp = await _http.PostAsync(TokenUrl, tokenBody, ct);
-        tokenResp.EnsureSuccessStatusCode();
-        var tokenDoc = JsonDocument.Parse(await tokenResp.Content.ReadAsStringAsync(ct));
-        var accessToken = tokenDoc.RootElement.GetProperty("access_token").GetString()
-            ?? throw new InvalidOperationException("No access_token in EVE SSO response.");
+        return await ExchangeAsync(tokenBody, ct);
+    }
 
-        // Verify → get character identity
+    // Swaps a (possibly rotated) refresh token for a fresh access token. EVE may return a NEW refresh
+    // token here — the caller must persist whatever comes back, or the old one eventually stops working.
+    public async Task<EsiToken> RefreshAsync(EsiToken token, CancellationToken ct)
+    {
+        var body = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "refresh_token",
+            ["refresh_token"] = token.RefreshToken,
+            ["client_id"] = ClientId,
+        });
+        return await ExchangeAsync(body, ct);
+    }
+
+    private static async Task<EsiToken> ExchangeAsync(FormUrlEncodedContent body, CancellationToken ct)
+    {
+        var tokenResp = await _http.PostAsync(TokenUrl, body, ct);
+        if (!tokenResp.IsSuccessStatusCode)
+        {
+            var err = await tokenResp.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException($"EVE SSO token exchange failed ({(int)tokenResp.StatusCode}): {err}");
+        }
+
+        var tokenDoc = JsonDocument.Parse(await tokenResp.Content.ReadAsStringAsync(ct));
+        var root = tokenDoc.RootElement;
+        var accessToken = root.GetProperty("access_token").GetString()
+            ?? throw new InvalidOperationException("No access_token in EVE SSO response.");
+        var refreshToken = root.TryGetProperty("refresh_token", out var rt) ? rt.GetString() ?? "" : "";
+        var expiresIn = root.TryGetProperty("expires_in", out var ei) ? ei.GetInt32() : 1200;
+
+        // Verify → get character identity + the scopes actually granted (which can be fewer than we
+        // asked for if the user unticks one on the SSO consent screen).
         var verifyReq = new HttpRequestMessage(HttpMethod.Get, VerifyUrl);
         verifyReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         var verifyResp = await _http.SendAsync(verifyReq, ct);
         verifyResp.EnsureSuccessStatusCode();
         var verifyDoc = JsonDocument.Parse(await verifyResp.Content.ReadAsStringAsync(ct));
-        var characterId = verifyDoc.RootElement.GetProperty("CharacterID").GetInt64();
-        var characterName = verifyDoc.RootElement.GetProperty("CharacterName").GetString()
+        var verifyRoot = verifyDoc.RootElement;
+        var characterId = verifyRoot.GetProperty("CharacterID").GetInt64();
+        var characterName = verifyRoot.GetProperty("CharacterName").GetString()
             ?? throw new InvalidOperationException("No CharacterName in verify response.");
+        var scopes = (verifyRoot.TryGetProperty("Scopes", out var sc) ? sc.GetString() ?? "" : "")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
 
-        return (characterId, characterName);
+        return new EsiToken
+        {
+            CharacterId = characterId,
+            CharacterName = characterName,
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(expiresIn),
+            Scopes = scopes,
+        };
     }
 
     private static string GenerateCodeVerifier()

@@ -12,6 +12,7 @@ public sealed class SetupWizardViewModel : ObservableObject
     private const double Ratio16By9 = 16.0 / 9.0;
 
     private readonly EsiAuthService _esiAuth = new();
+    private readonly EsiTokenStore _tokenStore = new(ConfigService.DefaultAppDataFolder);
     private bool _esiLoginInProgress;
 
     public ObservableCollection<int> ClientCountOptions { get; } = new(Enumerable.Range(1, 50));
@@ -233,9 +234,13 @@ public sealed class SetupWizardViewModel : ObservableObject
         _esiLoginInProgress = true;
         try
         {
-            var (characterId, characterName) = await _esiAuth.AuthorizeAsync(CancellationToken.None);
+            var token = await _esiAuth.AuthorizeAsync(CancellationToken.None);
+            var characterId = token.CharacterId;
+            var characterName = token.CharacterName;
 
             if (WizardSlots.Any(s => s.EsiCharacters.Any(c => c.CharacterId == characterId))) return;
+
+            _tokenStore.Put(token);
 
             // First character linked anywhere designates this slot as the app master.
             var isFirstEver = WizardSlots.Sum(s => s.EsiCharacters.Count) == 0;

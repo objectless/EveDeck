@@ -184,4 +184,34 @@ public sealed class AppSettings
         new() { ProcessName = "discord" },
         new() { ProcessName = "pidgin" },
     };
+
+    // ── Planetary Industry (Planets tab) ──────────────────────────────────────
+    // Read-only ESI colony monitor + factory-load calculator. Off until the user opts in, since it
+    // needs the esi-planets scope which older linked characters won't have granted.
+    public bool PiEnabled { get; set; } = false;
+    // Poll cadence. ESI caches colonies for ~10 min server-side, so polling faster just burns the
+    // error budget for stale data.
+    public int PiRefreshMinutes { get; set; } = 10;
+    // Alert (seat flash + sound) when an extractor is within this many hours of expiring.
+    public double PiExtractorAlertHours { get; set; } = 6.0;
+    // Alert when a colony's fullest storage/launchpad passes this fill percentage.
+    public int PiStorageAlertPercent { get; set; } = 90;
+
+    // The character whose station assets the factory-load calculator totals against — typically
+    // whoever hauls hauled-in P1/P2/etc from the extractor alts and holds the working stockpile.
+    // Null = fall back to summing every linked character's assets (can double-count material still
+    // sitting on extractor alts that hasn't been consolidated yet).
+    public long? PiConsolidationCharacterId { get; set; } = null;
+
+    // Factory-load calculator inputs. FactoryInputTypeIds are the P1 (or any tier) commodity type ids
+    // whose stock gets split across PiFactoryCount factories, each burning PiFactoryBurnPerHour of
+    // every input per hour.
+    public ObservableCollection<int> PiFactoryInputTypeIds { get; set; } = new();
+    public int PiFactoryCount { get; set; } = 16;
+    public double PiFactoryBurnPerHour { get; set; } = 240;
+
+    // Type ids the user has unchecked from gating the split's "scarcest input" calc — see
+    // PiFactoryInput.IncludeInSplit. Typically an intermediate tier consumed entirely on-planet
+    // (chained straight into the next facility) rather than genuinely hauled/staged stock.
+    public ObservableCollection<int> PiFactoryExcludedInputTypeIds { get; set; } = new();
 }

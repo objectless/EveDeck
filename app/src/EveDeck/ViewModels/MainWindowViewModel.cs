@@ -151,6 +151,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SetMasterSlotCommand = new RelayCommand(SetMasterSlot);
         AddEsiCharacterCommand = new RelayCommand(AddEsiCharacter);
         RemoveEsiCharacterCommand = new RelayCommand(RemoveEsiCharacter);
+        ReauthEsiCharacterCommand = new RelayCommand(ReauthEsiCharacter);
         RestoreBackupCommand = new RelayCommand(() => RestoreSelectedBackup(), () => SelectedBackup is not null);
         DismissUpdateBannerCommand = new RelayCommand(() => { _updateBannerDismissed = true; OnPropertyChanged(nameof(ShowUpdateBanner)); });
         DismissConfigResetBannerCommand = new RelayCommand(() => { _configResetBannerDismissed = true; OnPropertyChanged(nameof(ShowConfigResetBanner)); });
@@ -273,6 +274,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         InitLaunchGroups();
         InitChatAlerts();
+        InitPi();
 
         Log.Info("EveDeck started.");
         _ = CheckForUpdateAsync();
@@ -406,6 +408,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public RelayCommand SetMasterSlotCommand { get; }
     public RelayCommand AddEsiCharacterCommand { get; }
     public RelayCommand RemoveEsiCharacterCommand { get; }
+    public RelayCommand ReauthEsiCharacterCommand { get; }
     public RelayCommand RestoreBackupCommand { get; }
     public RelayCommand SpawnTestWindowsCommand { get; }
     public RelayCommand AutoSelectBestProfileCommand { get; }
@@ -2092,6 +2095,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _autoApplyTimer.Stop();
         _launchGroupCts?.Cancel();
         StopChatAlerts();
+        StopPi();
         StopCornerOverlays();
         StopTalkerOverlay();
         if (_frameOverlay is not null)

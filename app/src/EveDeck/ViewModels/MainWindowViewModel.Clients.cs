@@ -62,6 +62,8 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(MasterPortrait));
         OnPropertyChanged(nameof(HasMasterPortrait));
         OnPropertyChanged(nameof(HasMasterCharacter));
+        OnPropertyChanged(nameof(PiConsolidationOptions));
+        OnPropertyChanged(nameof(PiConsolidationSelection));
     }
 
     // "EVE - Character Name" → "Character Name". Leaves non-EVE titles untouched.
