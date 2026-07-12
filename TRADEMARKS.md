@@ -9,7 +9,7 @@ The following are NOT licensed under the GPL or any other license, and remain th
 exclusive property of the EveDeck project:
 
 - The name **"EveDeck"**
-- The EveDeck logo and icon artwork (`app/src/EveWindowCommander/Assets/`)
+- The EveDeck logo and icon artwork (`app/src/EveDeck/Assets/`)
 - The **evedeck.space** domain and site branding
 
 ## What this means for forks
