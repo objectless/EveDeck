@@ -11,7 +11,7 @@ public sealed class EsiClient
 {
     private const string BaseUrl = "https://esi.evetech.net/latest";
 
-    // ESI requires a descriptive User-Agent so CCP can contact the app author over misbehaviour.
+    // ESI requires a descriptive User-Agent so Fenris Creations can contact the app author over misbehaviour.
     private static readonly HttpClient _http = CreateHttp();
 
     private readonly EsiAuthService _auth;
@@ -131,7 +131,7 @@ public sealed class EsiClient
     private void ObserveErrorLimit(HttpResponseMessage resp)
     {
         // ESI publishes a rolling error budget; when it hits 0 (or we get a 420) we must stop until the
-        // window resets or CCP escalates to an IP ban.
+        // window resets or Fenris Creations escalates to an IP ban.
         var remain = HeaderInt(resp, "X-ESI-Error-Limit-Remain");
         var reset = HeaderInt(resp, "X-ESI-Error-Limit-Reset");
         if ((int)resp.StatusCode == 420 || remain is <= 0)

@@ -180,6 +180,11 @@ Yes. EveDeck only moves and styles OS windows — it never reads EVE memory, inj
 broadcasts input across clients, or automates gameplay. One human input always controls
 one client at a time.
 
+**Why is EveDeck free?**
+Because I wanted to give something back to the EVE community — it's a scrappy, 20-year-old
+game that barely cracks 50k concurrent on a good day, not a business plan. If you feel like
+sending some ISK my way, cool, and if not, no sweat either way.
+
 **Do I need to install .NET or any runtime?**
 No. The download is a single self-contained build; everything EveDeck needs is bundled
 inside. Just extract and run.

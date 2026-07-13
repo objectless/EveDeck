@@ -17,8 +17,8 @@ public sealed class GameEventRule : ObservableObject
         set => SetProperty(ref _name, value);
     }
 
-    // Case-insensitive substring matched against each new gamelog line. Editable because CCP
-    // wording can change between patches and localised clients log localised text.
+    // Case-insensitive substring matched against each new gamelog line. Editable because Fenris
+    // Creations' wording can change between patches and localised clients log localised text.
     private string _pattern = "";
     public string Pattern
     {
