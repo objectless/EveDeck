@@ -56,11 +56,6 @@ The compliance risk is **future features**, not the current design. To stay comp
 - Any new hotkey action must be added to `SafetyGuard.AllowedActionPrefixes` and must affect
   exactly one client per human input.
 
-## Monetization
-
-EveDeck is free because it's a gift back to the EVE community, not a business. ISK sent
-our way is welcome, never expected, and nothing is ever gated behind it.
-
 ## If you need certainty
 
 File a Fenris Creations support ticket describing EveDeck as: *"a window manager that positions EVE client
