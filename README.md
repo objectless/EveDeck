@@ -40,6 +40,12 @@ single instance of Discord.
   <sub>One client, borderless, filling its slot — no window chrome eating your view.</sub>
 </p>
 
+<p align="center">
+  <img src="images/performance.png" width="480" alt="Task Manager showing EveDeck at 0% CPU / 253.5MB RAM while managing 5 live EVE clients" />
+  <br />
+  <sub>Same 5-account session, straight from Task Manager — EveDeck itself barely registers.</sub>
+</p>
+
 ## Everything you need for multiboxing
 
 🪟 **Previews &amp; peek** — live thumbnails of your background clients right in their layout

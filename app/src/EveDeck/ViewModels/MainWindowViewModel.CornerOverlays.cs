@@ -1082,11 +1082,15 @@ public sealed partial class MainWindowViewModel
         var eveOrEwcFg = IsEveOrEwcForeground();
         // The overlay itself is always topmost now (ApplySurfaceZOrder, called on creation and from
         // event-driven triggers) -- no per-tick re-assertion of OUR OWN HWND_TOPMOST here, that churn
-        // was the historical source of every "labels flicker" report. The allow-list bump only
-        // touches OTHER processes' windows, so it's safe to re-run every tick (catches an
-        // allow-listed app launched mid-session). eveOrEwcFg below still gates hover-peek, which
-        // moves real EVE windows and must not fire while some other app has focus.
-        BumpAllowedAppsAboveOverlaySurfaces();
+        // was the historical source of every "labels flicker" report. The allow-list bump used to run
+        // unconditionally every tick regardless of focus -- observed live fighting Waterfox for the
+        // topmost slot 4x/second even while just browsing with no EVE client focused at all (Waterfox
+        // apparently reclaims front-of-zorder periodically on its own; Firefox doesn't), visibly
+        // blinking Mumble's window in and out. Gated to while EVE/EveDeck actually has focus, matching
+        // the feature's own purpose ("stay above the overlay while gaming") -- a newly-launched
+        // allow-listed app still gets caught immediately via the event-driven ApplySurfaceZOrder path
+        // (foreground change hook) the moment the user alt-tabs back into EVE.
+        if (eveOrEwcFg) BumpAllowedAppsAboveOverlaySurfaces();
 
         if (!eveOrEwcFg && (_peekPosition >= 0 || _pendingHoverPosition >= 0 || _cursorOverPosition >= 0))
         {
