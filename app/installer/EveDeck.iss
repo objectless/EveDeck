@@ -69,10 +69,10 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 ; No skipifsilent: the in-app silent-update flow (Services/UpdateApplyService.cs) depends on this
-; relaunching EveDeck after a /VERYSILENT install -- confirmed via local testing that /VERYSILENT
-; installs otherwise finish with the app closed and nothing bringing it back (/RESTARTAPPLICATIONS
-; alone did not reliably relaunch it). Safe for interactive installs too: postinstall already
-; means "launch after finishing", this only removes the silent-mode exception to that.
+; relaunching EveDeck after a /SILENT install -- confirmed via local testing that silent installs
+; otherwise finish with the app closed and nothing bringing it back (/RESTARTAPPLICATIONS alone
+; did not reliably relaunch it). Safe for interactive installs too: postinstall already means
+; "launch after finishing", this only removes the silent-mode exception to that.
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall
 
 [UninstallDelete]

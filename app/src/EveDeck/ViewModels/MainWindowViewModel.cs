@@ -343,16 +343,29 @@ public sealed partial class MainWindowViewModel : ObservableObject
             MessageBoxImage.Question);
         if (confirm != MessageBoxResult.Yes) return;
 
+        Views.UpdateProgressWindow? progressWindow = null;
         try
         {
             var apply = new UpdateApplyService(Log);
             if (kind == InstallKind.Inno)
-                await apply.ApplyInnoUpdateAsync(update.InstallerUrl!);
+            {
+                progressWindow = new Views.UpdateProgressWindow();
+                progressWindow.Show();
+                await apply.ApplyInnoUpdateAsync(update.InstallerUrl!,
+                    (status, percent) =>
+                    {
+                        progressWindow.SetStatus(status);
+                        progressWindow.SetProgress(percent);
+                    });
+            }
             else
+            {
                 await apply.ApplyVelopackUpdateAsync();
+            }
         }
         catch (Exception ex)
         {
+            progressWindow?.Close();
             Log.Error($"Update failed: {ex.Message}");
             MessageBox.Show($"The update could not be applied: {ex.Message}", "Update EveDeck", MessageBoxButton.OK, MessageBoxImage.Error);
         }

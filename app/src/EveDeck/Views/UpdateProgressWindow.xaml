@@ -1,0 +1,27 @@
+<Window x:Class="EveDeck.Views.UpdateProgressWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Updating EveDeck"
+        Width="380" Height="150"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        ShowInTaskbar="True"
+        Background="{StaticResource BgBrush}">
+  <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+    <StackPanel VerticalAlignment="Center" Margin="22,0">
+      <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+        <Image Source="/Assets/evedeck-mark.png" Width="24" Height="24" Margin="0,0,10,0"/>
+        <TextBlock Text="Updating EveDeck" Foreground="{StaticResource TextBrush}"
+                    FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+      </StackPanel>
+      <TextBlock x:Name="StatusText" Text="Downloading update..."
+                  Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,0,0,10"/>
+      <ProgressBar x:Name="Progress" Height="8" Minimum="0" Maximum="100" IsIndeterminate="True"
+                    Background="{StaticResource PanelAltBrush}"
+                    Foreground="{StaticResource AccentBrush}"
+                    BorderThickness="0"/>
+    </StackPanel>
+  </Border>
+</Window>

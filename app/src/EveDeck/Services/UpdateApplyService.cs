@@ -41,24 +41,47 @@ public sealed class UpdateApplyService
     }
 
     /// <summary>
-    /// Downloads the given Setup.exe and re-runs it silently over the existing (fixed-AppId,
-    /// per-user) install, then closes this process so the installer isn't blocked by a file lock
-    /// on the running exe -- /CLOSEAPPLICATIONS would handle that too, but this codebase has a
-    /// known sharp edge around "file locked by running EveDeck", so don't leave it to chance.
+    /// Downloads the given Setup.exe (reporting progress via <paramref name="onProgress"/>) and
+    /// re-runs it over the existing (fixed-AppId, per-user) install using /SILENT rather than
+    /// /VERYSILENT -- both are equally unattended (no wizard pages, no "close applications"
+    /// prompt), but /SILENT keeps Inno's small install-progress window visible so the update
+    /// stays noticeable through the file-copy phase instead of the app just vanishing. Closes
+    /// this process right after launching the installer so it isn't blocked by a file lock on the
+    /// running exe -- /CLOSEAPPLICATIONS would handle that too, but this codebase has a known
+    /// sharp edge around "file locked by running EveDeck", so don't leave it to chance.
     /// Relaunch after install is handled by the installer's own [Run] section (EveDeck.iss), not
     /// /RESTARTAPPLICATIONS here -- confirmed via local testing that /RESTARTAPPLICATIONS alone
-    /// does not reliably relaunch a /VERYSILENT install, and adding it back would risk a double
+    /// does not reliably relaunch a silent install, and adding it back would risk a double
     /// launch racing our own single-instance mutex into showing an unwanted "already running" popup.
     /// </summary>
-    public async Task ApplyInnoUpdateAsync(string installerUrl)
+    public async Task ApplyInnoUpdateAsync(string installerUrl, Action<string, double?>? onProgress = null)
     {
         var tempPath = Path.Combine(Path.GetTempPath(), $"EveDeck-Setup-{Guid.NewGuid():N}.exe");
-        var bytes = await Http.GetByteArrayAsync(installerUrl);
-        await File.WriteAllBytesAsync(tempPath, bytes);
+
+        onProgress?.Invoke("Downloading update...", null);
+        using (var response = await Http.GetAsync(installerUrl, HttpCompletionOption.ResponseHeadersRead))
+        {
+            response.EnsureSuccessStatusCode();
+            var totalBytes = response.Content.Headers.ContentLength;
+            await using var httpStream = await response.Content.ReadAsStreamAsync();
+            await using var fileStream = File.Create(tempPath);
+            var buffer = new byte[81920];
+            long totalRead = 0;
+            int read;
+            while ((read = await httpStream.ReadAsync(buffer)) > 0)
+            {
+                await fileStream.WriteAsync(buffer.AsMemory(0, read));
+                totalRead += read;
+                if (totalBytes is > 0)
+                    onProgress?.Invoke("Downloading update...", 100.0 * totalRead / totalBytes.Value);
+            }
+        }
+
+        onProgress?.Invoke("Installing update...", null);
 
         Process.Start(new ProcessStartInfo(tempPath)
         {
-            Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS",
+            Arguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS",
             UseShellExecute = true
         });
 
