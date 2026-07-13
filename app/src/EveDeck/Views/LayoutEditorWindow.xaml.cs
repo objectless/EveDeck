@@ -359,10 +359,15 @@ public partial class LayoutEditorWindow : Window
             if (_drag.HasFlag(DragMode.Top)) top = SnapCoord(top + dy, vertical: false);
             if (_drag.HasFlag(DragMode.Bottom)) bottom = SnapCoord(bottom + dy, vertical: false);
 
-            left = Math.Clamp(left, b.X, right - MinSlotW);
-            right = Math.Clamp(right, left + MinSlotW, b.X + b.Width);
-            top = Math.Clamp(top, b.Y, bottom - MinSlotH);
-            bottom = Math.Clamp(bottom, top + MinSlotH, b.Y + b.Height);
+            // Math.Clamp throws if min > max. The upper/lower bounds below derive from the OTHER
+            // edge +/- MinSlotW/H, which can invert if this slot started out smaller than the
+            // editor's minimum (some family templates, e.g. Whammy Board or Side Stack at high
+            // account counts, legitimately generate tiles under 320x180) -- Math.Max/Min pin the
+            // bound back to the monitor edge instead of crashing in that case.
+            left = Math.Clamp(left, b.X, Math.Max(b.X, right - MinSlotW));
+            right = Math.Clamp(right, Math.Min(b.X + b.Width, left + MinSlotW), b.X + b.Width);
+            top = Math.Clamp(top, b.Y, Math.Max(b.Y, bottom - MinSlotH));
+            bottom = Math.Clamp(bottom, Math.Min(b.Y + b.Height, top + MinSlotH), b.Y + b.Height);
 
             m.X = left;
             m.Y = top;

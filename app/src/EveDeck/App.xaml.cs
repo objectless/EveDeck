@@ -116,16 +116,36 @@ public partial class App : Application
         base.OnExit(e);
     }
 
+    // True once this has already fired once for the current crash. Without this, an exception
+    // thrown while WE handle a crash (e.g. Current.Shutdown() itself faulting mid-teardown) gets
+    // caught by the next dispatcher frame up and re-enters this same method -- which showed another
+    // MessageBox and wrote another crash log each time, cascading through every nested dispatcher
+    // frame (main loop, any open ShowDialog) with the user never seeing any of the dialogs before
+    // the process finally died. See the crash-2026071*.log trio this pattern produced.
+    private static bool _handlingCrash;
+
     private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        if (_handlingCrash)
+        {
+            Environment.Exit(1);
+            return;
+        }
+        _handlingCrash = true;
+
         WriteCrashLog(e.Exception);
         MessageBox.Show(
-            $"EveDeck hit a startup error and wrote a crash log.\n\n{e.Exception.Message}",
+            $"EveDeck hit an unexpected error and wrote a crash log.\n\n{e.Exception.Message}",
             "EveDeck",
             MessageBoxButton.OK,
             MessageBoxImage.Error);
         e.Handled = true;
-        Current.Shutdown(1);
+
+        // Current can be null here (observed in practice, cause not fully understood -- possibly
+        // WPF clearing it mid-Shutdown on a re-entrant call); fall back to a hard exit rather than
+        // NRE-ing out of our own crash handler.
+        if (Current is not null) Current.Shutdown(1);
+        else Environment.Exit(1);
     }
 
     private static void WriteCrashLog(Exception? exception)

@@ -545,7 +545,21 @@ public sealed partial class MainWindowViewModel
             .ToList();
 
         var editor = new Views.LayoutEditorWindow(Monitors.ToList(), monitor, items);
-        if (editor.ShowDialog() != true) return;
+
+        // Capture the editor's HWND as soon as it exists and bump it above the always-topmost
+        // overlay surfaces immediately - don't wait for the next ApplySurfaceZOrder trigger, since
+        // the editor becoming foreground IS one of those triggers and would otherwise race it.
+        editor.SourceInitialized += (_, _) =>
+        {
+            _layoutEditorHwnd = new System.Windows.Interop.WindowInteropHelper(editor).Handle;
+            if (CornerOverlaysLive) ApplySurfaceZOrder();
+        };
+
+        bool accepted;
+        try { accepted = editor.ShowDialog() == true; }
+        finally { _layoutEditorHwnd = 0; }
+
+        if (!accepted) return;
         ApplyEditedSlots(monitor, editor.ResultSlots);
     }
 

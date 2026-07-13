@@ -17,8 +17,8 @@ public sealed class LayoutProfile
     public int TemplateHeight { get; set; }
     public int TemplateCount { get; set; }
 
-    // Which edge the Side Stack family stacks its tiles on ("Left" or "Right"). Empty for families
-    // without a side option; PresetFactory defaults/clamps it when regenerating slots.
+    // Which edge the Side Stack family stacks its tiles on ("Left", "Right", "Top", or "Bottom").
+    // Empty for families without a side option; PresetFactory defaults/clamps it when regenerating slots.
     public string TemplateSide { get; set; } = "";
 
     // The master SEAT (SlotAssignment.SlotNumber) centred at rest for THIS profile — different activities

@@ -687,7 +687,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _ => Array.Empty<int>(),
     };
 
-    // Side (Left/Right) dropdown — only the Side Stack family has one.
+    // Side (Left/Right/Top/Bottom) dropdown — only the Side Stack family has one.
     public bool SelectedProfileHasFamilySide =>
         SelectedProfile?.IsFamilyTemplate == true && SelectedProfile.Category == "Side Stack";
 

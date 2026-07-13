@@ -11,6 +11,18 @@ public sealed partial class MainWindowViewModel
     public ObservableCollection<ChatAlertRule> ChatAlertRules => _settings.ChatAlertRules;
     public ObservableCollection<GameEventRule> GameEventRules => _settings.GameEventRules;
 
+    public bool AbyssModeEnabled
+    {
+        get => _settings.AbyssModeEnabled;
+        set
+        {
+            if (_settings.AbyssModeEnabled == value) return;
+            _settings.AbyssModeEnabled = value;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
     // Current solar system per character name (from Local chatlog "Channel changed to Local"
     // lines). Character names come from EVE's own logs, so exact-name matching is reliable.
     private readonly Dictionary<string, string> _systemByCharacter = new(StringComparer.OrdinalIgnoreCase);
@@ -45,13 +57,8 @@ public sealed partial class MainWindowViewModel
         Log.Info($"Chat alert: '{rule.Keyword}' matched in {channel} (rule character: {(string.IsNullOrWhiteSpace(rule.CharacterName) ? "any" : rule.CharacterName)}).");
         SystemSounds.Exclamation.Play();
 
-        var matchingSeats = string.IsNullOrWhiteSpace(rule.CharacterName)
-            ? Assignments
-            : Assignments.Where(a => a.Label.IndexOf(rule.CharacterName, StringComparison.OrdinalIgnoreCase) >= 0
-                || channel.IndexOf(a.Label, StringComparison.OrdinalIgnoreCase) >= 0);
-
-        foreach (var seat in matchingSeats)
-            FlashSeatAlert(seat);
+        var subtitle = string.IsNullOrWhiteSpace(rule.CharacterName) ? channel : $"{channel} · {rule.CharacterName}";
+        ShowToast($"\"{rule.Keyword}\"", subtitle, "#2BC0E4");
     }
 
     private void OnGameEventMatched(GameEventRule rule, string character, string line)
@@ -66,8 +73,26 @@ public sealed partial class MainWindowViewModel
         }
 
         Log.Info($"Game event '{rule.Name}' for {(character.Length > 0 ? character : "unknown character")}: {line}");
-        if (rule.PlaySound) SystemSounds.Exclamation.Play();
-        if (seat is not null) FlashSeatAlert(seat);
+
+        if (rule.FlashOnTile)
+        {
+            // "Something is happening to this character right now" (combat by default) — pulse the
+            // seat's own tile/master rect on the overlay instead of a toast, since a toast per
+            // incoming hit would be constant spam. Abyss Mode keeps the visual glow but silences the
+            // sound, since Abyssal Deadspace can put up to three characters under continuous,
+            // expected damage simultaneously.
+            if (rule.PlaySound && !_settings.AbyssModeEnabled) SystemSounds.Exclamation.Play();
+            if (seat is not null)
+            {
+                FlashSeatAlert(seat);
+                TriggerCombatGlow(seat);
+            }
+        }
+        else
+        {
+            if (rule.PlaySound) SystemSounds.Exclamation.Play();
+            ShowToast(rule.Name, character.Length > 0 ? character : "", "#F59E0B");
+        }
     }
 
     // Seat currently running the given character: live window title first (RunningCharacterName),

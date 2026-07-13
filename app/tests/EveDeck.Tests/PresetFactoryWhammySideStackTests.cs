@@ -177,16 +177,19 @@ public class PresetFactoryWhammySideStackTests
     [InlineData(9)]
     public void SideStack_TilesMatchMasterAspect_NoPreviewBars(int count)
     {
-        var profile = Regenerate("Side Stack", count, 2560, 1440, "Left");
-        var master = profile.Slots.Single(s => s.SlotNumber == count);
-        var masterAspect = (double)master.Width / master.Height;
-
-        foreach (var tile in profile.Slots.Where(s => s.SlotNumber != count))
+        foreach (var side in new[] { "Left", "Right", "Top", "Bottom" })
         {
-            var tileAspect = (double)tile.Width / tile.Height;
-            // 0.05 tolerance: the last tile absorbs the EvenSplit rounding remainder (a few px).
-            Assert.True(Math.Abs(tileAspect - masterAspect) < 0.05,
-                $"Tile {tile.SlotNumber} aspect {tileAspect:F3} should match master aspect {masterAspect:F3}");
+            var profile = Regenerate("Side Stack", count, 2560, 1440, side);
+            var master = profile.Slots.Single(s => s.SlotNumber == count);
+            var masterAspect = (double)master.Width / master.Height;
+
+            foreach (var tile in profile.Slots.Where(s => s.SlotNumber != count))
+            {
+                var tileAspect = (double)tile.Width / tile.Height;
+                // 0.05 tolerance: the last tile absorbs the EvenSplit rounding remainder (a few px).
+                Assert.True(Math.Abs(tileAspect - masterAspect) < 0.05,
+                    $"Tile {tile.SlotNumber} aspect {tileAspect:F3} should match master aspect {masterAspect:F3} (side={side})");
+            }
         }
     }
 
@@ -200,7 +203,7 @@ public class PresetFactoryWhammySideStackTests
     [InlineData(9)]
     public void SideStack_AllCounts_MasterIsStrictlyLargestAndOnMonitor(int count)
     {
-        foreach (var side in new[] { "Left", "Right" })
+        foreach (var side in new[] { "Left", "Right", "Top", "Bottom" })
         foreach (var (w, h) in new[] { (1920, 1080), (2560, 1440), (3200, 1800), (3840, 2160) })
         {
             var profile = Regenerate("Side Stack", count, w, h, side);
@@ -219,6 +222,46 @@ public class PresetFactoryWhammySideStackTests
                 Assert.InRange(slot.Y, 0, h - slot.Height);
             }
         }
+    }
+
+    [Theory]
+    [InlineData("Top")]
+    [InlineData("Bottom")]
+    public void SideStack_5At2560x1440_HorizontalEdge_StackOnChosenEdgeMasterOpposite(string side)
+    {
+        var profile = Regenerate("Side Stack", 5, 2560, 1440, side);
+
+        Assert.Equal(5, profile.Slots.Count);
+        var tiles = profile.Slots.Where(s => s.SlotNumber != 5).OrderBy(s => s.SlotNumber).ToList();
+        var master = profile.Slots.Single(s => s.SlotNumber == 5);
+
+        // 4 tiles => tileH = sh/5 = 288, 640x288 tiles filling the full edge - the exact aspect
+        // ratio of the 2560x1152 master, so previews have no black bars.
+        var expectedTileY = side == "Top" ? 0 : 1440 - 288;
+        foreach (var tile in tiles)
+        {
+            Assert.Equal(expectedTileY, tile.Y);
+            Assert.Equal(640, tile.Width);
+            Assert.Equal(288, tile.Height);
+        }
+        Assert.Equal(2560, tiles.Sum(t => t.Width));
+        Assert.Equal(new[] { $"{side} 1", $"{side} 2", $"{side} 3", $"{side} 4" }, tiles.Select(t => t.Label));
+
+        // Master fills all remaining space: full width, edge to edge against the tile row.
+        Assert.Equal("Master", master.Label);
+        Assert.Equal(2560, master.Width);
+        Assert.Equal(1152, master.Height);
+        Assert.Equal(0, master.X);
+        Assert.Equal(side == "Top" ? 288 : 0, master.Y);
+    }
+
+    [Theory]
+    [InlineData("Top")]
+    [InlineData("Bottom")]
+    public void SideStack_TopBottomSide_PreservedThroughRegenerate(string side)
+    {
+        var profile = Regenerate("Side Stack", 5, 2560, 1440, side);
+        Assert.Equal(side, profile.TemplateSide);
     }
 
     [Fact]

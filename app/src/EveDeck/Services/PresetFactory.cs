@@ -34,7 +34,7 @@ public static class PresetFactory
     private static readonly int[] SideStackCounts = { 3, 4, 5, 6, 7, 8, 9 };
 
     // Edges the Side Stack family can stack its tiles on.
-    private static readonly string[] SideStackSides = { "Left", "Right" };
+    private static readonly string[] SideStackSides = { "Left", "Right", "Top", "Bottom" };
 
     // Client counts the Twin Stack family template offers in its dropdown. Restricted to counts whose
     // alt count (n-1) is even so both columns are always perfectly symmetric — no tie-break needed for
@@ -244,7 +244,7 @@ public static class PresetFactory
             profile.TemplateWidth = w;
             profile.TemplateHeight = h;
             profile.TemplateCount = NearestCount(SideStackCounts, profile.TemplateCount);
-            if (profile.TemplateSide != "Right") profile.TemplateSide = "Left";
+            if (Array.IndexOf(SideStackSides, profile.TemplateSide) < 0) profile.TemplateSide = "Left";
             PopulateSideStackSlots(profile);
         }
         else if (profile.Category == "Twin Stack")
@@ -417,35 +417,57 @@ public static class PresetFactory
         profile.Slots.Add(Slot(n, 0, rowH, sw, sh - 2 * rowH, "Master"));
     }
 
-    // A vertical stack of k = n-1 tiles down one edge (TemplateSide) with the master filling ALL the
-    // remaining space (full height, edge to edge). tileW = sw/(k+1) makes every tile EXACTLY the same
-    // aspect ratio as the master (tile (sw/(k+1)) x (sh/k) vs master (sw*k/(k+1)) x sh) - clients run
-    // at the master rect's size, so aspect-matched tiles mean the live previews fill their tiles with
-    // no black bars. The stack always spans the full edge via EvenSplit. Master is slot n and always
-    // the largest rect.
+    // A stack of k = n-1 tiles down one edge (TemplateSide: Left/Right stack a column, Top/Bottom stack
+    // a row) with the master filling ALL the remaining space, edge to edge. Left/Right: tileW = sw/(k+1)
+    // makes every tile EXACTLY the master's aspect ratio (tile (sw/(k+1)) x (sh/k) vs master
+    // (sw*k/(k+1)) x sh). Top/Bottom is the same math transposed: tileH = sh/(k+1), tile (sw/k) x
+    // (sh/(k+1)) vs master sw x (sh*k/(k+1)). Clients run at the master rect's size, so aspect-matched
+    // tiles mean the live previews fill their tiles with no black bars. The stack always spans the full
+    // edge via EvenSplit. Master is slot n and always the largest rect.
     private static void PopulateSideStackSlots(LayoutProfile profile)
     {
         var n = profile.TemplateCount;
         var sw = profile.TemplateWidth;
         var sh = profile.TemplateHeight;
-        var right = profile.TemplateSide == "Right";
+        var side = profile.TemplateSide;
+        var vertical = side is "Left" or "Right";
 
         var tiles = n - 1;
-        var tileW = sw / (tiles + 1);
-        var tileX = right ? sw - tileW : 0;
-        var sideName = right ? "Right" : "Left";
-
         profile.Slots.Clear();
         var slotNum = 1;
 
-        foreach (var (offset, size) in EvenSplit(sh, tiles))
+        if (vertical)
         {
-            profile.Slots.Add(Slot(slotNum, tileX, offset, tileW, size, $"{sideName} {slotNum}"));
-            slotNum++;
-        }
+            var right = side == "Right";
+            var tileW = sw / (tiles + 1);
+            var tileX = right ? sw - tileW : 0;
+            var sideName = right ? "Right" : "Left";
 
-        // Master fills ALL remaining space - full height, edge to edge against the tile column.
-        profile.Slots.Add(Slot(n, right ? 0 : tileW, 0, sw - tileW, sh, "Master"));
+            foreach (var (offset, size) in EvenSplit(sh, tiles))
+            {
+                profile.Slots.Add(Slot(slotNum, tileX, offset, tileW, size, $"{sideName} {slotNum}"));
+                slotNum++;
+            }
+
+            // Master fills ALL remaining space - full height, edge to edge against the tile column.
+            profile.Slots.Add(Slot(n, right ? 0 : tileW, 0, sw - tileW, sh, "Master"));
+        }
+        else
+        {
+            var bottom = side == "Bottom";
+            var tileH = sh / (tiles + 1);
+            var tileY = bottom ? sh - tileH : 0;
+            var sideName = bottom ? "Bottom" : "Top";
+
+            foreach (var (offset, size) in EvenSplit(sw, tiles))
+            {
+                profile.Slots.Add(Slot(slotNum, offset, tileY, size, tileH, $"{sideName} {slotNum}"));
+                slotNum++;
+            }
+
+            // Master fills ALL remaining space - full width, edge to edge against the tile row.
+            profile.Slots.Add(Slot(n, 0, bottom ? 0 : tileH, sw, sh - tileH, "Master"));
+        }
     }
 
     // Twin Stack: k = n-1 tiles split evenly into TWO stacked columns (one down the left

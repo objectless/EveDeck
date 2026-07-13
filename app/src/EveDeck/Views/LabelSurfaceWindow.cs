@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using EveDeck.Models;
 using EveDeck.Utilities;
@@ -31,6 +32,7 @@ internal sealed class LabelSurfaceWindow : Window
 {
     private readonly Canvas _canvas = new();
     private readonly Dictionary<int, PillElement> _pills = new();
+    private readonly Dictionary<int, AlertGlowElement> _glows = new();
     private readonly int _physX, _physY, _physWidth, _physHeight;
     private readonly double _dpiScale;
     private readonly bool _iconStyle;
@@ -142,6 +144,30 @@ internal sealed class LabelSurfaceWindow : Window
             pill.ApplyAppearance(fontFamily, fontSize, colorHex, bold, italic, dropShadow, outline, opacity);
             pill.RePlace();
         }
+    }
+
+    // Pulses a colored border around a tile/master rect for "something is happening to this
+    // character right now" alerts (combat) -- separate from pills, keyed the same way (position id,
+    // same as _cornerRects/OccupantAtPosition), drawn on this same always-above-tiles surface so it
+    // is guaranteed to render over the preview thumbnail underneath.
+    public void SetAlertGlow(int key, WindowRect physRect, string colorHex)
+    {
+        if (!_glows.TryGetValue(key, out var glow))
+        {
+            glow = new AlertGlowElement();
+            _glows[key] = glow;
+            _canvas.Children.Add(glow.Container);
+        }
+        glow.Place(physRect.X - _physX, physRect.Y - _physY, physRect.Width, physRect.Height, _dpiScale);
+        glow.Pulse(colorHex);
+    }
+
+    public void ClearAlertGlow(int key)
+    {
+        if (!_glows.TryGetValue(key, out var glow)) return;
+        glow.Stop();
+        _canvas.Children.Remove(glow.Container);
+        _glows.Remove(key);
     }
 
     // -- One label: a tile-width strip with a centred chip (or portrait + name) inside -------------
@@ -374,6 +400,50 @@ internal sealed class LabelSurfaceWindow : Window
             }
             catch { /* fall through to the style default */ }
             return new SolidColorBrush(fallback);
+        }
+    }
+
+    // -- One alert glow: a pulsing colored outline covering an entire tile/master rect ------------
+
+    private sealed class AlertGlowElement
+    {
+        public readonly Border Container = new()
+        {
+            BorderThickness = new Thickness(5),
+            CornerRadius = new CornerRadius(4),
+            IsHitTestVisible = false,
+        };
+
+        public void Place(double relPhysX, double relPhysY, double physWidth, double physHeight, double dpiScale)
+        {
+            Container.Width = physWidth / dpiScale;
+            Container.Height = physHeight / dpiScale;
+            Canvas.SetLeft(Container, relPhysX / dpiScale);
+            Canvas.SetTop(Container, relPhysY / dpiScale);
+        }
+
+        public void Pulse(string colorHex)
+        {
+            Container.BorderBrush = new SolidColorBrush(BrushColor(colorHex));
+            var animation = new DoubleAnimation(0.35, 1.0, TimeSpan.FromSeconds(0.5))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+            };
+            Container.BeginAnimation(UIElement.OpacityProperty, animation);
+        }
+
+        public void Stop() => Container.BeginAnimation(UIElement.OpacityProperty, null);
+
+        private static Color BrushColor(string hex)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(hex))
+                    return (Color)ColorConverter.ConvertFromString(hex);
+            }
+            catch { /* fall through to the default */ }
+            return Color.FromRgb(0xEF, 0x44, 0x44);
         }
     }
 }

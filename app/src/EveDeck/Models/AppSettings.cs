@@ -149,6 +149,13 @@ public sealed class AppSettings
     // collection, so user edits (including deleting every rule) persist as-is.
     public ObservableCollection<GameEventRule> GameEventRules { get; set; } = new(GameEventRule.Defaults());
 
+    // Abyss Mode: suppresses the SOUND on tile-glow (FlashOnTile) game events while enabled, but
+    // keeps the visual glow. Abyssal Deadspace lets up to three characters take continuous combat
+    // damage simultaneously in their own instances -- without this the Combat rule's default sound
+    // would fire almost constantly for the whole run. A manual session toggle rather than a
+    // permanent per-rule setting, since the user still wants the sound during normal play.
+    public bool AbyssModeEnabled { get; set; }
+
     // Append the character's current solar system (tracked from Local chatlog headers) to the
     // corner-overlay labels.
     public bool CornerOverlayShowSystem { get; set; } = true;

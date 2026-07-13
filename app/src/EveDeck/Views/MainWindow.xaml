@@ -1112,7 +1112,7 @@
                           <TextBlock Text="Side" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
                           <ComboBox ItemsSource="{Binding AvailableFamilySides}"
                                     SelectedItem="{Binding SelectedFamilySide}"
-                                    Width="80" Margin="8,0,0,0"
+                                    Width="90" Margin="8,0,0,0"
                                     ToolTip="Which edge of the monitor the preview stack sits on."/>
                         </StackPanel>
                       </StackPanel>
@@ -1780,7 +1780,7 @@ Watches EVE's chatlog files (Documents\EVE\logs\Chatlogs) for a keyword and play
               <!-- ── Game Event Alerts ───────────────────────────────── -->
               <TextBlock Text="Game Event Alerts" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
-Watches EVE's gamelog files (Documents\EVE\logs\Gamelogs) for events on your OTHER clients -- combat, mining crystal breaks, fleet invites -- and flashes that seat (plus an optional sound). Passive log reading only -- never sends anything into an EVE client. Pattern is a case-insensitive text match against new log lines; "Focused" skips the alert when that character's window is already active.
+Watches EVE's gamelog files (Documents\EVE\logs\Gamelogs) for events on your OTHER clients -- combat, mining crystal breaks, fleet invites. By default a match shows a toast notification (plus an optional sound) over the game. "Glow" events instead pulse that seat's tile/master rect on the overlay -- for "this character is under attack right now" alerts where a toast per line would be constant spam (Combat is Glow by default). Passive log reading only -- never sends anything into an EVE client. Pattern is a case-insensitive text match against new log lines; "Focused" skips the alert when that character's window is already active.
               </TextBlock>
               <ItemsControl ItemsSource="{Binding GameEventRules}" Margin="0,0,0,6">
                 <ItemsControl.ItemTemplate>
@@ -1796,6 +1796,9 @@ Watches EVE's gamelog files (Documents\EVE\logs\Gamelogs) for events on your OTH
                                 ToolTip="Skip the alert when this character's window is already in the foreground"/>
                       <CheckBox DockPanel.Dock="Right" Content="Sound" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"
                                 IsChecked="{Binding PlaySound, UpdateSourceTrigger=PropertyChanged}"/>
+                      <CheckBox DockPanel.Dock="Right" Content="Glow" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"
+                                IsChecked="{Binding FlashOnTile, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="Pulse the seat's tile/master rect on the overlay instead of a toast notification"/>
                       <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
                                Width="130" Padding="6,4" FontSize="12" Margin="0,0,8,0"
                                ToolTip="Display name for this event"/>
@@ -1807,6 +1810,9 @@ Watches EVE's gamelog files (Documents\EVE\logs\Gamelogs) for events on your OTH
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
               <Button Content="+ Add Event" Command="{Binding AddGameEventRuleCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
+              <CheckBox Content="Abyss Mode -- suppress Glow-event sound (keep the visual glow)" FontSize="12" Margin="0,10,0,0"
+                        IsChecked="{Binding AbyssModeEnabled, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Abyssal Deadspace can put up to three of your characters under simultaneous, expected combat damage -- toggle this on before a run so Combat's sound doesn't fire constantly. Turn it back off for normal play."/>
 
               <!-- ── Overlay Allow List ──────────────────────────────── -->
               <TextBlock Text="Overlay Allow List" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>

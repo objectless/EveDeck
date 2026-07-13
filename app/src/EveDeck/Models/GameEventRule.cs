@@ -49,9 +49,21 @@ public sealed class GameEventRule : ObservableObject
         set => SetProperty(ref _suppressWhenFocused, value);
     }
 
+    // When true, a match pulses a glow around that seat's current tile/master rect on the overlay
+    // instead of a toast notification -- reserved for "something is happening TO this character
+    // right now" events (combat) where a toast per line would be constant spam. Everything else
+    // (chat keywords, all other game events) is a toast + sound. See AppSettings.AbyssModeEnabled
+    // for the related sound-suppression toggle.
+    private bool _flashOnTile;
+    public bool FlashOnTile
+    {
+        get => _flashOnTile;
+        set => SetProperty(ref _flashOnTile, value);
+    }
+
     public static IEnumerable<GameEventRule> Defaults() => new[]
     {
-        new GameEventRule { Name = "Combat",            Pattern = "(combat)" },
+        new GameEventRule { Name = "Combat",            Pattern = "(combat)", FlashOnTile = true },
         new GameEventRule { Name = "Asteroid depleted", Pattern = "depleted", PlaySound = false },
         new GameEventRule { Name = "Mining crystal",    Pattern = "crystal",  PlaySound = false },
         new GameEventRule { Name = "Fleet invite",      Pattern = "join their fleet", SuppressWhenFocused = false },

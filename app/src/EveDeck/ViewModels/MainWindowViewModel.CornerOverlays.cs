@@ -26,6 +26,19 @@ public sealed partial class MainWindowViewModel
     private readonly Dictionary<int, WindowRect> _cornerRects = new();
     private int _cursorOverPosition = -1;
 
+    // HWND of the on-monitor layout editor while it's open (0 = none). The overlay surfaces are
+    // always-topmost now (see ApplySurfaceZOrder), so without this the editor's own resize/drag
+    // chrome can end up rendered BEHIND the preview tiles the moment it becomes foreground and the
+    // WinEvent hook re-asserts our topmost surfaces on top of it. Set/cleared by EditLayoutOnMonitor.
+    private nint _layoutEditorHwnd;
+
+    // Toast notification surface (chat keyword / non-combat game event alerts). Created lazily on
+    // first use, then kept alive for the app's session (unlike the corner-overlay surfaces, which
+    // get torn down/rebuilt on layout changes) since toasts fire independently of whether corner
+    // overlays are even running.
+    private Views.ToastNotificationWindow? _toastWindow;
+    private nint _toastHwnd;
+
     // True while the corner-overlay surfaces exist (the overlays are live on screen).
     internal bool CornerOverlaysLive => _tileSurface is not null;
 
@@ -649,8 +662,13 @@ public sealed partial class MainWindowViewModel
         }
         RefreshGroupCenterPill(group);
 
-        RefreshCornerOverlayZOrder();
+        // Focus BEFORE the z-order reassert, not after: SetForegroundWindow (inside FocusWindow) on
+        // the newly-centred real EVE window can itself disturb z-order -- sometimes even when the OS
+        // silently restricts the foreground grant, it still nudges the window up a band, which would
+        // otherwise be the LAST z-order-affecting call and could leave the master window sitting
+        // above the always-topmost overlay surfaces. Reasserting last guarantees the overlay wins.
         if (incoming is not null) { try { _windowService.FocusWindow(incoming.Handle); } catch { /* best-effort focus */ } }
+        RefreshCornerOverlayZOrder();
 
         ScheduleAutoSave();
         Log.Info($"Centred seat {seat} ({SeatLabel(seat)}) in group '{group.Name}'; seat {outgoingSeat} ({SeatLabel(outgoingSeat)}) returned to its home corner.");
@@ -705,6 +723,10 @@ public sealed partial class MainWindowViewModel
 
         var incoming = FindSeatWindow(seat);
         if (incoming is not null) { try { _windowService.FocusWindow(incoming.Handle); } catch { /* best-effort focus */ } }
+        // Same ordering reasoning as CenterSeatInGroup: reassert AFTER focus so the overlay surfaces
+        // (this path still registers a centre tile when !HasDominantMasterSlot, see StartCornerOverlays)
+        // are guaranteed to end up above the just-focused real window, not the other way around.
+        RefreshCornerOverlayZOrder();
 
         UpdatePositionCodes();
         ScheduleAutoSave();
@@ -938,6 +960,63 @@ public sealed partial class MainWindowViewModel
         _tileSurface?.SetZ();
         _labelSurface?.SetZ();
         BumpAllowedAppsAboveOverlaySurfaces();
+        if (_layoutEditorHwnd != 0) _windowService.SetWindowTopmost(_layoutEditorHwnd, true);
+        if (_toastHwnd != 0) _windowService.SetWindowTopmost(_toastHwnd, true);
+        // Same class of bug as the tile/label surfaces (see CenterSeatInGroup) -- a real EVE window
+        // gaining focus during a swap can climb above the talker overlay too. It already self-heals
+        // via a 1s timer (TalkerOverlayWindow.BringToTop), but re-asserting here too means it doesn't
+        // wait up to a full second to recover right after a swap.
+        _talkerWindow?.BringToTop();
+    }
+
+    // Shows a toast notification (chat keyword / non-combat game event alerts) over the game,
+    // creating the toast surface on first use. Deliberately independent of CornerOverlaysLive --
+    // chat/game log watching runs regardless of whether corner overlays are enabled.
+    internal void ShowToast(string title, string message, string accentHex)
+    {
+        if (_toastWindow is null)
+        {
+            var monitor = Monitors.FirstOrDefault(m => m.IsPrimary) ?? Monitors.FirstOrDefault();
+            if (monitor is null) return;
+            var dpiScale = monitor.DpiX / 96.0;
+            _toastWindow = new Views.ToastNotificationWindow(
+                monitor.Bounds.X, monitor.Bounds.Y, monitor.Bounds.Width, monitor.Bounds.Height, dpiScale);
+            _toastWindow.Show();
+            _toastHwnd = _toastWindow.Handle;
+            if (CornerOverlaysLive) ApplySurfaceZOrder();
+        }
+        _toastWindow.ShowToast(title, message, accentHex);
+    }
+
+    // Position (corner id, or a group's centre slot number) that `seat` currently occupies on the
+    // overlay -- the reverse of OccupantAtPosition. -1 when the seat isn't currently placed (corner
+    // overlays off, or the profile has no matching slot).
+    private int CurrentPositionForSeat(int seat)
+    {
+        if (!CornerOverlaysLive) return -1;
+        foreach (var position in _cornerRects.Keys)
+            if (OccupantAtPosition(position) == seat) return position;
+        return -1;
+    }
+
+    // Pulses a red glow around `seat`'s current tile/master rect for ~2s -- the on-overlay
+    // counterpart to FlashSeatAlert, reserved for FlashOnTile game events (combat by default) so it
+    // renders over the game itself, not just the app's own seat list.
+    internal void TriggerCombatGlow(SlotAssignment seat)
+    {
+        if (_labelSurface is null) return;
+        var position = CurrentPositionForSeat(seat.SlotNumber);
+        if (position < 0 || !_cornerRects.TryGetValue(position, out var rect)) return;
+
+        _labelSurface.SetAlertGlow(position, rect, "#EF4444");
+
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            _labelSurface?.ClearAlertGlow(position);
+        };
+        timer.Start();
     }
 
     // Allow-listed apps (Options tab) that should stay visually above our overlay surfaces even
