@@ -14,6 +14,12 @@ public sealed class GameLogWatcherService : IDisposable
     private readonly Dictionary<string, long> _readOffsetByFile = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _listenerByFile = new(StringComparer.OrdinalIgnoreCase);
     private FileSystemWatcher? _watcher;
+    private System.Threading.Timer? _resyncTimer;
+
+    // See ChatLogWatcherService's identical fields for why: FileSystemWatcher can silently drop
+    // events with nothing here to notice, so an Error handler plus this periodic resync bound how
+    // long a missed combat/event line can stay unprocessed.
+    private static readonly TimeSpan ResyncInterval = TimeSpan.FromSeconds(45);
 
     // Raised for each new line matched against an enabled rule: (rule, character name, matched line).
     public event Action<GameEventRule, string, string>? EventMatched;
@@ -50,10 +56,14 @@ public sealed class GameLogWatcherService : IDisposable
             _watcher = new FileSystemWatcher(_gamelogsFolder, "*.txt")
             {
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+                InternalBufferSize = 65536,
                 EnableRaisingEvents = true
             };
             _watcher.Changed += OnFileChanged;
             _watcher.Created += OnFileChanged;
+            _watcher.Error += OnWatcherError;
+
+            _resyncTimer = new System.Threading.Timer(_ => Resync(), null, ResyncInterval, ResyncInterval);
         }
         catch (Exception ex)
         {
@@ -63,9 +73,12 @@ public sealed class GameLogWatcherService : IDisposable
 
     public void Stop()
     {
+        _resyncTimer?.Dispose();
+        _resyncTimer = null;
         if (_watcher is null) return;
         _watcher.Changed -= OnFileChanged;
         _watcher.Created -= OnFileChanged;
+        _watcher.Error -= OnWatcherError;
         _watcher.Dispose();
         _watcher = null;
     }
@@ -79,6 +92,35 @@ public sealed class GameLogWatcherService : IDisposable
         catch
         {
             // Best-effort — EVE may hold a competing lock momentarily; the next Changed event retries.
+        }
+    }
+
+    private void OnWatcherError(object? sender, ErrorEventArgs e)
+    {
+        ErrorOccurred?.Invoke($"Gamelog watcher lost events, resyncing: {e.GetException().Message}");
+        Resync();
+    }
+
+    // Catches up on any file a missed/dropped FileSystemWatcher event left un-read — safe to call
+    // anytime, since ReadNewLines is purely offset-driven and a no-op past end-of-file.
+    private void Resync()
+    {
+        try
+        {
+            var cutoff = DateTime.Now.AddHours(-24);
+            foreach (var path in Directory.EnumerateFiles(_gamelogsFolder, "*.txt"))
+            {
+                try
+                {
+                    if (File.GetLastWriteTime(path) < cutoff) continue;
+                    ReadNewLines(path);
+                }
+                catch { } // unreadable file — skip; the next resync or Changed event retries
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorOccurred?.Invoke($"Gamelog resync failed: {ex.Message}");
         }
     }
 

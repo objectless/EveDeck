@@ -533,7 +533,18 @@ public sealed partial class MainWindowViewModel
                 }
             WindowsView.Refresh();
             RaiseIdentityDependents();
+            RaiseWindowAssignmentDependents();
         };
+    }
+
+    // Detected Windows' filtered count + its auto-collapse state depend on which windows are
+    // assigned, not just how many are detected -- raise these wherever an assignment/window-list
+    // change could flip AllWindowsAssigned (Auto-Assign All, drag-drop, Clear, a client relaunching).
+    private void RaiseWindowAssignmentDependents()
+    {
+        OnPropertyChanged(nameof(UnassignedWindowCount));
+        OnPropertyChanged(nameof(AllWindowsAssigned));
+        OnPropertyChanged(nameof(IsDetectedWindowsPanelExpanded));
     }
 
     private void OnAssignmentPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -550,6 +561,7 @@ public sealed partial class MainWindowViewModel
     {
         WindowsView.Refresh();
         RaiseIdentityDependents();
+        RaiseWindowAssignmentDependents();
         RebuildMiniMap();
     }
 }

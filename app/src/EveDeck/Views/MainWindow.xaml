@@ -266,36 +266,99 @@
             <!-- Two-column split -->
             <Grid Grid.Row="1">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1.3*"/>
+                <ColumnDefinition Width="1*">
+                  <ColumnDefinition.Style>
+                    <Style TargetType="ColumnDefinition">
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsDetectedWindowsPanelExpanded}" Value="False">
+                          <Setter Property="Width" Value="46"/>
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </ColumnDefinition.Style>
+                </ColumnDefinition>
                 <ColumnDefinition Width="14"/>
-                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="1.3*"/>
               </Grid.ColumnDefinitions>
 
-              <!-- LEFT: Detected Windows panel -->
+              <!-- LEFT: Detected Windows panel. Collapses to a slim strip once every detected window
+                   is assigned (the common steady state) so it stops outweighing the Slots panel, which
+                   is where day-to-day work actually happens. A manual toggle always wins. -->
               <Border Background="{StaticResource PanelBrush}"
                       BorderBrush="{StaticResource BorderBrush}"
                       BorderThickness="1"
                       CornerRadius="6"
                       Padding="10">
                 <Grid>
-                  <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                  </Grid.RowDefinitions>
+                  <!-- Collapsed strip -->
+                  <Grid>
+                    <Grid.Style>
+                      <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding IsDetectedWindowsPanelExpanded}" Value="False">
+                            <Setter Property="Visibility" Value="Visible"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Grid.Style>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto"/>
+                      <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Button Grid.Row="0" Content="&#8250;" FontSize="16" Padding="0" Width="26" Height="26"
+                            Command="{Binding ToggleDetectedWindowsPanelCommand}"
+                            ToolTip="Show detected windows"/>
+                    <Border Grid.Row="1" Margin="0,8,0,0" CornerRadius="9" MinWidth="18" Height="18" Padding="4,0"
+                            Background="{StaticResource AccentBrush}" HorizontalAlignment="Center">
+                      <Border.Style>
+                        <Style TargetType="Border">
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding UnassignedWindowCount}" Value="0">
+                              <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Border.Style>
+                      <TextBlock Text="{Binding UnassignedWindowCount}" FontSize="10" FontWeight="Bold"
+                                 Foreground="White" HorizontalAlignment="Center"
+                                 ToolTip="Unassigned detected windows"/>
+                    </Border>
+                  </Grid>
 
-                  <DockPanel Margin="0,0,0,8">
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                      <Button Content="Spawn Test Windows"
-                              Command="{Binding SpawnTestWindowsCommand}"
-                              ToolTip="Open one Notepad window per slot, titled 'EveDeck TEST - Slot N', so you can test layout placement without EVE running."
-                              Margin="0,0,8,0"/>
-                      <CheckBox Content="Include Notepad test windows"
-                                IsChecked="{Binding IncludeNotepadTestWindows}"
-                                VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <TextBlock Text="Detected Windows" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                  </DockPanel>
+                  <!-- Expanded content -->
+                  <Grid>
+                    <Grid.Style>
+                      <Style TargetType="Grid">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding IsDetectedWindowsPanelExpanded}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Grid.Style>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto"/>
+                      <RowDefinition Height="*"/>
+                      <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Margin="0,0,0,8">
+                      <Button DockPanel.Dock="Left" Content="&#8249;" FontSize="16" Padding="0" Width="22" Height="22"
+                              Margin="0,0,8,0"
+                              Command="{Binding ToggleDetectedWindowsPanelCommand}"
+                              ToolTip="Collapse this panel"/>
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Content="Spawn Test Windows"
+                                Command="{Binding SpawnTestWindowsCommand}"
+                                ToolTip="Open one Notepad window per slot, titled 'EveDeck TEST - Slot N', so you can test layout placement without EVE running."
+                                Margin="0,0,8,0"/>
+                        <CheckBox Content="Include Notepad test windows"
+                                  IsChecked="{Binding IncludeNotepadTestWindows}"
+                                  VerticalAlignment="Center"/>
+                      </StackPanel>
+                      <TextBlock Text="Detected Windows" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </DockPanel>
 
                   <!-- Window list with empty state overlay -->
                   <Grid Grid.Row="1">
@@ -371,13 +434,41 @@
                                    Margin="0,4,0,0"/>
                       </StackPanel>
                     </Border>
+
+                    <!-- All-assigned empty state: distinct from "none detected" above, this is the
+                         common steady state (everything's already placed) that used to render as a
+                         blank box with no explanation at all. -->
+                    <Border CornerRadius="4" Background="{StaticResource PanelBrush}">
+                      <Border.Style>
+                        <Style TargetType="Border">
+                          <Setter Property="Visibility" Value="Collapsed"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding AllWindowsAssigned}" Value="True">
+                              <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Border.Style>
+                      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="All detected windows are assigned"
+                                   FontSize="15" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource MutedBrush}"/>
+                        <TextBlock Text="Launch another client and click Refresh to see it here."
+                                   Foreground="{StaticResource MutedBrush}"
+                                   FontSize="12"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,10,0,0"/>
+                      </StackPanel>
+                    </Border>
                   </Grid>
 
-                  <TextBlock Grid.Row="2" Text="{Binding Status}"
-                             Foreground="{StaticResource MutedBrush}"
-                             FontSize="11"
-                             Margin="2,8,2,0"
-                             TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Row="2" Text="{Binding Status}"
+                               Foreground="{StaticResource MutedBrush}"
+                               FontSize="11"
+                               Margin="2,8,2,0"
+                               TextTrimming="CharacterEllipsis"/>
+                  </Grid>
                 </Grid>
               </Border>
 
@@ -575,16 +666,6 @@
                                     <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
                                     <Setter Property="BorderThickness" Value="2"/>
                                     <Setter Property="Background" Value="#18000000"/>
-                                  </DataTrigger>
-                                  <DataTrigger Binding="{Binding IsAlerting}" Value="True">
-                                    <DataTrigger.EnterActions>
-                                      <BeginStoryboard>
-                                        <Storyboard>
-                                          <ColorAnimation Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
-                                                          To="#7A5B10" Duration="0:0:0.15" AutoReverse="True" RepeatBehavior="3x"/>
-                                        </Storyboard>
-                                      </BeginStoryboard>
-                                    </DataTrigger.EnterActions>
                                   </DataTrigger>
                                 </Style.Triggers>
                               </Style>

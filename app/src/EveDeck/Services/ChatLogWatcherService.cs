@@ -15,6 +15,18 @@ public sealed class ChatLogWatcherService : IDisposable
     private readonly Dictionary<string, long> _readOffsetByFile = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _listenerByFile = new(StringComparer.OrdinalIgnoreCase);
     private FileSystemWatcher? _watcher;
+    private System.Threading.Timer? _resyncTimer;
+
+    // FileSystemWatcher can silently drop events (internal buffer overflow under a burst of writes
+    // across many characters' log files at once -- fleet chat, combat, several simultaneous jumps --
+    // or plain OS-level flakiness) with no exception anywhere in this class to catch; the only signal
+    // is the watcher's own Error event, which nothing was listening for. A dropped "Channel changed
+    // to Local" line then leaves a character's last-known system permanently stale until some other,
+    // unrelated line happens to be appended to that same file later. Both the Error handler and this
+    // periodic resync exist purely to bound how long that staleness can last -- confirmed via a real
+    // report where the chatlog file on disk had the correct system line but the overlay never picked
+    // it up (see project-location-tracking-resync memory).
+    private static readonly TimeSpan ResyncInterval = TimeSpan.FromSeconds(45);
 
     // Raised for each new line matched against an enabled rule: (rule, best-effort character/channel name).
     public event Action<ChatAlertRule, string>? KeywordMatched;
@@ -62,10 +74,14 @@ public sealed class ChatLogWatcherService : IDisposable
             _watcher = new FileSystemWatcher(_chatlogsFolder, "*.txt")
             {
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+                InternalBufferSize = 65536,
                 EnableRaisingEvents = true
             };
             _watcher.Changed += OnFileChanged;
             _watcher.Created += OnFileChanged;
+            _watcher.Error += OnWatcherError;
+
+            _resyncTimer = new System.Threading.Timer(_ => Resync(), null, ResyncInterval, ResyncInterval);
         }
         catch (Exception ex)
         {
@@ -75,9 +91,12 @@ public sealed class ChatLogWatcherService : IDisposable
 
     public void Stop()
     {
+        _resyncTimer?.Dispose();
+        _resyncTimer = null;
         if (_watcher is null) return;
         _watcher.Changed -= OnFileChanged;
         _watcher.Created -= OnFileChanged;
+        _watcher.Error -= OnWatcherError;
         _watcher.Dispose();
         _watcher = null;
     }
@@ -91,6 +110,36 @@ public sealed class ChatLogWatcherService : IDisposable
         catch
         {
             // Best-effort — EVE may hold a competing lock momentarily; the next Changed event retries.
+        }
+    }
+
+    private void OnWatcherError(object? sender, ErrorEventArgs e)
+    {
+        ErrorOccurred?.Invoke($"Chatlog watcher lost events, resyncing: {e.GetException().Message}");
+        Resync();
+    }
+
+    // Catches up on any file this service has already seen (or should have) that a missed/dropped
+    // FileSystemWatcher event left un-read -- safe to call anytime, including a Local_ file with no
+    // new content, since ReadNewLines is purely offset-driven and a no-op past end-of-file.
+    private void Resync()
+    {
+        try
+        {
+            var cutoff = DateTime.Now.AddHours(-24);
+            foreach (var path in Directory.EnumerateFiles(_chatlogsFolder, "*.txt"))
+            {
+                try
+                {
+                    if (File.GetLastWriteTime(path) < cutoff) continue;
+                    ReadNewLines(path, matchKeywords: true);
+                }
+                catch { } // unreadable file — skip; the next resync or Changed event retries
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorOccurred?.Invoke($"Chatlog resync failed: {ex.Message}");
         }
     }
 

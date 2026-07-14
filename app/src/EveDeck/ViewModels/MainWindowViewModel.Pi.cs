@@ -176,13 +176,15 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    // Recompute every extractor's countdown/state against 'now' and raise seat alerts on new entries
-    // into the extractor-expiry or storage-full windows.
+    // Recompute every extractor's countdown/state against 'now' and collect newly-triggered alerts
+    // (extractor-expiry or storage-full windows), then raise them as ONE bundled toast per refresh
+    // pass instead of one per colony -- a multi-colony empire could otherwise fire a dozen at once.
     private void RefreshCountdownsAndAlerts()
     {
         var now = DateTimeOffset.UtcNow;
         var alertHours = _settings.PiExtractorAlertHours;
         var storagePct = _settings.PiStorageAlertPercent;
+        var newAlerts = new List<string>();
 
         foreach (var colony in PiColonies)
         {
@@ -193,7 +195,7 @@ public sealed partial class MainWindowViewModel
                 var inAlert = ext.RefreshCountdown(now, alertHours);
                 var key = $"ext:{colony.CharacterId}:{colony.PlanetId}:{ext.ProductTypeId}";
                 if (inAlert && _piAlerted.Add(key))
-                    RaisePiAlert(colony, $"{ext.ProductName} extractor {ext.CountdownText} on {colony.Title}");
+                    newAlerts.Add($"{colony.CharacterName}: {ext.ProductName} extractor {ext.CountdownText} on {colony.Title}");
                 else if (!inAlert)
                     _piAlerted.Remove(key);
             }
@@ -208,23 +210,26 @@ public sealed partial class MainWindowViewModel
             var worst = colony.WorstFillPercent;
             var storeKey = $"store:{colony.CharacterId}:{colony.PlanetId}";
             if (worst >= storagePct && _piAlerted.Add(storeKey))
-                RaisePiAlert(colony, $"Storage {worst:F0}% full on {colony.Title}");
+                newAlerts.Add($"{colony.CharacterName}: Storage {worst:F0}% full on {colony.Title}");
             else if (worst < storagePct)
                 _piAlerted.Remove(storeKey);
             if (colony.Storages.Count > 0 || colony.Factories.Count > 0) headlineParts.Add($"storage {worst:F0}%");
 
             colony.Headline = string.Join("  ·  ", headlineParts);
         }
+
+        if (newAlerts.Count > 0) RaisePiAlerts(newAlerts);
     }
 
     private static string PiColonyKey(PiColony c) => $"{c.CharacterId}:{c.PlanetId}";
 
-    private void RaisePiAlert(PiColony colony, string message)
+    // Bundles every colony alert raised in one refresh pass into a single toast + sound.
+    private void RaisePiAlerts(List<string> messages)
     {
-        Log.Info($"PI alert — {colony.CharacterName}: {message}");
+        foreach (var m in messages) Log.Info($"PI alert — {m}");
         SystemSounds.Exclamation.Play();
-        var seat = Assignments.FirstOrDefault(a => a.EsiCharacters.Any(c => c.CharacterId == colony.CharacterId));
-        if (seat is not null) FlashSeatAlert(seat);
+        var title = messages.Count == 1 ? "Planetary Industry" : $"Planetary Industry ({messages.Count} alerts)";
+        ShowToast(title, string.Join("\n", messages), "#F59E0B");
     }
 
     // ── Factory-load calculator ───────────────────────────────────────────────

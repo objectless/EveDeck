@@ -10,7 +10,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>EveDeck</AssemblyName>
     <RootNamespace>EveDeck</RootNamespace>
-    <Version>1.14.1</Version>
+    <Version>1.15.0</Version>
     <Copyright>Copyright © 2026 EveDeck</Copyright>
     <Authors>EveDeck</Authors>
     <Company>EveDeck</Company>

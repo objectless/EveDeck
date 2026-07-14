@@ -9,10 +9,18 @@ namespace EveDeck.Views;
 // z-order to maintain, which is what eliminated the label/preview flicker class -- DWM composites
 // the whole surface (background + all thumbnails) atomically.
 //
-// Technique (proven for years by EVE-O Preview): a color-keyed layered WinForms window. Pixels
-// painted with the transparency key are invisible AND click-through, so the window can span the
-// whole layout monitor while only the tile rects are visible/interactive. DwmRegisterThumbnail
-// happily registers many source windows into one destination window at different dest rects.
+// Technique (proven for years by EVE-O Preview): a layered window. DwmRegisterThumbnail happily
+// registers many source windows into one destination window at different dest rects, and DWM
+// composites them on top of whatever this window itself renders.
+//
+// The window's own content (the tile "backplates") is pushed via UpdateLayeredWindow with real
+// per-pixel alpha, not the simpler SetLayeredWindowAttributes color-key trick. Color-keying only
+// gives a binary transparent/opaque pixel -- the backplate would always be 100% opaque wherever it
+// isn't the exact key color, so lowering the opacity slider only faded each DWM thumbnail while the
+// backplate underneath it stayed solid, dominating the blend and masking whatever was genuinely
+// behind (the desktop, or another overlapping tile like the master rect). Per-pixel alpha lets the
+// backplate itself fade, so DWM's thumbnail compositing -- which blends each thumbnail against
+// whatever is already beneath it, thumbnail or backplate -- can actually reveal what's underneath.
 internal sealed class TileSurfaceWindow : WinForms.Form
 {
     // Optional log sink set once by the view-model so overlay diagnostics surface in the Logs tab.
@@ -23,8 +31,6 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     // client). See COMPLIANCE.md.
     public Action<int>? TileClicked;
 
-    // Fuchsia is the classic transparency key; it never collides with the near-black tile fill.
-    private static readonly Drawing.Color KeyColor = Drawing.Color.Fuchsia;
     private static readonly Drawing.Color TileFill = Drawing.Color.FromArgb(8, 10, 13);
 
     private readonly Dictionary<int, Drawing.Rectangle> _tiles = new();      // client-relative rects
@@ -33,8 +39,11 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     private readonly HashSet<int> _hiddenTiles = new();                      // positions with no live source
     private readonly int _physX, _physY, _physWidth, _physHeight;
 
-    // Thumbnail opacity (0-255), applied to every tile including the master/center one. Defaults to
-    // fully opaque; SetOpacity re-applies it to already-registered thumbnails immediately.
+    // Opacity (0-255), applied to every tile including the master/center one: as DWM_TNP_OPACITY on
+    // each live thumbnail (so overlapping tiles blend against each other/the master rect, not just
+    // against the desktop) AND as the backplate's own per-pixel alpha (so the backplate stops being
+    // an opaque floor everything else blends against). Defaults to fully opaque; SetOpacity
+    // re-applies both immediately.
     private byte _opacity = 255;
 
     // Zoom-on-hover state: at most one tile is magnified at a time; its thumbnail dest rect is
@@ -54,8 +63,6 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         StartPosition = WinForms.FormStartPosition.Manual;
         ShowInTaskbar = false;
         AutoScaleMode = WinForms.AutoScaleMode.None;
-        BackColor = KeyColor;
-        TransparencyKey = KeyColor;
         Bounds = new Drawing.Rectangle(physX, physY, physWidth, physHeight);
         MouseDown += OnMouseDown;
     }
@@ -68,10 +75,15 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= unchecked((int)(Win32Native.WsExNoActivate | Win32Native.WsExToolWindow));
+            cp.ExStyle |= unchecked((int)(Win32Native.WsExNoActivate | Win32Native.WsExToolWindow | Win32Native.WsExLayered));
             return cp;
         }
     }
+
+    // The window's visible content is pushed entirely through UpdateLayeredWindow (see Redraw);
+    // WM_PAINT/WM_ERASEBKGND never contribute pixels, so both are no-ops.
+    protected override void OnPaint(WinForms.PaintEventArgs e) { }
+    protected override void OnPaintBackground(WinForms.PaintEventArgs e) { }
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -80,6 +92,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         // framework's PerMonitorV2 handling; the layout math is all physical pixels.
         Win32Native.SetWindowPos(Handle, Win32Native.HwndBottom, _physX, _physY, _physWidth, _physHeight,
             Win32Native.SwpNoActivate);
+        Redraw();
     }
 
     // Registers a tile rect (physical screen coords). Call once per position after Show().
@@ -87,7 +100,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     {
         _tiles[position] = new Drawing.Rectangle(physX - _physX, physY - _physY, physWidth, physHeight);
         _hiddenTiles.Add(position); // invisible until a source is set
-        Invalidate(_tiles[position]);
+        Redraw();
     }
 
     // Points the tile's preview at the given EVE window (0 hides the tile until a client returns).
@@ -102,17 +115,20 @@ internal sealed class TileSurfaceWindow : WinForms.Form
 
         if (sourceHwnd == 0)
         {
-            if (_hiddenTiles.Add(position)) Invalidate(rect);
+            _hiddenTiles.Add(position);
+            Redraw();
             return;
         }
 
         if (!RegisterThumbnail(position, sourceHwnd, rect))
         {
-            if (_hiddenTiles.Add(position)) Invalidate(rect);
+            _hiddenTiles.Add(position);
+            Redraw();
             return;
         }
 
-        if (_hiddenTiles.Remove(position)) Invalidate(rect);
+        _hiddenTiles.Remove(position);
+        Redraw();
     }
 
     private bool RegisterThumbnail(int position, nint sourceHwnd, Drawing.Rectangle dest)
@@ -156,6 +172,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             var props = new Win32Native.DwmThumbnailProperties { dwFlags = Win32Native.DwmTnpOpacity, opacity = _opacity };
             Win32Native.DwmUpdateThumbnailProperties(id, ref props);
         }
+        Redraw();
     }
 
     // Magnify one tile's PREVIEW around its centre (clamped to the surface). Purely a DWM dest-rect
@@ -187,7 +204,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
 
         _zoomedPosition = position;
         _zoomedRect = zoom;
-        Invalidate();
+        Redraw();
     }
 
     public void ClearZoom()
@@ -211,7 +228,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             };
             Win32Native.DwmUpdateThumbnailProperties(id, ref props);
         }
-        Invalidate();
+        Redraw();
     }
 
     // Always topmost, over EVE, EveDeck, and every other app (browser, Discord, etc.) alike -- the
@@ -226,17 +243,54 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         Win32Native.SetWindowPos(Handle, Win32Native.HwndTopmost, 0, 0, 0, 0, flags);
     }
 
-    protected override void OnPaint(WinForms.PaintEventArgs e)
+    // Pushes the backplates for every visible tile through UpdateLayeredWindow as a 32bpp ARGB
+    // bitmap: transparent everywhere except the tile rects, which get TileFill at _opacity's alpha.
+    // DWM thumbnails aren't part of this bitmap -- they composite on top of it every frame via their
+    // own DWM_TNP_OPACITY, independent of this window's own rendering.
+    private void Redraw()
     {
-        base.OnPaint(e);
-        // Tile backplates: the near-black fill shows through letterboxing and -- critically -- gives
-        // the tile area non-keyed pixels, so it hit-tests as solid (clicks land here) while the rest
-        // of the surface stays click-through. The DWM thumbnails composite on top of this fill.
-        using var fill = new Drawing.SolidBrush(TileFill);
-        foreach (var (position, rect) in _tiles)
+        if (!IsHandleCreated) return;
+
+        var fillColor = Drawing.Color.FromArgb(_opacity, TileFill.R, TileFill.G, TileFill.B);
+        using var bitmap = new Drawing.Bitmap(_physWidth, _physHeight, Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using (var g = Drawing.Graphics.FromImage(bitmap))
         {
-            if (_hiddenTiles.Contains(position)) continue;
-            e.Graphics.FillRectangle(fill, position == _zoomedPosition ? _zoomedRect : rect);
+            g.Clear(Drawing.Color.Transparent);
+            using var fill = new Drawing.SolidBrush(fillColor);
+            foreach (var (position, rect) in _tiles)
+            {
+                if (_hiddenTiles.Contains(position)) continue;
+                g.FillRectangle(fill, position == _zoomedPosition ? _zoomedRect : rect);
+            }
+        }
+
+        var screenDc = Win32Native.GetDC(0);
+        var memDc = Win32Native.CreateCompatibleDC(screenDc);
+        var hBitmap = nint.Zero;
+        var oldBitmap = nint.Zero;
+        try
+        {
+            hBitmap = bitmap.GetHbitmap(Drawing.Color.FromArgb(0));
+            oldBitmap = Win32Native.SelectObject(memDc, hBitmap);
+
+            var size = new Win32Native.SizeNative { cx = _physWidth, cy = _physHeight };
+            var srcPoint = new Win32Native.NativePoint { X = 0, Y = 0 };
+            var dstPoint = new Win32Native.NativePoint { X = _physX, Y = _physY };
+            var blend = new Win32Native.BlendFunction
+            {
+                BlendOp = Win32Native.AcSrcOver,
+                BlendFlags = 0,
+                SourceConstantAlpha = 255,
+                AlphaFormat = Win32Native.AcSrcAlpha
+            };
+            Win32Native.UpdateLayeredWindow(Handle, screenDc, ref dstPoint, ref size, memDc, ref srcPoint, 0, ref blend, Win32Native.UlwAlpha);
+        }
+        finally
+        {
+            Win32Native.ReleaseDC(0, screenDc);
+            if (oldBitmap != nint.Zero) Win32Native.SelectObject(memDc, oldBitmap);
+            if (hBitmap != nint.Zero) Win32Native.DeleteObject(hBitmap);
+            Win32Native.DeleteDC(memDc);
         }
     }
 

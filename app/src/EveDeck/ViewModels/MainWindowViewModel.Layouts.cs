@@ -771,10 +771,28 @@ public sealed partial class MainWindowViewModel
     // in the grid just like every other seat -- see StartCornerOverlays.
     private WindowRect ResolveMasterRect(LayoutSlot centerSlot)
     {
-        if (HasDominantMasterSlot(centerSlot)) return ApplyMasterResOverride(ResolvePlacementRect(centerSlot));
+        var rect = HasDominantMasterSlot(centerSlot)
+            ? ApplyMasterResOverride(ResolvePlacementRect(centerSlot))
+            : ApplyMasterResOverride(ResolveLayoutAnchor() ?? ResolvePlacementRect(centerSlot));
+        return AvoidExactMonitorMatch(rect);
+    }
 
-        var full = ResolveLayoutAnchor() ?? ResolvePlacementRect(centerSlot);
-        return ApplyMasterResOverride(full);
+    // When the master's real EVE window is resized to exactly match a monitor's full bounds (or work
+    // area), Windows can route it through a presentation path that bypasses normal desktop
+    // composition for that screen region -- confirmed empirically: preview tiles and labels are
+    // genuinely topmost in the window z-order (HWND_TOPMOST, verified via a live z-order dump) yet
+    // fail to visually render over a pixel-exact-to-monitor borderless master window. Shrinking by a
+    // few px is the standard mitigation (defeats whatever heuristic decides a borderless window
+    // "is" fullscreen) and is visually imperceptible against a 1500px+ display.
+    private WindowRect AvoidExactMonitorMatch(WindowRect r)
+    {
+        const int shrink = 4;
+        var matchesMonitor = Monitors.Any(m =>
+            (m.Bounds.X == r.X && m.Bounds.Y == r.Y && m.Bounds.Width == r.Width && m.Bounds.Height == r.Height) ||
+            (m.WorkArea.X == r.X && m.WorkArea.Y == r.Y && m.WorkArea.Width == r.Width && m.WorkArea.Height == r.Height));
+        return matchesMonitor
+            ? new WindowRect { X = r.X, Y = r.Y, Width = r.Width - shrink, Height = r.Height - shrink }
+            : r;
     }
 
     // If the active profile has a master resolution override, replace the width/height of the given

@@ -77,14 +77,14 @@ public sealed partial class MainWindowViewModel
         if (rule.FlashOnTile)
         {
             // "Something is happening to this character right now" (combat by default) — pulse the
-            // seat's own tile/master rect on the overlay instead of a toast, since a toast per
-            // incoming hit would be constant spam. Abyss Mode keeps the visual glow but silences the
-            // sound, since Abyssal Deadspace can put up to three characters under continuous,
-            // expected damage simultaneously.
+            // seat's own tile/master rect on the overlay for real-time visibility, and queue a bundled
+            // toast (throttled, see QueueCombatAlertToast) as the persistent record of what happened.
+            // Abyss Mode keeps the visual glow but silences the sound, since Abyssal Deadspace can put
+            // up to three characters under continuous, expected damage simultaneously.
             if (rule.PlaySound && !_settings.AbyssModeEnabled) SystemSounds.Exclamation.Play();
             if (seat is not null)
             {
-                FlashSeatAlert(seat);
+                QueueCombatAlertToast(seat, rule.Name);
                 TriggerCombatGlow(seat);
             }
         }
@@ -123,15 +123,30 @@ public sealed partial class MainWindowViewModel
         return _systemByCharacter.GetValueOrDefault(a.Label, "");
     }
 
-    private void FlashSeatAlert(SlotAssignment seat)
+    // Rapid-fire FlashOnTile events (sustained incoming damage can log several hits a second, often
+    // across multiple seats at once) collapse into one toast per short window instead of spamming a
+    // toast per hit -- the sound still plays per-event for real-time feedback; only the toast is throttled.
+    private readonly List<string> _pendingCombatAlerts = new();
+    private DispatcherTimer? _combatAlertBundleTimer;
+    private static readonly TimeSpan CombatAlertBundleWindow = TimeSpan.FromSeconds(2);
+
+    private void QueueCombatAlertToast(SlotAssignment seat, string ruleName)
     {
-        seat.IsAlerting = true;
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _pendingCombatAlerts.Add($"{ruleName} — {seat.Label}");
+        if (_combatAlertBundleTimer is not null) return; // a window is already open; this alert rides along
+
+        var timer = new DispatcherTimer { Interval = CombatAlertBundleWindow };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
-            seat.IsAlerting = false;
+            _combatAlertBundleTimer = null;
+            var messages = _pendingCombatAlerts.ToList();
+            _pendingCombatAlerts.Clear();
+            if (messages.Count == 0) return;
+            var title = messages.Count == 1 ? "Combat alert" : $"Combat alert ({messages.Count})";
+            ShowToast(title, string.Join("\n", messages), "#EF4444");
         };
+        _combatAlertBundleTimer = timer;
         timer.Start();
     }
 

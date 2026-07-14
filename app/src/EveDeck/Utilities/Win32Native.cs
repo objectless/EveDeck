@@ -85,6 +85,47 @@ internal static class Win32Native
     [DllImport("user32.dll")]
     internal static extern bool SetLayeredWindowAttributes(nint hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
+    // Per-pixel alpha layered-window rendering (UpdateLayeredWindow), used by TileSurfaceWindow so
+    // the backplate itself carries real alpha instead of the binary color-key transparency that
+    // SetLayeredWindowAttributes/TransparencyKey provides.
+    internal const uint UlwAlpha = 0x00000002;
+    internal const byte AcSrcOver = 0x00;
+    internal const byte AcSrcAlpha = 0x01;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SizeNative { public int cx, cy; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct BlendFunction
+    {
+        public byte BlendOp;
+        public byte BlendFlags;
+        public byte SourceConstantAlpha;
+        public byte AlphaFormat;
+    }
+
+    [DllImport("user32.dll")]
+    internal static extern bool UpdateLayeredWindow(nint hwnd, nint hdcDst, ref NativePoint pptDst, ref SizeNative psize,
+        nint hdcSrc, ref NativePoint pptSrc, uint crKey, ref BlendFunction pblend, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    internal static extern nint GetDC(nint hWnd);
+
+    [DllImport("user32.dll")]
+    internal static extern int ReleaseDC(nint hWnd, nint hDC);
+
+    [DllImport("gdi32.dll")]
+    internal static extern nint CreateCompatibleDC(nint hDC);
+
+    [DllImport("gdi32.dll")]
+    internal static extern bool DeleteDC(nint hDC);
+
+    [DllImport("gdi32.dll")]
+    internal static extern nint SelectObject(nint hDC, nint hObject);
+
+    [DllImport("gdi32.dll")]
+    internal static extern bool DeleteObject(nint hObject);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern bool SetWindowText(nint hWnd, string lpString);
 

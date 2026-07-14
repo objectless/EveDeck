@@ -20,8 +20,12 @@ public sealed partial class MainWindowViewModel
         var maxY = SelectedProfile.Slots.Max(s => s.Y + s.Height);
         var scale = Math.Min(300.0 / Math.Max(1, maxX - minX), 190.0 / Math.Max(1, maxY - minY));
 
+        // Biggest rect first (painted at the back): when slots overlap -- e.g. corner previews dragged
+        // on top of a dominant master rect -- the smaller cells should sit visually above the larger
+        // one instead of a big master cell blotting them out. See RebuildMiniMap for the interactive
+        // (drag-drop hit-testing) version of the same fix.
         foreach (var group in SelectedProfile.Slots
-            .OrderBy(s => s.SlotNumber)
+            .OrderByDescending(s => (long)s.Width * s.Height).ThenBy(s => s.SlotNumber)
             .GroupBy(s => $"{s.X},{s.Y},{s.Width},{s.Height}"))
         {
             var slot = group.First();
@@ -58,8 +62,13 @@ public sealed partial class MainWindowViewModel
         var master = ActiveMasterSeat;
         var arrangement = grid ? ComputeHomeArrangement() : null;
 
+        // Biggest rect first (painted/hit-tested at the back): a dominant master cell can now be
+        // dragged-over by corner slots (see project-overlay-persist-preview-opacity), so its minimap
+        // cell must not swallow drag-drop hit-testing for the smaller cells sitting on top of it.
+        // Canvas gives the LAST-added child hit-test priority for overlapping regions, so smaller
+        // cells need to be added after the larger ones they overlap.
         foreach (var group in SelectedProfile.Slots
-            .OrderBy(s => s.SlotNumber)
+            .OrderByDescending(s => (long)s.Width * s.Height).ThenBy(s => s.SlotNumber)
             .GroupBy(s => $"{s.X},{s.Y},{s.Width},{s.Height}"))
         {
             var slot = group.First();

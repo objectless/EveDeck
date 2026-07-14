@@ -240,17 +240,6 @@ public sealed class SlotAssignment : ObservableObject
         set => SetProperty(ref _neverMinimize, value);
     }
 
-    // UI-only chat-alert flash state — not persisted. Set true on a keyword match, auto-reset to
-    // false a couple seconds later by the ViewModel (see MainWindowViewModel.ChatAlerts.cs).
-    private bool _isAlerting;
-
-    [System.Text.Json.Serialization.JsonIgnore]
-    public bool IsAlerting
-    {
-        get => _isAlerting;
-        set => SetProperty(ref _isAlerting, value);
-    }
-
     // Legacy migration fields — kept for backward-compat JSON reading; null after first migration save.
     public string? AssignedWindowTitle { get; set; }
     public int? LastProcessId { get; set; }
