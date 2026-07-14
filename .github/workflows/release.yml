@@ -312,9 +312,29 @@ jobs:
           INSTALLER_VT_CLEAN: ${{ needs.build-and-release.outputs.installer_vt_clean }}
         run: |
           # Same changelog text as the GitHub release body (both come from the annotated tag
-          # message) — turn each "- bullet" line into its own whatsNew array entry instead of
-          # falling back to the script's generic placeholder.
-          mapfile -t BULLETS < <(echo "$NOTES" | sed -n 's/^[[:space:]]*[-*][[:space:]]*//p')
+          # message) — turn each "- bullet" into its own whatsNew array entry instead of falling
+          # back to the script's generic placeholder. GitHub's release-body Markdown renderer joins
+          # a soft-wrapped continuation line back into the bullet above it, but a plain sed extract
+          # of "- " lines does not -- it silently drops continuation lines, truncating any bullet
+          # that was wrapped across multiple lines in the tag message (see v1.15.0, the first
+          # release with multi-line bullets: the site's whatsNew ended up with six truncated
+          # half-sentences instead of six complete ones, while the GitHub release itself looked
+          # fine). This joins continuation lines (anything not starting with -/*) back onto the
+          # current bullet before extracting, so wrapping a long bullet in the tag message is safe.
+          mapfile -t BULLETS < <(echo "$NOTES" | awk '
+            /^[[:space:]]*[-*][[:space:]]/ {
+              if (buf != "") print buf
+              sub(/^[[:space:]]*[-*][[:space:]]*/, "")
+              buf = $0
+              next
+            }
+            /^[[:space:]]*$/ { next }
+            {
+              sub(/^[[:space:]]+/, "")
+              buf = buf " " $0
+            }
+            END { if (buf != "") print buf }
+          ')
           FLAGS=("--installer-url=https://github.com/objectless/EveDeck/releases/download/v$VERSION/EveDeck-Setup-v$VERSION.exe")
           [ -n "$PORTABLE_SHA256" ] && FLAGS+=("--sha256=$PORTABLE_SHA256")
           [ -n "$PORTABLE_VT_URL" ] && FLAGS+=("--virustotal-url=$PORTABLE_VT_URL")
