@@ -21,6 +21,8 @@ public partial class MainWindow : Window
 {
     private const double BaseWidth = 1200.0;
     private const double BaseHeight = 800.0;
+    private const double BaseMinWidth = 980.0;
+    private const double BaseMinHeight = 620.0;
 
     private readonly MainWindowViewModel _viewModel;
     private readonly HotkeyService _hotkeyService = new();
@@ -66,10 +68,49 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        MeasureTabStrip();
+
         // Show the first-run setup wizard once, after the main window is visible so it can own it.
         if (_setupShown || !_viewModel.NeedsSetup) return;
         _setupShown = true;
         ShowSetupWizard();
+    }
+
+    // Natural (unscaled) width of the whole tab strip, measured once the tabs are realized.
+    private double _tabStripWidth;
+
+    // The strip is hosted in a horizontal StackPanel, which never wraps -- so if the window is too
+    // narrow the tabs clip off the edge instead. Measuring the strip lets ApplyMinWidth pin MinWidth
+    // above it, making a too-narrow window unreachable in the first place.
+    private void MeasureTabStrip()
+    {
+        double total = 0;
+        foreach (var item in MainTabControl.Items)
+        {
+            if (item is not System.Windows.Controls.TabItem tab) continue;
+            // A horizontal StackPanel measures children with unbounded width, so DesiredSize is already
+            // the tab's natural width; only measure explicitly if layout hasn't reached it yet.
+            if (tab.DesiredSize.Width <= 0)
+                tab.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            total += tab.DesiredSize.Width;
+        }
+
+        if (total <= 0) return;
+        _tabStripWidth = total;
+        ApplyWindowMinimums();
+    }
+
+    // The minimums track UiScale: RootContent carries a ScaleTransform, so a strip that measures 1100
+    // unscaled needs 1650 px of window at 1.5x. Fixed minimums (as these were in XAML) either clip the
+    // tabs when scaled up, or stop the window shrinking to its own target Width when scaled down.
+    private void ApplyWindowMinimums()
+    {
+        double scale = _viewModel.UiScale;
+        // +10 covers RootContent's 1px border per side plus slack, so the last tab is never flush.
+        double stripNeed = _tabStripWidth > 0 ? (_tabStripWidth * scale) + 10 : 0;
+        MinWidth = Math.Max(BaseMinWidth * scale, stripNeed);
+        MinHeight = BaseMinHeight * scale;
+        if (Width < MinWidth) Width = MinWidth;
     }
 
     // Re-runnable from the Settings tab; on first run it's launched automatically.
@@ -164,6 +205,8 @@ public partial class MainWindow : Window
         RootContent.LayoutTransform = new System.Windows.Media.ScaleTransform(scale, scale);
         Width = BaseWidth * scale;
         Height = BaseHeight * scale;
+        // Re-pin the floors for the new scale; also widens Width if the strip needs more than BaseWidth.
+        ApplyWindowMinimums();
     }
 
     // Restore the last saved window position, but only if it still lands within the visible virtual

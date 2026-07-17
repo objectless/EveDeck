@@ -184,7 +184,21 @@ public sealed partial class MainWindowViewModel
         var now = DateTimeOffset.UtcNow;
         var alertHours = _settings.PiExtractorAlertHours;
         var storagePct = _settings.PiStorageAlertPercent;
-        var newAlerts = new List<string>();
+
+        // Newly-triggered alerts grouped by owning character, first-seen order preserved (a character
+        // can own several colonies, not necessarily contiguous in PiColonies). Rendered as one toast
+        // group per character so the name is a header, not repeated on every planet row.
+        var byCharacter = new List<(string Character, List<Views.ToastLine> Lines)>();
+        var alertCount = 0;
+
+        List<Views.ToastLine> LinesFor(string character)
+        {
+            foreach (var g in byCharacter)
+                if (g.Character == character) return g.Lines;
+            var lines = new List<Views.ToastLine>();
+            byCharacter.Add((character, lines));
+            return lines;
+        }
 
         foreach (var colony in PiColonies)
         {
@@ -195,7 +209,11 @@ public sealed partial class MainWindowViewModel
                 var inAlert = ext.RefreshCountdown(now, alertHours);
                 var key = $"ext:{colony.CharacterId}:{colony.PlanetId}:{ext.ProductTypeId}";
                 if (inAlert && _piAlerted.Add(key))
-                    newAlerts.Add($"{colony.CharacterName}: {ext.ProductName} extractor {ext.CountdownText} on {colony.Title}");
+                {
+                    LinesFor(colony.CharacterName).Add(new Views.ToastLine(
+                        $"{ext.ProductName} extractor {ext.CountdownText}", colony.Title));
+                    alertCount++;
+                }
                 else if (!inAlert)
                     _piAlerted.Remove(key);
             }
@@ -210,7 +228,11 @@ public sealed partial class MainWindowViewModel
             var worst = colony.WorstFillPercent;
             var storeKey = $"store:{colony.CharacterId}:{colony.PlanetId}";
             if (worst >= storagePct && _piAlerted.Add(storeKey))
-                newAlerts.Add($"{colony.CharacterName}: Storage {worst:F0}% full on {colony.Title}");
+            {
+                LinesFor(colony.CharacterName).Add(new Views.ToastLine(
+                    $"Storage {worst:F0}% full", colony.Title));
+                alertCount++;
+            }
             else if (worst < storagePct)
                 _piAlerted.Remove(storeKey);
             if (colony.Storages.Count > 0 || colony.Factories.Count > 0) headlineParts.Add($"storage {worst:F0}%");
@@ -218,18 +240,27 @@ public sealed partial class MainWindowViewModel
             colony.Headline = string.Join("  ·  ", headlineParts);
         }
 
-        if (newAlerts.Count > 0) RaisePiAlerts(newAlerts);
+        if (alertCount > 0) RaisePiAlerts(byCharacter, alertCount);
     }
 
     private static string PiColonyKey(PiColony c) => $"{c.CharacterId}:{c.PlanetId}";
 
-    // Bundles every colony alert raised in one refresh pass into a single toast + sound.
-    private void RaisePiAlerts(List<string> messages)
+    // Bundles every colony alert raised in one refresh pass into a single toast + sound, grouped per
+    // character (name as a header, its planets as rows beneath). A multi-character empire can raise a
+    // dozen at once; the card scrolls past BodyMaxHeightDip rather than growing down the screen.
+    private void RaisePiAlerts(List<(string Character, List<Views.ToastLine> Lines)> byCharacter, int alertCount)
     {
-        foreach (var m in messages) Log.Info($"PI alert — {m}");
+        var groups = byCharacter
+            .Select(g => new Views.ToastGroup(g.Character, g.Lines))
+            .ToList();
+
+        foreach (var g in groups)
+            foreach (var l in g.Lines)
+                Log.Info($"PI alert — {g.Header}: {l.Primary} ({l.Secondary})");
+
         SystemSounds.Exclamation.Play();
-        var title = messages.Count == 1 ? "Planetary Industry" : $"Planetary Industry ({messages.Count} alerts)";
-        ShowToast(title, string.Join("\n", messages), "#F59E0B");
+        var title = alertCount == 1 ? "Planetary Industry" : $"Planetary Industry ({alertCount} alerts)";
+        ShowToast(title, groups, "#F59E0B");
     }
 
     // ── Factory-load calculator ───────────────────────────────────────────────

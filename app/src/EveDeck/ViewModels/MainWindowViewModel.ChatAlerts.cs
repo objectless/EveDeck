@@ -23,6 +23,18 @@ public sealed partial class MainWindowViewModel
         }
     }
 
+    public bool ToastsAboveOverlays
+    {
+        get => _settings.ToastsAboveOverlays;
+        set
+        {
+            if (_settings.ToastsAboveOverlays == value) return;
+            _settings.ToastsAboveOverlays = value;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
     // Current solar system per character name (from Local chatlog "Channel changed to Local"
     // lines). Character names come from EVE's own logs, so exact-name matching is reliable.
     private readonly Dictionary<string, string> _systemByCharacter = new(StringComparer.OrdinalIgnoreCase);
@@ -58,7 +70,9 @@ public sealed partial class MainWindowViewModel
         SystemSounds.Exclamation.Play();
 
         var subtitle = string.IsNullOrWhiteSpace(rule.CharacterName) ? channel : $"{channel} · {rule.CharacterName}";
-        ShowToast($"\"{rule.Keyword}\"", subtitle, "#2BC0E4");
+        // A rule scoped to a character can carry that seat's face and click-to-focus; an "any
+        // character" rule has no single seat to attribute it to, so it stays a plain card.
+        ShowToast($"\"{rule.Keyword}\"", subtitle, "#2BC0E4", FindSeatByCharacter(rule.CharacterName));
     }
 
     private void OnGameEventMatched(GameEventRule rule, string character, string line)
@@ -98,7 +112,7 @@ public sealed partial class MainWindowViewModel
         else
         {
             if (rule.PlaySound) SystemSounds.Exclamation.Play();
-            ShowToast(rule.Name, character.Length > 0 ? character : "", "#F59E0B");
+            ShowToast(rule.Name, character.Length > 0 ? character : "", "#F59E0B", seat);
         }
     }
 
@@ -112,7 +126,7 @@ public sealed partial class MainWindowViewModel
 
     // Seat currently running the given character: live window title first (RunningCharacterName),
     // then the seat's configured main-character Label as a fallback for logged-off clients.
-    private SlotAssignment? FindSeatByCharacter(string character)
+    private SlotAssignment? FindSeatByCharacter(string? character)
     {
         if (string.IsNullOrWhiteSpace(character)) return null;
         return Assignments.FirstOrDefault(a => character.Equals(a.RunningCharacterName, StringComparison.OrdinalIgnoreCase))
@@ -142,12 +156,14 @@ public sealed partial class MainWindowViewModel
     // across multiple seats at once) collapse into one toast per short window instead of spamming a
     // toast per hit -- the sound still plays per-event for real-time feedback; only the toast is throttled.
     private readonly List<string> _pendingCombatAlerts = new();
+    private readonly HashSet<SlotAssignment> _pendingCombatSeats = new();
     private DispatcherTimer? _combatAlertBundleTimer;
     private static readonly TimeSpan CombatAlertBundleWindow = TimeSpan.FromSeconds(2);
 
     private void QueueCombatAlertToast(SlotAssignment seat, string ruleName)
     {
         _pendingCombatAlerts.Add($"{ruleName} — {seat.Label}");
+        _pendingCombatSeats.Add(seat);
         if (_combatAlertBundleTimer is not null) return; // a window is already open; this alert rides along
 
         var timer = new DispatcherTimer { Interval = CombatAlertBundleWindow };
@@ -156,10 +172,15 @@ public sealed partial class MainWindowViewModel
             timer.Stop();
             _combatAlertBundleTimer = null;
             var messages = _pendingCombatAlerts.ToList();
+            // Only attribute the card to a seat when the whole bundle came from that one seat -- a
+            // multi-seat bundle (a fleet getting hit at once) has no single face or click target,
+            // so it falls back to the plain accent card.
+            var seats = _pendingCombatSeats.ToList();
             _pendingCombatAlerts.Clear();
+            _pendingCombatSeats.Clear();
             if (messages.Count == 0) return;
             var title = messages.Count == 1 ? "Combat alert" : $"Combat alert ({messages.Count})";
-            ShowToast(title, string.Join("\n", messages), "#EF4444");
+            ShowToast(title, string.Join("\n", messages), "#EF4444", seats.Count == 1 ? seats[0] : null);
         };
         _combatAlertBundleTimer = timer;
         timer.Start();

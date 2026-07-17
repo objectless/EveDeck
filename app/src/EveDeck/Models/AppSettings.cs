@@ -156,6 +156,13 @@ public sealed class AppSettings
     // permanent per-rule setting, since the user still wants the sound during normal play.
     public bool AbyssModeEnabled { get; set; }
 
+    // Toast notifications assert the topmost slot ahead of the corner-overlay surfaces AND any
+    // Overlay Allow List app, so an alert is never buried behind a preview tile or a docked
+    // Discord/Mumble window. Off means toasts take their chances in the topmost band like any other
+    // window -- allow-listed apps re-assert themselves every tick while EVE is focused, so they will
+    // generally end up on top.
+    public bool ToastsAboveOverlays { get; set; } = true;
+
     // Append the character's current solar system (tracked from Local chatlog headers) to the
     // corner-overlay labels.
     public bool CornerOverlayShowSystem { get; set; } = true;

@@ -1008,7 +1008,7 @@ public sealed partial class MainWindowViewModel
         _labelSurface?.SetZ();
         BumpAllowedAppsAboveOverlaySurfaces();
         if (_layoutEditorHwnd != 0) _windowService.SetWindowTopmost(_layoutEditorHwnd, true);
-        if (_toastHwnd != 0) _windowService.SetWindowTopmost(_toastHwnd, true);
+        BumpToastAboveEverything();
         // Same class of bug as the tile/label surfaces (see CenterSeatInGroup) -- a real EVE window
         // gaining focus during a swap can climb above the talker overlay too. It already self-heals
         // via a 1s timer (TalkerOverlayWindow.BringToTop), but re-asserting here too means it doesn't
@@ -1016,23 +1016,77 @@ public sealed partial class MainWindowViewModel
         _talkerWindow?.BringToTop();
     }
 
-    // Shows a toast notification (chat keyword / non-combat game event alerts) over the game,
-    // creating the toast surface on first use. Deliberately independent of CornerOverlaysLive --
-    // chat/game log watching runs regardless of whether corner overlays are enabled.
-    internal void ShowToast(string title, string message, string accentHex)
+    // Re-asserts the toast window at the very top of the topmost band. Must run AFTER the surfaces'
+    // own SetZ and the allow-list bump: the topmost band is ordered by whoever asserted LAST, not by
+    // any fixed priority, so anything bumped after the toast would land on top of it.
+    //
+    // Gated on HasVisibleToasts so this only runs during the ~5s a toast is actually on screen. An
+    // unconditional re-assert here would be the same mistake that made Mumble blink over Waterfox 4x
+    // a second (see MaintainCornerOverlays) -- there is nothing to keep on top when no toast is up.
+    private void BumpToastAboveEverything()
     {
-        if (_toastWindow is null)
-        {
-            var monitor = Monitors.FirstOrDefault(m => m.IsPrimary) ?? Monitors.FirstOrDefault();
-            if (monitor is null) return;
-            var dpiScale = monitor.DpiX / 96.0;
-            _toastWindow = new Views.ToastNotificationWindow(
-                monitor.Bounds.X, monitor.Bounds.Y, monitor.Bounds.Width, monitor.Bounds.Height, dpiScale);
-            _toastWindow.Show();
-            _toastHwnd = _toastWindow.Handle;
-            if (CornerOverlaysLive) ApplySurfaceZOrder();
-        }
-        _toastWindow.ShowToast(title, message, accentHex);
+        if (_toastHwnd == 0 || !_settings.ToastsAboveOverlays) return;
+        if (_toastWindow?.HasVisibleToasts != true) return;
+        _windowService.SetWindowTopmost(_toastHwnd, true);
+    }
+
+    // Shows a toast notification (chat keyword / game event / PI alerts) over the game, creating the
+    // toast surface on first use. Deliberately independent of CornerOverlaysLive -- chat/game log
+    // watching runs regardless of whether corner overlays are enabled.
+    //
+    // `seat`, when known, gives the card the seat's character portrait as its avatar and makes it
+    // clickable: clicking centres that seat, exactly like clicking its preview tile.
+    internal void ShowToast(string title, string message, string accentHex, SlotAssignment? seat = null)
+    {
+        if (EnsureToastWindow() is not { } window) return;
+        window.ShowToast(title, message, accentHex, SeatAvatar(seat), SeatClickAction(seat));
+        AssertToastZOrder();
+    }
+
+    // Multi-line variant: each alert becomes its own readable row instead of a newline-joined blob.
+    internal void ShowToast(string title, IReadOnlyList<Views.ToastLine> lines, string accentHex, SlotAssignment? seat = null)
+    {
+        if (lines.Count == 0) return;
+        if (EnsureToastWindow() is not { } window) return;
+        window.ShowToast(title, lines, accentHex, SeatAvatar(seat), SeatClickAction(seat));
+        AssertToastZOrder();
+    }
+
+    // Grouped variant: rows clustered under per-group headers -- see RaisePiAlerts (grouped per character).
+    internal void ShowToast(string title, IReadOnlyList<Views.ToastGroup> groups, string accentHex, SlotAssignment? seat = null)
+    {
+        if (groups.Count == 0) return;
+        if (EnsureToastWindow() is not { } window) return;
+        window.ShowToast(title, groups, accentHex, SeatAvatar(seat), SeatClickAction(seat));
+        AssertToastZOrder();
+    }
+
+    private Views.ToastNotificationWindow? EnsureToastWindow()
+    {
+        if (_toastWindow is not null) return _toastWindow;
+
+        var monitor = Monitors.FirstOrDefault(m => m.IsPrimary) ?? Monitors.FirstOrDefault();
+        if (monitor is null) return null;
+        var dpiScale = monitor.DpiX / 96.0;
+        _toastWindow = new Views.ToastNotificationWindow(
+            monitor.Bounds.X, monitor.Bounds.Y, monitor.Bounds.Width, monitor.Bounds.Height, dpiScale);
+        _toastWindow.Show();
+        _toastHwnd = _toastWindow.Handle;
+        return _toastWindow;
+    }
+
+    private static System.Windows.Media.ImageSource? SeatAvatar(SlotAssignment? seat) => seat?.RunningPortrait?.Image;
+
+    private Action? SeatClickAction(SlotAssignment? seat)
+        => seat is null ? null : () => CenterSeat(seat.SlotNumber);
+
+    // Re-assert every time a toast is shown, not just on window creation: a swap, a foreground
+    // change, or the per-tick allow-list bump may all have re-ordered the topmost band since the
+    // last one.
+    private void AssertToastZOrder()
+    {
+        if (CornerOverlaysLive) ApplySurfaceZOrder();
+        else BumpToastAboveEverything();
     }
 
     // Position (corner id, or a group's centre slot number) that `seat` currently occupies on the
@@ -1137,7 +1191,14 @@ public sealed partial class MainWindowViewModel
         // the feature's own purpose ("stay above the overlay while gaming") -- a newly-launched
         // allow-listed app still gets caught immediately via the event-driven ApplySurfaceZOrder path
         // (foreground change hook) the moment the user alt-tabs back into EVE.
-        if (eveOrEwcFg) BumpAllowedAppsAboveOverlaySurfaces();
+        if (eveOrEwcFg)
+        {
+            BumpAllowedAppsAboveOverlaySurfaces();
+            // The bump above re-asserts every allow-listed app topmost, which would otherwise climb
+            // straight over a toast showing in the same corner (Discord docked top-right, say). Put
+            // the toast back on top afterwards -- self-gating on there actually being one on screen.
+            BumpToastAboveEverything();
+        }
 
         if (!eveOrEwcFg && (_peekPosition >= 0 || _pendingHoverPosition >= 0 || _cursorOverPosition >= 0))
         {

@@ -108,7 +108,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         // ── Commands ──────────────────────────────────────────────
         RefreshCommand = new RelayCommand(Refresh);
-        ToggleDetectedWindowsPanelCommand = new RelayCommand(() => IsDetectedWindowsPanelExpanded = !IsDetectedWindowsPanelExpanded);
         RefreshPortraitsCommand = new RelayCommand(() =>
         {
             PortraitCacheService.Instance.RefreshAll();
@@ -629,17 +628,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool AllWindowsAssigned => WindowCount > 0 && UnassignedWindowCount == 0;
     public string DetectionStateText => WindowCount > 0 ? "EVE detected" : "No EVE windows";
     public string DetectionStateColor => WindowCount > 0 ? "#22C55E" : "#F59E0B";
-
-    // Detected Windows starts collapsed once every detected window is assigned (the common steady
-    // state) and auto-expands when there's something new to place, so it stops permanently hogging
-    // half the Clients tab. A manual toggle always wins over that default until toggled back off.
-    private bool? _detectedWindowsManualExpand;
-    public bool IsDetectedWindowsPanelExpanded
-    {
-        get => _detectedWindowsManualExpand ?? UnassignedWindowCount > 0;
-        set { _detectedWindowsManualExpand = value; OnPropertyChanged(); }
-    }
-    public ICommand ToggleDetectedWindowsPanelCommand { get; }
 
     public string LastUpdatedText
     {
@@ -2094,7 +2082,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(MonitorCount));
             OnPropertyChanged(nameof(HasNoWindows));
             OnPropertyChanged(nameof(AllWindowsAssigned));
-            OnPropertyChanged(nameof(IsDetectedWindowsPanelExpanded));
             OnPropertyChanged(nameof(DetectionStateText));
             OnPropertyChanged(nameof(DetectionStateColor));
             RebuildMonitorPreview();

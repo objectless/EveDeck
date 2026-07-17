@@ -557,7 +557,6 @@ public sealed partial class MainWindowViewModel
     {
         OnPropertyChanged(nameof(UnassignedWindowCount));
         OnPropertyChanged(nameof(AllWindowsAssigned));
-        OnPropertyChanged(nameof(IsDetectedWindowsPanelExpanded));
     }
 
     private void OnAssignmentPropertyChanged(object? sender, PropertyChangedEventArgs e)
