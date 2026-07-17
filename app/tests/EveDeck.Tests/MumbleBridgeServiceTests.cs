@@ -9,13 +9,19 @@ namespace EveDeck.Tests;
 // connect to the service's pipe as a client and stream the same JSON lines the plugin emits.
 public class MumbleBridgeServiceTests : IDisposable
 {
-    private readonly MumbleBridgeService _service = new();
+    // A unique pipe per test instance. The production name is machine-global and single-instance,
+    // so sharing it made these tests fail whenever a real EveDeck was running on the dev box (it
+    // owns the pipe, the test server can never bind, and every wait burns its full timeout).
+    private readonly string _pipeName = $"EveDeckMumble.Test.{Guid.NewGuid():N}";
+    private readonly MumbleBridgeService _service;
+
+    public MumbleBridgeServiceTests() => _service = new MumbleBridgeService(_pipeName);
 
     public void Dispose() => _service.Dispose();
 
-    private static async Task<NamedPipeClientStream> ConnectAsync()
+    private async Task<NamedPipeClientStream> ConnectAsync()
     {
-        var client = new NamedPipeClientStream(".", "EveDeckMumble", PipeDirection.Out);
+        var client = new NamedPipeClientStream(".", _pipeName, PipeDirection.Out);
         await client.ConnectAsync(5000);
         return client;
     }

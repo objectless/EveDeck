@@ -32,17 +32,12 @@ public partial class App : Application
         _singleInstanceMutex = new Mutex(true, "EveDeck.SingleInstance", out var isFirstInstance);
         _ownsSingleInstanceMutex = isFirstInstance;
 
-        // Also block alongside pre-1.3.1 builds that used the old mutex name.
-        Mutex? legacyMutex = null;
-        var legacyRunning = isFirstInstance && Mutex.TryOpenExisting("EveWindowCommander.SingleInstance", out legacyMutex);
-        legacyMutex?.Dispose();
-
         // The OS starts a fresh instance to service an evedeck:// link; hand the URL to the
         // running instance over its protocol pipe and exit silently.
         var protocolUrl = e.Args.FirstOrDefault(a =>
             a.StartsWith($"{Services.ProtocolHandlerService.Scheme}://", StringComparison.OrdinalIgnoreCase));
 
-        if (!isFirstInstance || legacyRunning)
+        if (!isFirstInstance)
         {
             if (protocolUrl is not null && Services.ProtocolHandlerService.TryForwardToRunningInstance(protocolUrl))
             {

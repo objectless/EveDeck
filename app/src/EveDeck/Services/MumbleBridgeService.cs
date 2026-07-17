@@ -22,7 +22,14 @@ public sealed class MumbleTalker
 // no audio, chat, or credentials ever cross this pipe.
 public sealed class MumbleBridgeService : IDisposable
 {
-    private const string PipeName = "EveDeckMumble";
+    // Hardcoded in the native plugin (src/MumblePlugin/EveDeckMumblePlugin.cpp) -- never change it.
+    public const string DefaultPipeName = "EveDeckMumble";
+
+    // The pipe name is machine-global and the server allows a single instance, so a running EveDeck
+    // owns the default name process-wide. Tests pass a unique name to avoid colliding with it.
+    private readonly string _pipeName;
+
+    public MumbleBridgeService(string pipeName = DefaultPipeName) => _pipeName = pipeName;
 
     private readonly object _lock = new();
     private readonly Dictionary<uint, MumbleTalker> _talkers = new();
@@ -74,7 +81,7 @@ public sealed class MumbleBridgeService : IDisposable
             try
             {
                 await using var server = new NamedPipeServerStream(
-                    PipeName, PipeDirection.In, maxNumberOfServerInstances: 1,
+                    _pipeName, PipeDirection.In, maxNumberOfServerInstances: 1,
                     PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
                 await server.WaitForConnectionAsync(ct);
 
