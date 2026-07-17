@@ -2,7 +2,6 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
-        xmlns:conv="clr-namespace:EveDeck.Converters"
         Title="EveDeck"
         Icon="/Assets/evedeck-mark.png"
         Width="1200"
@@ -17,9 +16,9 @@
     <WindowChrome CaptionHeight="42" ResizeBorderThickness="6" GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
   </WindowChrome.WindowChrome>
 
-  <Window.Resources>
-    <conv:IndexToVisibilityConverter x:Key="IndexToVisibility"/>
-  </Window.Resources>
+  <!-- The IndexToVisibility converter is registered in App.Main rather than declared here: any
+       XAML reference to a local clr-namespace forces WPF's second markup-compile pass, which
+       builds a throwaway *_wpftmp project on every build (see App.xaml.cs). -->
 
   <!-- Thin visible window border -->
   <Border x:Name="RootContent" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">

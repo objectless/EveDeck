@@ -24,6 +24,16 @@ public partial class App : Application
         VelopackApp.Build().Run();
         var app = new App();
         app.InitializeComponent();
+
+        // Registered here, not in MainWindow.xaml. Declaring it in XAML needs an
+        // xmlns:clr-namespace pointing back at this assembly, and any local-type reference forces
+        // WPF's markup-compile pass 2: it builds a throwaway <Name>_<random>_wpftmp project on
+        // every build, which spams the IDE's design-time builds with spurious errors (duplicate
+        // Compile items, missing nuget.g.targets for a temp project that was never restored).
+        // Application.Resources is populated before Run() creates any window, so MainWindow's
+        // StaticResource lookups still resolve at parse time.
+        app.Resources["IndexToVisibility"] = new Converters.IndexToVisibilityConverter();
+
         app.Run();
     }
 
