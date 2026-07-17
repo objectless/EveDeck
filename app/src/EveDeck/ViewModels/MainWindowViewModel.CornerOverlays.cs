@@ -303,8 +303,17 @@ public sealed partial class MainWindowViewModel
         int surfX, surfY, surfW, surfH;
         if (monitor is not null && !IsMultiMonitorProfile(SelectedProfile))
         {
-            surfX = monitor.Bounds.X; surfY = monitor.Bounds.Y;
-            surfW = monitor.Bounds.Width; surfH = monitor.Bounds.Height;
+            // Never size the tile surface to EXACTLY the monitor. A monitor-exact topmost layered
+            // window is treated by DWM as a fullscreen surface, so its registered DWM thumbnails stop
+            // compositing -- the previews go blank while the pills (on the differently-sized label
+            // window) still draw. Shrinking a few px (same AvoidExactMonitorMatch mitigation used for
+            // the master window) is imperceptible and keeps every tile rect inside the surface.
+            var surf = AvoidExactMonitorMatch(new WindowRect
+            {
+                X = monitor.Bounds.X, Y = monitor.Bounds.Y,
+                Width = monitor.Bounds.Width, Height = monitor.Bounds.Height
+            });
+            surfX = surf.X; surfY = surf.Y; surfW = surf.Width; surfH = surf.Height;
         }
         else
         {
@@ -489,6 +498,22 @@ public sealed partial class MainWindowViewModel
         return system.Length > 0 && text.Length > 0 ? $"{text} · {system}" : text;
     }
 
+    // Readable-on-dark colours to tint the system-name pill segment. Deterministic per system name
+    // (same system -> same colour every session) so you can track at a glance which characters have
+    // split off from the fleet's system.
+    private static readonly string[] SystemPalette =
+    {
+        "#F87171", "#FB923C", "#FBBF24", "#A3E635", "#34D399", "#22D3EE",
+        "#60A5FA", "#818CF8", "#C084FC", "#F472B6", "#2DD4BF", "#E879F9",
+    };
+    internal static string SystemColorHex(string system)
+    {
+        if (string.IsNullOrEmpty(system)) return "";
+        var h = 0;
+        foreach (var c in system) h = (h * 31 + c) & 0x7fffffff;
+        return SystemPalette[h % SystemPalette.Length];
+    }
+
     // Label for a seat whose client window is gone — keeps the seat identifiable instead of a
     // blank tile ("offline badge"). Empty when the seat itself has no label to show.
     private string OfflinePillText(int seat)
@@ -512,15 +537,21 @@ public sealed partial class MainWindowViewModel
     private string CornerCode(int position)
     {
         var profile = SelectedProfile;
-        if (profile is null || profile.Slots.Count == 0) return position.ToString();
+        if (profile is null || profile.Slots.Count == 0) return CircledNumeral(position);
 
         var group = EffectiveGroups().FirstOrDefault(g => g.SlotNumbers.Count == 0 || g.SlotNumbers.Contains(position))
             ?? EffectiveGroups().FirstOrDefault();
-        if (group is null) return position.ToString();
+        if (group is null) return CircledNumeral(position);
 
         var codes = GroupGridCodes(profile, group);
-        return codes.TryGetValue(position, out var code) ? code : position.ToString();
+        return codes.TryGetValue(position, out var code) ? code : CircledNumeral(position);
     }
+
+    // Circled numerals (U+2460..U+2473 = 1..20) as the "cooler than a bare number" fallback for a
+    // pill / position code when the geometric arrow-and-bracket codes can't be distinct -- e.g. alts
+    // stacked in a single column, where every ring slot lands in the same L/C/R + T/M/B bucket.
+    internal static string CircledNumeral(int n)
+        => n is >= 1 and <= 20 ? ((char)('①' + n - 1)).ToString() : n.ToString();
 
     // Directional-arrow code for every ring slot (i.e. every slot in the group except its own
     // centre/master slot), computed from a bounding box scoped to just that ring, with any bucket
@@ -540,7 +571,7 @@ public sealed partial class MainWindowViewModel
         var codes = ringSlots.ToDictionary(s => s.SlotNumber, s => GridCode(s, minX, minY, totalW, totalH));
         var hasCollision = codes.Values.GroupBy(c => c, StringComparer.Ordinal).Any(g => g.Count() > 1);
         if (hasCollision)
-            foreach (var s in ringSlots) codes[s.SlotNumber] = s.SlotNumber.ToString();
+            foreach (var s in ringSlots) codes[s.SlotNumber] = CircledNumeral(s.SlotNumber);
         return codes;
     }
 
@@ -548,7 +579,7 @@ public sealed partial class MainWindowViewModel
     {
         var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(groupId, 0);
         var name = SeatLabel(centeredSeat);
-        var text = _settings.CornerOverlayShowSlotNumber ? $"Master · {name}" : name;
+        var text = _settings.CornerOverlayShowSlotNumber ? $"★ · {name}" : name;
         return AppendSystem(text, centeredSeat);
     }
 
@@ -577,6 +608,15 @@ public sealed partial class MainWindowViewModel
     internal void CenterSeat(int seat)
     {
         if (SelectedProfile is null) return;
+
+        // Per-seat "focus only": bring the window forward in place, never swap it into master. One
+        // gate here covers every activation path (tile click, hotkeys, evedeck:// center) since they
+        // all funnel through CenterSeat.
+        if (Seat(seat)?.FocusOnlyNoSwap == true)
+        {
+            FocusSlot(seat);
+            return;
+        }
 
         if (!SelectedProfile.SupportsCornerGrid)
         {
@@ -782,6 +822,9 @@ public sealed partial class MainWindowViewModel
 
         var seat = OccupantAtPosition(position);
 
+        // Focus-only seats never swap into master, so hover-peek (which stages that swap) is a no-op.
+        if (Seat(seat)?.FocusOnlyNoSwap == true) return;
+
         var seatGroup = FindGroupForSeat(seat) ?? EffectiveGroups().FirstOrDefault();
         if (seatGroup is null) return;
         var groupId = seatGroup.GroupId;
@@ -899,9 +942,11 @@ public sealed partial class MainWindowViewModel
     {
         if (_labelSurface is null || !_cornerRects.ContainsKey(position)) return;
         var seat = OccupantAtPosition(position);
+        var live = FindSeatWindow(seat) is not null;
+        var sys = live ? SeatSystemName(seat) : "";
         _labelSurface.SetPillContent(position,
-            FindSeatWindow(seat) is not null ? PillTextForPosition(position) : OfflinePillText(seat),
-            SeatPortrait(seat));
+            live ? PillTextForPosition(position) : OfflinePillText(seat),
+            SeatPortrait(seat), sys, SystemColorHex(sys));
         var isMasterPosition = IsGroupCenterPosition(position);
         var (family, size, color) = ResolveLabelFont(seat, isMasterPosition);
         var (bold, italic, dropShadow, outline, opacity) = ResolveLabelStyle(seat, isMasterPosition);
@@ -913,7 +958,9 @@ public sealed partial class MainWindowViewModel
         if (_labelSurface is null) return;
         var groupCenter = CenterSlotForGroup(group);
         var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
-        _labelSurface.SetPillContent(groupCenter, CenterPillTextForGroup(group.GroupId), SeatPortrait(centeredSeat));
+        var centerSys = SeatSystemName(centeredSeat);
+        _labelSurface.SetPillContent(groupCenter, CenterPillTextForGroup(group.GroupId), SeatPortrait(centeredSeat),
+            centerSys, SystemColorHex(centerSys));
         var (family, size, color) = ResolveLabelFont(centeredSeat, isMaster: true);
         var (bold, italic, dropShadow, outline, opacity) = ResolveLabelStyle(centeredSeat, isMaster: true);
         _labelSurface.SetPillAppearance(groupCenter, family, size, color, bold, italic, dropShadow, outline, opacity);
@@ -1008,7 +1055,7 @@ public sealed partial class MainWindowViewModel
         var position = CurrentPositionForSeat(seat.SlotNumber);
         if (position < 0 || !_cornerRects.TryGetValue(position, out var rect)) return;
 
-        _labelSurface.SetAlertGlow(position, rect, "#EF4444");
+        _labelSurface.SetAlertGlow(position, rect, "#EF4444", _settings.AbyssModeEnabled);
 
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         timer.Tick += (_, _) =>

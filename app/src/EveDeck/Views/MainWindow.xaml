@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:conv="clr-namespace:EveDeck.Converters"
         Title="EveDeck"
         Icon="/Assets/evedeck-mark.png"
         Width="1200"
@@ -15,6 +16,10 @@
   <WindowChrome.WindowChrome>
     <WindowChrome CaptionHeight="42" ResizeBorderThickness="6" GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
   </WindowChrome.WindowChrome>
+
+  <Window.Resources>
+    <conv:IndexToVisibilityConverter x:Key="IndexToVisibility"/>
+  </Window.Resources>
 
   <!-- Thin visible window border -->
   <Border x:Name="RootContent" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
@@ -87,6 +92,12 @@
                        VerticalAlignment="Center"
                        Margin="0,0,10,0"
                        WindowChrome.IsHitTestVisibleInChrome="True"/>
+            <Button Style="{StaticResource CaptionButton}"
+                    Click="HelpButton_Click"
+                    WindowChrome.IsHitTestVisibleInChrome="True"
+                    ToolTip="New here? See the tab guide on the About tab.">
+              <TextBlock Text="?" FontSize="13" FontWeight="Bold" Margin="0,0,0,0"/>
+            </Button>
             <Button Style="{StaticResource CaptionButton}"
                     Click="MinimizeButton_Click"
                     WindowChrome.IsHitTestVisibleInChrome="True"
@@ -230,7 +241,7 @@
       </Border>
 
       <!-- ═══ Tab Control ═══ -->
-      <TabControl BorderThickness="0" SelectionChanged="MainTabControl_SelectionChanged">
+      <TabControl x:Name="MainTabControl" BorderThickness="0" SelectionChanged="MainTabControl_SelectionChanged">
 
         <!-- ──────────────────── CLIENTS TAB ──────────────────── -->
         <TabItem>
@@ -266,7 +277,7 @@
             <!-- Two-column split -->
             <Grid Grid.Row="1">
               <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1*">
+                <ColumnDefinition Width="0.6*">
                   <ColumnDefinition.Style>
                     <Style TargetType="ColumnDefinition">
                       <Style.Triggers>
@@ -278,7 +289,7 @@
                   </ColumnDefinition.Style>
                 </ColumnDefinition>
                 <ColumnDefinition Width="14"/>
-                <ColumnDefinition Width="1.3*"/>
+                <ColumnDefinition Width="1.4*"/>
               </Grid.ColumnDefinitions>
 
               <!-- LEFT: Detected Windows panel. Collapses to a slim strip once every detected window
@@ -558,6 +569,8 @@
                       <TextBlock Text="Slots" FontSize="15" FontWeight="SemiBold"/>
                       <TextBlock Text="Each slot is one seat. Assign a window, then drag a slot's ⠿ grip onto the mini-map to set its corner — or drop on the centre to make it Master."
                                  Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                      <TextBlock Text="Position codes:  ⌜⌝⌞⌟ = screen corners   ▲▼◀▶ = edges   ★ = Master (home seat)"
+                                 Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
                   </DockPanel>
 
@@ -724,7 +737,8 @@
                               <StackPanel Grid.Column="2" Margin="8,0" VerticalAlignment="Center">
                                 <!-- Slot name row -->
                                 <DockPanel>
-                                  <Border DockPanel.Dock="Right" Background="{StaticResource MasterChipBrush}" CornerRadius="3" Padding="5,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                                  <Border DockPanel.Dock="Right" Background="{StaticResource MasterChipBrush}" CornerRadius="3" Padding="5,1" Margin="6,0,0,0" VerticalAlignment="Center"
+                                          ToolTip="This seat is the Master (home) seat.">
                                     <Border.Style>
                                       <Style TargetType="Border">
                                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -880,7 +894,8 @@
                                             <ImageBrush ImageSource="{Binding Portrait.Image}" Stretch="UniformToFill"/>
                                           </Ellipse.Fill>
                                         </Ellipse>
-                                        <Border Grid.Column="1" Background="{StaticResource EsiChipBrush}" CornerRadius="3" Padding="4,1" Margin="0,0,5,0" VerticalAlignment="Center">
+                                        <Border Grid.Column="1" Background="{StaticResource EsiChipBrush}" CornerRadius="3" Padding="4,1" Margin="0,0,5,0" VerticalAlignment="Center"
+                                                ToolTip="ESI = EVE character login (SSO). This character is linked to this seat.">
                                           <TextBlock Text="ESI" Foreground="{StaticResource AccentBrush}" FontSize="9" FontWeight="Bold"/>
                                         </Border>
                                         <TextBlock Grid.Column="2" Text="{Binding CharacterName}" FontSize="11" FontWeight="SemiBold"
@@ -908,7 +923,7 @@
                                           Command="{Binding DataContext.AddEsiCharacterCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                           CommandParameter="{Binding}"
                                           Padding="5,2" Margin="0,0,6,0" MinHeight="0" FontSize="10"
-                                          ToolTip="Login with EVE SSO to link a character to this slot (main + up to 2 alts)">
+                                          ToolTip="ESI = EVE character login (SSO). Login with EVE SSO to link a character to this slot (main + up to 2 alts)">
                                     <Button.Style>
                                       <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                         <Style.Triggers>
@@ -981,6 +996,9 @@
                                 <CheckBox Content="Never minimize" FontSize="10" Margin="4,2"
                                           IsChecked="{Binding NeverMinimize, UpdateSourceTrigger=PropertyChanged}"
                                           ToolTip="Protect this seat from the Minimize-all hotkey and auto-minimize (e.g. a scout you always keep visible)"/>
+                                <CheckBox Content="Focus only (no master swap)" FontSize="10" Margin="4,2"
+                                          IsChecked="{Binding FocusOnlyNoSwap, UpdateSourceTrigger=PropertyChanged}"
+                                          ToolTip="Activating this seat (click/hotkey) just brings its window to the front in place, instead of swapping it into the master/centre slot. Also disables hover-peek for this seat."/>
                               </StackPanel>
                             </Grid>
                           </Border>
@@ -1399,6 +1417,8 @@ Both AMD and Nvidia let you set a virtual resolution higher than your panel's na
                 <TextBlock Text="Hotkeys" FontSize="20" FontWeight="SemiBold"/>
                 <TextBlock Text="Global shortcuts for switching clients and applying layouts. Click Set on a row, press the key combo you want (Esc cancels), and the row highlights while it listens. Tick the On box to enable a shortcut."
                            Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                <TextBlock Text="Tip: see Options → Hotkey Behavior to control whether hotkeys fire while EVE isn't the active window."
+                           Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap"/>
               </StackPanel>
             </DockPanel>
 
@@ -1487,14 +1507,51 @@ Both AMD and Nvidia let you set a virtual resolution higher than your panel's na
               <TextBlock Text="Options" VerticalAlignment="Center"/>
             </StackPanel>
           </TabItem.Header>
-          <ScrollViewer Margin="16">
-            <StackPanel MaxWidth="700" HorizontalAlignment="Left">
+          <Grid Margin="16">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="0,0,0,12">
               <TextBlock Text="Options" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,2"/>
               <TextBlock Text="Visual and behavior settings. Changes apply immediately and are saved automatically."
-                         Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                         Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap"/>
+            </StackPanel>
 
-              <!-- ── Character Names ─────────────────────────────────── -->
-              <TextBlock Text="Character Names" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <Grid Grid.Row="1">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="210"/>
+                <ColumnDefinition Width="14"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+
+              <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                      BorderThickness="1" CornerRadius="6" Padding="6">
+                <ListBox x:Name="OptionsMenu" SelectedIndex="0" BorderThickness="0" Background="Transparent">
+                  <ListBoxItem Content="Character Names"/>
+                  <ListBoxItem Content="Visual Effects"/>
+                  <ListBoxItem Content="Startup"/>
+                  <ListBoxItem Content="Window Behavior"/>
+                  <ListBoxItem Content="System Integration"/>
+                  <ListBoxItem Content="Interface Scale"/>
+                  <ListBoxItem Content="Setup"/>
+                  <ListBoxItem Content="Previews"/>
+                  <ListBoxItem Content="Settings Backup"/>
+                  <ListBoxItem Content="Hotkey Behavior"/>
+                  <ListBoxItem Content="Performance"/>
+                  <ListBoxItem Content="EVE Launcher"/>
+                  <ListBoxItem Content="Chat Alerts"/>
+                  <ListBoxItem Content="Game Event Alerts"/>
+                  <ListBoxItem Content="Overlay Allow List"/>
+                </ListBox>
+              </Border>
+
+              <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
+                <Grid MaxWidth="700" HorizontalAlignment="Left">
+                  <!-- section 0: Character Names -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=0}">
+                    <TextBlock Text="Character Names" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,14">
 Auto-filled from the EVE window title when a client is assigned — "EVE - Name" becomes "Name". Edit here to rename any slot.
               </TextBlock>
@@ -1536,11 +1593,10 @@ Auto-filled from the EVE window title when a client is assigned — "EVE - Name"
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
-
-              <Separator Margin="0,16,0,16"/>
-
-              <!-- Visual Effects section (Active Frame + preview-label font/style/opacity, normal + MASTER) -->
-              <TextBlock Text="Visual Effects" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                  </StackPanel>
+                  <!-- section 1: Visual Effects -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=1}">
+                    <TextBlock Text="Visual Effects" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,14">
 Styling for the active-client highlight frame and the preview-label pills (font, style, opacity). Per-seat overrides live behind the "Style..." button on each slot below.
               </TextBlock>
@@ -1638,9 +1694,10 @@ Styling for the active-client highlight frame and the preview-label pills (font,
                         ToolTip="Transparency of every DWM preview thumbnail, corners and the master rect alike."/>
                 <TextBlock Text="{Binding PreviewOpacity, StringFormat={}{0}%}" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11"/>
               </StackPanel>
-
-              <!-- ── 2g: Startup Profile ──────────────────────────────── -->
-              <TextBlock Text="Startup" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 2: Startup -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=2}">
+                    <TextBlock Text="Startup" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <CheckBox Content="Apply a layout profile on startup"
                         IsChecked="{Binding ApplyProfileOnStartup}"
                         Margin="0,0,0,10"/>
@@ -1657,23 +1714,26 @@ Styling for the active-client highlight frame and the preview-label pills (font,
                         Margin="0,0,0,4"/>
               <TextBlock Text="Remembers your layout: close all clients and open them again and they snap back into place automatically (requires Auto-refresh)."
                          Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,4"/>
-
-              <!-- ── 2a: Window Behavior ──────────────────────────────── -->
-              <TextBlock Text="Window Behavior" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 3: Window Behavior -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=3}">
+                    <TextBlock Text="Window Behavior" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <CheckBox Content="Minimize to system tray instead of taskbar"
                         IsChecked="{Binding MinimizeToTray}"
                         Margin="0,0,0,10"/>
-
-              <!-- ── 2j: System Integration ───────────────────────────── -->
-              <TextBlock Text="System Integration" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 4: System Integration -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=4}">
+                    <TextBlock Text="System Integration" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <CheckBox Content="Launch EveDeck with Windows"
                         IsChecked="{Binding LaunchWithWindows}"
                         Margin="0,0,0,6"/>
               <TextBlock Text="Starts EveDeck automatically when you sign in to Windows."
                          Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,4"/>
-
-              <!-- ── UI Scale ─────────────────────────────────────────── -->
-              <TextBlock Text="Interface Scale" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 5: Interface Scale -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=5}">
+                    <TextBlock Text="Interface Scale" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,14">
 Scales the entire EveDeck interface up or down. Useful on 4K displays running at 100% Windows scaling where the UI would otherwise appear small.
               </TextBlock>
@@ -1691,17 +1751,19 @@ Scales the entire EveDeck interface up or down. Useful on 4K displays running at
                   <ComboBoxItem Content="300%" Tag="3.0"/>
                 </ComboBox>
               </StackPanel>
-
-              <!-- ── Setup ───────────────────────────────────────────── -->
-              <TextBlock Text="Setup" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 6: Setup -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=6}">
+                    <TextBlock Text="Setup" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,8">
 Re-run the guided setup to pick your client count and target monitor and apply a matching layout.
               </TextBlock>
               <Button Content="Run setup wizard" Click="RunSetupWizard_Click"
                       HorizontalAlignment="Left" MinWidth="150" Margin="0,0,0,4"/>
-
-              <!-- ── Previews ─────────────────────────────────── -->
-              <TextBlock Text="Previews" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 7: Previews -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=7}">
+                    <TextBlock Text="Previews" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,14">
 Shows your background clients as live mini-previews in the screen corners while the master client fills the center. The previews are real-time video of each client, so you can keep an eye on all of them at once. Switching between clients is instant because the windows don't actually move or resize.
               </TextBlock>
@@ -1762,7 +1824,7 @@ Shows your background clients as live mini-previews in the screen corners while 
                 <TextBox Width="48"
                          Text="{Binding OfflineOverlayTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
                          HorizontalContentAlignment="Center" FontSize="11"/>
-                <TextBlock Text="sec of every seat offline (0 = never, default 60)" VerticalAlignment="Center"
+                <TextBlock Text="sec of every seat offline (0 = never auto-close, default 60)" VerticalAlignment="Center"
                            Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="6,0,0,0"/>
               </StackPanel>
               <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
@@ -1773,8 +1835,10 @@ Shows your background clients as live mini-previews in the screen corners while 
                 <TextBlock Text="sec offline (0 = hide immediately, -1 = never hide, default)" VerticalAlignment="Center"
                            Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="6,0,0,0"/>
               </StackPanel>
-              <!-- ── Settings Backup ─────────────────────────────────── -->
-              <TextBlock Text="Settings Backup" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 8: Settings Backup -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=8}">
+                    <TextBlock Text="Settings Backup" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
 EveDeck snapshots your settings on each launch (5 today + 1 per day for 7 days). Each entry shows how many slots and characters were saved. Select one below to restore it, or create a manual backup before making big changes. Export saves your current settings to any file; Import loads from a file and restarts.
               </TextBlock>
@@ -1799,17 +1863,24 @@ EveDeck snapshots your settings on each launch (5 today + 1 per day for 7 days).
                         MinWidth="140"
                         ToolTip="Load settings from a JSON file and restart EveDeck"/>
               </StackPanel>
-
-              <!-- ── Hotkey Behavior ─────────────────────────────────── -->
-              <TextBlock Text="Hotkey Behavior" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 9: Hotkey Behavior -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=9}">
+                    <TextBlock Text="Hotkey Behavior" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <CheckBox Content="Only fire hotkeys when an EVE client is the active window"
                         IsChecked="{Binding RequireEveFocusForHotkeys}"
                         Margin="0,0,0,6"/>
+              <CheckBox Content="Suspend all hotkeys (panic pause)"
+                        IsChecked="{Binding HotkeysSuspended}"
+                        Margin="0,0,0,6"
+                        ToolTip="Temporarily disables every EveDeck hotkey. Bind 'Suspend / resume all hotkeys' in the Hotkeys tab to toggle this from the keyboard — that one binding keeps working while suspended."/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,4">
 When on, swap/cycle/apply-layout hotkeys only work while an EVE client is the active window — and the keys pass through normally to other apps (browser, chat, etc.) the rest of the time. Focus-slot and character-switch hotkeys stay active everywhere so you can always jump back into EVE. Turn this off to make every hotkey global.
               </TextBlock>
-
-              <TextBlock Text="Performance" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 10: Performance -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=10}">
+                    <TextBlock Text="Performance" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <CheckBox Content="Throttle background EVE clients to Below Normal CPU priority"
                         IsChecked="{Binding ThrottleBackgroundProcesses}"
                         Margin="0,0,0,4"/>
@@ -1822,18 +1893,20 @@ EveDeck lowers the OS scheduling priority of inactive EVE clients whenever anoth
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
 Flat layouts only: whenever an EVE client takes focus, the others are minimized to save GPU/CPU. Ignored while corner overlays are live (minimized windows stop rendering, which would freeze the live previews). Seats marked "never minimize" on their slot card are always skipped -- as they are for the "Minimize all EVE clients" hotkey.
               </TextBlock>
-
-              <!-- ── EVE Launcher path ───────────────────────────────── -->
-              <TextBlock Text="EVE Launcher" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 11: EVE Launcher -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=11}">
+                    <TextBlock Text="EVE Launcher" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,8">
 Used by each character set's "Launch" button. EveDeck checks the common install locations automatically; only set a path here if it isn't found there.
               </TextBlock>
               <TextBox Text="{Binding EveLauncherPathOverride, UpdateSourceTrigger=PropertyChanged}"
                        Padding="6,4" FontSize="12"
                        ToolTip="Custom path to eveLauncher.exe, e.g. D:\Games\EVE Online\eveLauncher.exe"/>
-
-              <!-- ── Chat Alerts ──────────────────────────────────────── -->
-              <TextBlock Text="Chat Alerts" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 12: Chat Alerts -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=12}">
+                    <TextBlock Text="Chat Alerts" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
 Watches EVE's chatlog files (Documents\EVE\logs\Chatlogs) for a keyword and plays a sound + flashes the matching seat. Passive log reading only -- never sends anything into an EVE client. Leave Character blank to match any character's logs.
               </TextBlock>
@@ -1857,9 +1930,10 @@ Watches EVE's chatlog files (Documents\EVE\logs\Chatlogs) for a keyword and play
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
               <Button Content="+ Add Rule" Command="{Binding AddChatAlertRuleCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
-
-              <!-- ── Game Event Alerts ───────────────────────────────── -->
-              <TextBlock Text="Game Event Alerts" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 13: Game Event Alerts -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=13}">
+                    <TextBlock Text="Game Event Alerts" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
 Watches EVE's gamelog files (Documents\EVE\logs\Gamelogs) for events on your OTHER clients -- combat, mining crystal breaks, fleet invites. By default a match shows a toast notification (plus an optional sound) over the game. "Glow" events instead pulse that seat's tile/master rect on the overlay -- for "this character is under attack right now" alerts where a toast per line would be constant spam (Combat is Glow by default). Passive log reading only -- never sends anything into an EVE client. Pattern is a case-insensitive text match against new log lines; "Focused" skips the alert when that character's window is already active.
               </TextBlock>
@@ -1894,9 +1968,10 @@ Watches EVE's gamelog files (Documents\EVE\logs\Gamelogs) for events on your OTH
               <CheckBox Content="Abyss Mode -- suppress Glow-event sound (keep the visual glow)" FontSize="12" Margin="0,10,0,0"
                         IsChecked="{Binding AbyssModeEnabled, UpdateSourceTrigger=PropertyChanged}"
                         ToolTip="Abyssal Deadspace can put up to three of your characters under simultaneous, expected combat damage -- toggle this on before a run so Combat's sound doesn't fire constantly. Turn it back off for normal play."/>
-
-              <!-- ── Overlay Allow List ──────────────────────────────── -->
-              <TextBlock Text="Overlay Allow List" FontSize="15" FontWeight="SemiBold" Margin="0,24,0,6"/>
+                  </StackPanel>
+                  <!-- section 14: Overlay Allow List -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=14}">
+                    <TextBlock Text="Overlay Allow List" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
 Apps listed here stay visually above EveDeck's corner-overlay tiles/labels even while an EVE client has focus -- useful if you keep a voice chat, intel, or fitting tool window positioned over the game. Matched by process name (case-insensitive, partial match, no ".exe") -- e.g. "discord" matches Discord.exe.
               </TextBlock>
@@ -1917,9 +1992,11 @@ Apps listed here stay visually above EveDeck's corner-overlay tiles/labels even 
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
               <Button Content="+ Add App" Command="{Binding AddOverlayAllowedAppCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
-
-            </StackPanel>
-          </ScrollViewer>
+                  </StackPanel>
+                </Grid>
+              </ScrollViewer>
+            </Grid>
+          </Grid>
         </TabItem>
 
         <!-- ──────────────────── MONITORS TAB ──────────────────── -->
@@ -2061,7 +2138,7 @@ Apps listed here stay visually above EveDeck's corner-overlay tiles/labels even 
           <TabItem.Header>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="13" Margin="0,0,7,0" VerticalAlignment="Center"/>
-              <TextBlock Text="Planets" VerticalAlignment="Center"/>
+              <TextBlock Text="Planetary Industry" VerticalAlignment="Center"/>
             </StackPanel>
           </TabItem.Header>
           <Grid Margin="12">
@@ -2374,6 +2451,7 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
               <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- Folder selector row -->
@@ -2533,8 +2611,13 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
               </Grid>
             </Grid>
 
+            <!-- Overwrite warning -->
+            <TextBlock Grid.Row="2" Margin="0,10,0,0" TextWrapping="Wrap" FontSize="11"
+                       Foreground="{StaticResource WarningBrush}"
+                       Text="Warning: this overwrites the target characters' existing EVE UI settings. It does not touch EveDeck's own settings backups."/>
+
             <!-- Status + Copy button -->
-            <Grid Grid.Row="2" Margin="0,10,0,0">
+            <Grid Grid.Row="3" Margin="0,10,0,0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -2551,7 +2634,7 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
         </TabItem>
 
         <!-- ──────────────────── ABOUT TAB ──────────────────── -->
-        <TabItem>
+        <TabItem x:Name="AboutTabItem">
           <TabItem.Header>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="&#xE946;" FontFamily="Segoe MDL2 Assets" FontSize="13" Margin="0,0,7,0" VerticalAlignment="Center"/>

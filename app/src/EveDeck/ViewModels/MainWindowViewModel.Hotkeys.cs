@@ -23,6 +23,8 @@ public sealed partial class MainWindowViewModel
                 && !actionId.StartsWith("FocusSlot", StringComparison.OrdinalIgnoreCase)
                 && !actionId.StartsWith("FocusDirection", StringComparison.OrdinalIgnoreCase)
                 && !actionId.StartsWith("SwitchToCharacter", StringComparison.OrdinalIgnoreCase)
+                && !actionId.Equals("FocusPreviousApp", StringComparison.OrdinalIgnoreCase) // jumps OUT of EVE — must fire while EVE is focused
+                && !actionId.Equals("ToggleHotkeysSuspended", StringComparison.OrdinalIgnoreCase) // panic pause must work from anywhere
                 && !actionId.Equals("MinimizeAllClients", StringComparison.OrdinalIgnoreCase)) // boss key must work from anywhere
             {
                 var fg = _windowService.GetForegroundWindowHandle();
@@ -36,6 +38,12 @@ public sealed partial class MainWindowViewModel
             }
             else if (actionId.Equals("CycleNext", StringComparison.OrdinalIgnoreCase)) Cycle(1);
             else if (actionId.Equals("CyclePrevious", StringComparison.OrdinalIgnoreCase)) Cycle(-1);
+            else if (actionId.StartsWith("CycleGroupNext", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(actionId["CycleGroupNext".Length..], out var cgNext)) CycleGroup(cgNext, 1);
+            else if (actionId.StartsWith("CycleGroupPrevious", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(actionId["CycleGroupPrevious".Length..], out var cgPrev)) CycleGroup(cgPrev, -1);
+            else if (actionId.Equals("FocusPreviousApp", StringComparison.OrdinalIgnoreCase)) FocusPreviousApp();
+            else if (actionId.Equals("ToggleHotkeysSuspended", StringComparison.OrdinalIgnoreCase)) HotkeysSuspended = !HotkeysSuspended;
             else if (actionId.Equals("ApplyLayout", StringComparison.OrdinalIgnoreCase)) ApplyActiveProfile();
             else if (actionId.Equals("ToggleBorderless", StringComparison.OrdinalIgnoreCase)) ToggleActiveBorderless();
             else if (actionId.Equals("RestoreActiveStyle", StringComparison.OrdinalIgnoreCase)) RestoreActiveStyle();
@@ -275,6 +283,43 @@ public sealed partial class MainWindowViewModel
         var next = current < 0 ? 0 : (current + direction + assignedWindows.Count) % assignedWindows.Count;
         _windowService.FocusWindow(assignedWindows[next].Handle);
         Log.Info($"Cycled focus to {assignedWindows[next].Title}.");
+    }
+
+    // Cycle focus through only the seats in swap group `groupIndex` (1-based) of the active profile.
+    // A profile with no explicit groups has a single synthesised group (the whole roster), so group 1
+    // always works. Only live windows participate, so offline seats are skipped automatically.
+    private void CycleGroup(int groupIndex, int direction)
+    {
+        var groups = EffectiveGroups();
+        if (groupIndex < 1 || groupIndex > groups.Count) { Log.Warn($"No swap group {groupIndex} in the active profile."); return; }
+        var group = groups[groupIndex - 1];
+        var seatNums = group.SlotNumbers.Count == 0 ? Assignments.Select(a => a.SlotNumber) : group.SlotNumbers;
+        var windows = seatNums.Select(Seat).Where(a => a is not null)
+            .SelectMany(a => FindAssignedWindows(a!)).ToList();
+        if (windows.Count == 0) { Log.Warn($"Group {groupIndex} has no running windows to cycle."); return; }
+
+        var activeHandle = _windowService.GetForegroundWindowHandle();
+        var current = windows.FindIndex(w => w.Handle == activeHandle);
+        var next = current < 0 ? 0 : (current + direction + windows.Count) % windows.Count;
+        _windowService.FocusWindow(windows[next].Handle);
+        Log.Info($"Cycled group {groupIndex} focus to {windows[next].Title}.");
+    }
+
+    // Last foreground window that was neither an EVE client nor EveDeck itself (e.g. a browser or
+    // spreadsheet), so FocusPreviousApp can jump straight back out. Updated from the foreground hook.
+    private nint _lastExternalForeground;
+    public void RecordExternalForeground(nint hwnd, nint ownHwnd)
+    {
+        if (hwnd == 0 || hwnd == ownHwnd) return;
+        if (Windows.Any(w => w.Handle == hwnd)) return; // an EVE client — not "external"
+        _lastExternalForeground = hwnd;
+    }
+
+    private void FocusPreviousApp()
+    {
+        if (_lastExternalForeground == 0) { Log.Warn("No previous non-EVE window has been recorded yet."); return; }
+        try { _windowService.FocusWindow(_lastExternalForeground); Log.Info("Focused the last non-EVE window."); }
+        catch { /* best-effort focus; the window may have closed */ }
     }
 
     // Resolve the slot at the given grid-direction and bring it to the centre (overlay mode) or

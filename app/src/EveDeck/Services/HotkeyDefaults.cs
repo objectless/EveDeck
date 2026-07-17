@@ -86,6 +86,23 @@ public static class HotkeyDefaults
         for (var i = 1; i <= 4; i++)
             bindings.Add(new HotkeyBinding { ActionId = $"SwitchCharacterSet{i}", DisplayName = $"Switch to character set {i}", Modifiers = 0, VirtualKey = 0, GestureText = "" });
 
+        // Per-group focus cycling: cycle forward/back through only the seats in swap group N of the
+        // active profile (group 1 = the whole roster when the profile has no explicit groups). Window
+        // focus only -- ships unbound.
+        for (var i = 1; i <= 4; i++)
+        {
+            bindings.Add(new HotkeyBinding { ActionId = $"CycleGroupNext{i}", DisplayName = $"Cycle group {i} forward", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+            bindings.Add(new HotkeyBinding { ActionId = $"CycleGroupPrevious{i}", DisplayName = $"Cycle group {i} backward", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+        }
+
+        // Jump focus back to the last non-EVE window you were using (e.g. a browser/spreadsheet) --
+        // pure window focus, ships unbound.
+        bindings.Add(new HotkeyBinding { ActionId = "FocusPreviousApp", DisplayName = "Focus last non-EVE window", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+
+        // Panic pause: suspend/resume every EveDeck hotkey at once (this toggle keeps working while
+        // suspended). Ships unbound.
+        bindings.Add(new HotkeyBinding { ActionId = "ToggleHotkeysSuspended", DisplayName = "Suspend / resume all hotkeys", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+
         return bindings;
     }
 }

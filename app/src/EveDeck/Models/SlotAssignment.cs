@@ -240,6 +240,16 @@ public sealed class SlotAssignment : ObservableObject
         set => SetProperty(ref _neverMinimize, value);
     }
 
+    // When set, activating this seat (tile click, hotkey, protocol) just brings its window to the
+    // foreground in place instead of swapping it into the master/centre region. Also suppresses the
+    // hover-peek master swap for this seat. Mirrors ISBoxer's per-slot "swap to main: Never".
+    private bool _focusOnlyNoSwap;
+    public bool FocusOnlyNoSwap
+    {
+        get => _focusOnlyNoSwap;
+        set => SetProperty(ref _focusOnlyNoSwap, value);
+    }
+
     // Legacy migration fields — kept for backward-compat JSON reading; null after first migration save.
     public string? AssignedWindowTitle { get; set; }
     public int? LastProcessId { get; set; }

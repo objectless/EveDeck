@@ -63,6 +63,13 @@ public sealed partial class MainWindowViewModel
 
     private void OnGameEventMatched(GameEventRule rule, string character, string line)
     {
+        // "Being shot" gating: EVE logs both your outgoing fire and the damage you take as (combat)
+        // lines. Only incoming ones ("... from <attacker> ...") mean this character is under fire, so
+        // a combat line that isn't incoming damage raises no alert at all -- otherwise every shot you
+        // fire would flash your own tiles.
+        if (line.IndexOf("(combat)", StringComparison.OrdinalIgnoreCase) >= 0 && !IsIncomingDamage(line))
+            return;
+
         var seat = FindSeatByCharacter(character);
 
         if (rule.SuppressWhenFocused && seat is not null)
@@ -94,6 +101,14 @@ public sealed partial class MainWindowViewModel
             ShowToast(rule.Name, character.Length > 0 ? character : "", "#F59E0B");
         }
     }
+
+    // EVE combat lines read "<amount> from <attacker> - ..." for damage taken and "<amount> to
+    // <target> - ..." for damage dealt. Given the line is already known to be a (combat) line, the
+    // "from" direction word (word-bounded, tolerant of EVE's colour/font tags around it) reliably
+    // marks incoming damage.
+    private static bool IsIncomingDamage(string line)
+        => System.Text.RegularExpressions.Regex.IsMatch(
+            line, @"\bfrom\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     // Seat currently running the given character: live window title first (RunningCharacterName),
     // then the seat's configured main-character Label as a fallback for logged-off clients.

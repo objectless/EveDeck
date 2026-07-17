@@ -1487,6 +1487,23 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    // Panic pause for every EveDeck hotkey. Runtime-only (deliberately NOT persisted -- a tool that
+    // silently stayed "hotkeys off" across a restart would read as broken). Flipping it re-runs
+    // registration; the ToggleHotkeysSuspended action itself stays live so it can turn them back on.
+    private bool _hotkeysSuspended;
+    public bool HotkeysSuspended
+    {
+        get => _hotkeysSuspended;
+        set
+        {
+            if (_hotkeysSuspended == value) return;
+            _hotkeysSuspended = value;
+            OnPropertyChanged();
+            Log.Info(value ? "All hotkeys suspended." : "Hotkeys resumed.");
+            HotkeysChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     public bool ThrottleBackgroundProcesses
     {
         get => _settings.ThrottleBackgroundProcesses;
@@ -1799,7 +1816,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var profile = SelectedProfile;
         if (profile is null || profile.Slots.Count == 0)
         {
-            foreach (var a in Assignments) a.PositionCode = a.SlotNumber.ToString();
+            foreach (var a in Assignments) a.PositionCode = CircledNumeral(a.SlotNumber);
             return;
         }
 
@@ -1829,19 +1846,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
             foreach (var a in Assignments)
             {
                 if (centeredSeats.Contains(a.SlotNumber))
-                    a.PositionCode = "Master";
+                    a.PositionCode = "★";
                 else if (seatToPosition.TryGetValue(a.SlotNumber, out var pos)
                          && codes.TryGetValue(pos, out var posCode))
                     a.PositionCode = posCode;
                 else
-                    a.PositionCode = a.SlotNumber.ToString();
+                    a.PositionCode = CircledNumeral(a.SlotNumber);
             }
             return;
         }
 
         // Flat / no-overlay: seat numbers double as position keys (identity home arrangement).
         foreach (var a in Assignments)
-            a.PositionCode = codes.TryGetValue(a.SlotNumber, out var code) ? code : a.SlotNumber.ToString();
+            a.PositionCode = codes.TryGetValue(a.SlotNumber, out var code) ? code : CircledNumeral(a.SlotNumber);
     }
 
     // Map a slot to a directional arrow symbol from its centre within the layout bounds.
@@ -1853,17 +1870,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var col = normX < 1.0 / 3 ? "L" : normX < 2.0 / 3 ? "C" : "R";
         var row = normY < 1.0 / 3 ? "T" : normY < 2.0 / 3 ? "M" : "B";
 
+        // Corners get bracket glyphs that echo the physical screen corner; edges get heavy arrows
+        // pointing at the window; the geometric centre gets the Master star. Kept as single glyphs so
+        // they render crisp in the 26px pills / slot cards without a custom font.
         return (row, col) switch
         {
-            ("T", "L") => "↖",
-            ("T", "C") => "↑",
-            ("T", "R") => "↗",
-            ("M", "L") => "←",
-            ("M", "C") => "⊕",
-            ("M", "R") => "→",
-            ("B", "L") => "↙",
-            ("B", "C") => "↓",
-            ("B", "R") => "↘",
+            ("T", "L") => "⌜",
+            ("T", "C") => "▲",
+            ("T", "R") => "⌝",
+            ("M", "L") => "◀",
+            ("M", "C") => "★",
+            ("M", "R") => "▶",
+            ("B", "L") => "⌞",
+            ("B", "C") => "▼",
+            ("B", "R") => "⌟",
             _ => row + col,
         };
     }

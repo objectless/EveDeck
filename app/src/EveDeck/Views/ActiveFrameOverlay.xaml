@@ -10,12 +10,14 @@
         Left="-10000" Top="-10000"
         Width="100" Height="100">
   <Grid>
-    <!-- Feathered frame: a stroked rectangle centred on the window edge, softened
-         with a blur so it reads as a glow that fades inward rather than a hard line. -->
-    <Rectangle x:Name="FrameRect" Fill="Transparent" StrokeThickness="8">
-      <Rectangle.Effect>
+    <!-- Corner brackets: four L-shapes marking the client rect's corners instead of a full
+         perimeter, softened with a blur so they read as a glow. Geometry is built in ApplyFrame
+         from the target size (the arms scale with the window). -->
+    <Path x:Name="FrameBrackets" Fill="Transparent"
+          StrokeThickness="8" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+      <Path.Effect>
         <BlurEffect x:Name="FrameBlur" Radius="6" KernelType="Gaussian"/>
-      </Rectangle.Effect>
-    </Rectangle>
+      </Path.Effect>
+    </Path>
   </Grid>
 </Window>

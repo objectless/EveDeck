@@ -19,8 +19,15 @@ settings.local.json
 
 # Local agent tooling and machine-specific credentials — never commit
 .claude/
+.frugal-fable/
+.vscode/
+.env.example
 deploy.local.env
 CLAUDE.local.md
 CLAUDE.md
 AGENTS.md
 site/
+
+# Stray working copies of the logo dropped in the repo root — the canonical
+# app icon/logo assets live under app/src/EveDeck.
+/ChatGPT Image *.png

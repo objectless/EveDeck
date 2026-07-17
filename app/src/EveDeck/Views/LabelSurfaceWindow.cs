@@ -121,9 +121,10 @@ internal sealed class LabelSurfaceWindow : Window
         pill.Place(physRect.X - _physX, physRect.Y - _physY, physRect.Width, physRect.Height);
     }
 
-    public void SetPillContent(int key, string text, CharacterPortrait? portrait)
+    public void SetPillContent(int key, string text, CharacterPortrait? portrait,
+                               string? systemName = null, string? systemColorHex = null)
     {
-        if (_pills.TryGetValue(key, out var pill)) pill.SetContent(text, portrait);
+        if (_pills.TryGetValue(key, out var pill)) pill.SetContent(text, portrait, systemName, systemColorHex);
     }
 
     // Each PillElement subscribes to its shared, permanently-cached CharacterPortrait's
@@ -150,7 +151,7 @@ internal sealed class LabelSurfaceWindow : Window
     // character right now" alerts (combat) -- separate from pills, keyed the same way (position id,
     // same as _cornerRects/OccupantAtPosition), drawn on this same always-above-tiles surface so it
     // is guaranteed to render over the preview thumbnail underneath.
-    public void SetAlertGlow(int key, WindowRect physRect, string colorHex)
+    public void SetAlertGlow(int key, WindowRect physRect, string colorHex, bool steady)
     {
         if (!_glows.TryGetValue(key, out var glow))
         {
@@ -159,7 +160,7 @@ internal sealed class LabelSurfaceWindow : Window
             _canvas.Children.Add(glow.Container);
         }
         glow.Place(physRect.X - _physX, physRect.Y - _physY, physRect.Width, physRect.Height, _dpiScale);
-        glow.Pulse(colorHex);
+        glow.Pulse(colorHex, steady);
     }
 
     public void ClearAlertGlow(int key)
@@ -332,9 +333,31 @@ internal sealed class LabelSurfaceWindow : Window
         // Label plus an optional rounded character portrait (empty text hides the whole label). The
         // portrait is the seat's shared, cache-backed CharacterPortrait (see SlotAssignment.RunningPortrait) --
         // whoever is actually logged into the seat right now, not necessarily its configured main.
-        public void SetContent(string label, CharacterPortrait? portrait)
+        public void SetContent(string label, CharacterPortrait? portrait,
+                               string? systemName = null, string? systemColorHex = null)
         {
-            _text.Text = label;
+            // Build the main text as inlines so the trailing " . <system>" segment can carry its own
+            // colour (deterministic per system) while the name keeps the pill's normal foreground.
+            _text.Inlines.Clear();
+            if (!string.IsNullOrEmpty(label))
+            {
+                var suffix = !string.IsNullOrEmpty(systemName) && !string.IsNullOrEmpty(systemColorHex)
+                    ? " · " + systemName
+                    : null;
+                if (suffix is not null && label.EndsWith(suffix, StringComparison.Ordinal))
+                {
+                    var main = label[..^suffix.Length];
+                    if (main.Length > 0) _text.Inlines.Add(new System.Windows.Documents.Run(main));
+                    _text.Inlines.Add(new System.Windows.Documents.Run(suffix)
+                    {
+                        Foreground = BrushFromHex(systemColorHex!, Color.FromRgb(0x9C, 0xA3, 0xAF))
+                    });
+                }
+                else
+                {
+                    _text.Inlines.Add(new System.Windows.Documents.Run(label));
+                }
+            }
             foreach (var copy in _outlineCopies) copy.Text = label;
             Container.Visibility = string.IsNullOrWhiteSpace(label) ? Visibility.Collapsed : Visibility.Visible;
 
@@ -407,33 +430,73 @@ internal sealed class LabelSurfaceWindow : Window
 
     private sealed class AlertGlowElement
     {
-        public readonly Border Container = new()
+        private readonly System.Windows.Media.Effects.DropShadowEffect _bloom = new()
         {
-            BorderThickness = new Thickness(5),
-            CornerRadius = new CornerRadius(4),
+            ShadowDepth = 0,
+            BlurRadius = 18,
+            Opacity = 0.9,
+        };
+
+        private readonly System.Windows.Shapes.Path _brackets = new()
+        {
+            Fill = null,
+            StrokeThickness = 5,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
             IsHitTestVisible = false,
         };
 
+        public readonly Canvas Container = new() { IsHitTestVisible = false };
+
+        public AlertGlowElement()
+        {
+            _brackets.Effect = _bloom;
+            Container.Children.Add(_brackets);
+        }
+
         public void Place(double relPhysX, double relPhysY, double physWidth, double physHeight, double dpiScale)
         {
-            Container.Width = physWidth / dpiScale;
-            Container.Height = physHeight / dpiScale;
+            var w = physWidth / dpiScale;
+            var h = physHeight / dpiScale;
+            Container.Width = w;
+            Container.Height = h;
             Canvas.SetLeft(Container, relPhysX / dpiScale);
             Canvas.SetTop(Container, relPhysY / dpiScale);
+            var arm = Math.Clamp(Math.Min(w, h) * 0.18, 12.0, 48.0);
+            _brackets.Data = EveDeck.Utilities.OverlayGeometry.CornerBrackets(0, 0, w, h, arm);
         }
 
-        public void Pulse(string colorHex)
+        // steady = a calm constant highlight instead of a blink. Used in Abyss Mode, where the master
+        // and up to two more characters can be under continuous, expected fire at once -- strobing all
+        // of them would be obnoxious, so there the brackets just hold lit.
+        public void Pulse(string colorHex, bool steady)
         {
-            Container.BorderBrush = new SolidColorBrush(BrushColor(colorHex));
-            var animation = new DoubleAnimation(0.35, 1.0, TimeSpan.FromSeconds(0.5))
+            var color = BrushColor(colorHex);
+            _brackets.Stroke = new SolidColorBrush(color);
+            _bloom.Color = color;
+
+            if (steady)
             {
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever,
-            };
-            Container.BeginAnimation(UIElement.OpacityProperty, animation);
+                _brackets.BeginAnimation(UIElement.OpacityProperty, null);
+                _bloom.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.BlurRadiusProperty, null);
+                _brackets.Opacity = 0.85;
+                _bloom.BlurRadius = 16;
+                return;
+            }
+
+            // Gentle blink: a soft opacity breathe (never fully off) plus a small blur pulse, slow
+            // enough to read as "under fire" without strobing.
+            _brackets.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0.55, 1.0, TimeSpan.FromSeconds(0.6)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+            _bloom.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.BlurRadiusProperty,
+                new DoubleAnimation(12, 26, TimeSpan.FromSeconds(0.6)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
         }
 
-        public void Stop() => Container.BeginAnimation(UIElement.OpacityProperty, null);
+        public void Stop()
+        {
+            _brackets.BeginAnimation(UIElement.OpacityProperty, null);
+            _bloom.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.BlurRadiusProperty, null);
+        }
 
         private static Color BrushColor(string hex)
         {

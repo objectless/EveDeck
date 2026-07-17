@@ -286,16 +286,29 @@ public sealed partial class MainWindowViewModel
     // 1d — PID-based fallback before broad substring match.
     private EveWindowInfo? FindWindowByEntry(SlotWindowEntry entry)
     {
-        var exact = Windows.FirstOrDefault(w => w.Title.Equals(entry.Title, StringComparison.OrdinalIgnoreCase));
-        if (exact is not null) return exact;
-
-        if (entry.LastProcessId.HasValue && entry.LastProcessId.Value > 0)
+        // Stickiness first: if we already resolved this entry to a specific live window and that
+        // exact window still exists AND still matches the entry's identity, keep it. A window's
+        // handle is stable for its whole lifetime, so pinning to it stops the binding from bouncing
+        // to a same-titled sibling client when EnumWindows reorders (it returns windows in Z-order,
+        // which reshuffles on every focus change). That bounce was re-pointing corner-tile sources
+        // and causing the previews to "randomly refresh."
+        if (entry.ResolvedHandle != 0)
         {
-            var byPid = Windows.FirstOrDefault(w => w.ProcessId == entry.LastProcessId.Value);
-            if (byPid is not null) return byPid;
+            var sticky = Windows.FirstOrDefault(w => w.Handle == entry.ResolvedHandle);
+            if (sticky is not null &&
+                (sticky.Title.Equals(entry.Title, StringComparison.OrdinalIgnoreCase)
+                 || (entry.LastProcessId is > 0 && sticky.ProcessId == entry.LastProcessId.Value)
+                 || sticky.Title.Contains(entry.Title, StringComparison.OrdinalIgnoreCase)))
+                return sticky;
         }
 
-        return Windows.FirstOrDefault(w => w.Title.Contains(entry.Title, StringComparison.OrdinalIgnoreCase));
+        var match =
+            Windows.FirstOrDefault(w => w.Title.Equals(entry.Title, StringComparison.OrdinalIgnoreCase))
+            ?? (entry.LastProcessId is > 0 ? Windows.FirstOrDefault(w => w.ProcessId == entry.LastProcessId.Value) : null)
+            ?? Windows.FirstOrDefault(w => w.Title.Contains(entry.Title, StringComparison.OrdinalIgnoreCase));
+
+        entry.ResolvedHandle = match?.Handle ?? 0;
+        return match;
     }
 
     private EveWindowInfo? FindWindowByTitle(string title)

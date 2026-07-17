@@ -38,12 +38,14 @@ public sealed class HotkeyService : IDisposable
     // another app, so they're always registered even when EVE-focus gating is on.
     private static bool IsAlwaysOn(HotkeyBinding b) =>
         b.ActionId.StartsWith("FocusSlot", StringComparison.OrdinalIgnoreCase)
-        || b.ActionId.StartsWith("SwitchToCharacter", StringComparison.OrdinalIgnoreCase);
+        || b.ActionId.StartsWith("SwitchToCharacter", StringComparison.OrdinalIgnoreCase)
+        // The suspend/resume toggle must fire from anywhere so it can un-suspend the rest.
+        || b.ActionId.Equals("ToggleHotkeysSuspended", StringComparison.OrdinalIgnoreCase);
 
     // Returns the display text for every binding that could not be registered (empty if all succeeded)
     // so the caller can surface the full set to the user, not just the first conflict.
     public IReadOnlyList<string> RegisterAll(nint windowHandle, IEnumerable<HotkeyBinding> bindings, LogService log,
-        bool requireEveFocus, Func<bool> isEveForeground)
+        bool requireEveFocus, Func<bool> isEveForeground, bool suspended = false)
     {
         UnregisterAll(log);
         _windowHandle = windowHandle;
@@ -57,6 +59,10 @@ public sealed class HotkeyService : IDisposable
         var seenGestures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var binding in bindings.Where(b => b.Enabled && b.VirtualKey != 0))
         {
+            // While suspended, only the suspend/resume toggle stays registered so the user can
+            // turn hotkeys back on; everything else is skipped entirely.
+            if (suspended && !binding.ActionId.Equals("ToggleHotkeysSuspended", StringComparison.OrdinalIgnoreCase))
+                continue;
             try
             {
                 SafetyGuard.ThrowIfInputBroadcastAction(binding.ActionId);

@@ -40,6 +40,7 @@ public partial class MainWindow : Window
         _hotkeyService.HotkeyPressed += (_, binding) => _viewModel.HandleHotkey(binding.ActionId);
         _hotkeyService.ForegroundChanged += (_, hwnd) =>
         {
+            _viewModel.RecordExternalForeground(hwnd, new WindowInteropHelper(this).Handle);
             _viewModel.ApplyProcessPriorities(hwnd);
             _viewModel.AutoMinimizeInactive(hwnd);
             _viewModel.RefreshTopmostForForeground(hwnd);
@@ -323,7 +324,7 @@ public partial class MainWindow : Window
     {
         var handle = new WindowInteropHelper(this).Handle;
         var failures = _hotkeyService.RegisterAll(handle, _viewModel.Hotkeys, _viewModel.Log,
-            _viewModel.RequireEveFocusForHotkeys, _viewModel.IsEveWindowForeground);
+            _viewModel.RequireEveFocusForHotkeys, _viewModel.IsEveWindowForeground, _viewModel.HotkeysSuspended);
         _viewModel.SetHotkeyConflicts(failures);
     }
 
@@ -496,6 +497,9 @@ public partial class MainWindow : Window
         _viewModel.AssignWindowToSlotCommand.Execute(assignment);
         e.Handled = true;
     }
+
+    private void HelpButton_Click(object sender, RoutedEventArgs e)
+        => MainTabControl.SelectedItem = AboutTabItem;
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)
         => WindowState = WindowState.Minimized;
