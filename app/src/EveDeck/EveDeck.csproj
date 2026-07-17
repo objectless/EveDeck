@@ -35,6 +35,7 @@
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.WinUI.Notifications" Version="7.1.2" />
     <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
   <ItemGroup>
@@ -53,9 +54,18 @@
     <!-- Native Mumble plugin (built out-of-band from src\MumblePlugin via MSVC; see its
          EveDeckMumblePlugin.cpp header comment). Shipped next to the exe so the Comms tab's
          "Install plugin into Mumble" button can copy it into %APPDATA%\Mumble\Plugins. -->
-    <Content Include="..\MumblePlugin\bin\EveDeckMumblePlugin.dll"
-             Link="MumblePlugin\EveDeckMumblePlugin.dll"
-             Condition="Exists('..\MumblePlugin\bin\EveDeckMumblePlugin.dll')">
+    <Content Include="..\MumblePlugin\bin\EveDeckMumblePlugin.dll" Link="MumblePlugin\EveDeckMumblePlugin.dll" Condition="Exists('..\MumblePlugin\bin\EveDeckMumblePlugin.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- Bundled snapshots of the ESI-crawled system-jump graph and ship-type dictionary (see
+         SystemJumpGraphService/ShipTypeDictionaryService), refreshed manually whenever a new
+         expansion adds systems/ships. Lets the Intel Alerts feature work out of the box instead of
+         every user waiting through their own ~2-minute first-run ESI crawl; "Build system map" in
+         Options still does a live re-crawl for anyone who wants current data sooner. -->
+    <Content Include="Assets\SeedData\system-jump-graph.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\SeedData\ship-type-names.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

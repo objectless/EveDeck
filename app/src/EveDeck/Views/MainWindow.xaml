@@ -1511,6 +1511,8 @@ Both AMD and Nvidia let you set a virtual resolution higher than your panel's na
                   <ListBoxItem Content="Chat Alerts"/>
                   <ListBoxItem Content="Game Event Alerts"/>
                   <ListBoxItem Content="Overlay Allow List"/>
+                  <ListBoxItem Content="Intel Alerts"/>
+                  <ListBoxItem Content="Notifications"/>
                 </ListBox>
               </Border>
 
@@ -1963,6 +1965,70 @@ Apps listed here stay visually above EveDeck's corner-overlay tiles/labels even 
               </ItemsControl>
               <Button Content="+ Add App" Command="{Binding AddOverlayAllowedAppCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
                   </StackPanel>
+
+                  <!-- section 15: Intel Alerts -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=15}">
+                    <TextBlock Text="Intel Jump-Distance Alert" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10" MaxWidth="640">
+Watches a chatlog channel you designate as "intel" for solar system names, and raises a toast + sound
+when a mentioned system is within the given number of jumps of any of your currently tracked
+characters -- also recognizes ship names and common faction abbreviations (e.g. "CFI") alongside a
+pilot name, and picks up "no visual"/"clear" callouts. Ships with a built-in system map and ship
+dictionary, so this works immediately; "Build system map" below re-crawls ESI's public data for
+current systems/ships (only needed after a new expansion, or if you want the latest right away).
+                    </TextBlock>
+                    <CheckBox Content="Enabled" IsChecked="{Binding IntelJumpAlertEnabled, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                      <TextBlock Text="Intel channel" VerticalAlignment="Center" Width="110" Foreground="{StaticResource MutedBrush}"/>
+                      <TextBox Text="{Binding IntelChannelName, UpdateSourceTrigger=PropertyChanged}"
+                               Width="220" Padding="6,4" FontSize="12"
+                               ToolTip="Substring match against the chatlog channel name, e.g. &quot;Intel-Delve&quot;"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                      <TextBlock Text="Alert within" VerticalAlignment="Center" Width="110" Foreground="{StaticResource MutedBrush}"/>
+                      <TextBox Text="{Binding IntelJumpAlertMaxJumps, UpdateSourceTrigger=PropertyChanged}"
+                               Width="50" Padding="6,4" FontSize="12"/>
+                      <TextBlock Text="jumps" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{StaticResource MutedBrush}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                      <Button Content="Build system map" Command="{Binding BuildIntelMapCommand}" Padding="10,4"
+                              ToolTip="Re-crawls ESI for the current system map and ship dictionary. Not required for normal use -- EveDeck ships with a recent snapshot already built in."/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding IntelMapStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap" MaxWidth="500"/>
+                  </StackPanel>
+
+                  <!-- section 16: Notifications -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=16}">
+                    <TextBlock Text="Notifications" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,14" MaxWidth="640">
+Controls where EveDeck's own toast popups appear on screen, and whether they're also mirrored into
+Windows' own Notification Center (click the system clock) so they're still reviewable after the
+popup itself has faded.
+                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                      <TextBlock Text="Popup position" VerticalAlignment="Center" Width="110" Foreground="{StaticResource MutedBrush}"/>
+                      <ComboBox Width="220" SelectedValuePath="Tag" FontSize="12"
+                                SelectedValue="{Binding ToastPosition}">
+                        <ComboBoxItem Tag="TopLeft" Content="Top left"/>
+                        <ComboBoxItem Tag="TopCenter" Content="Top center"/>
+                        <ComboBoxItem Tag="TopRight" Content="Top right"/>
+                        <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
+                        <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
+                        <ComboBoxItem Tag="BottomRight" Content="Bottom right (above system clock)"/>
+                      </ComboBox>
+                    </StackPanel>
+                    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10" MaxWidth="500">
+Takes effect the next time a toast is shown (or after restarting EveDeck).
+                    </TextBlock>
+                    <CheckBox Content="Mirror alerts into the Windows Notification Center" FontSize="12"
+                              IsChecked="{Binding NativeNotificationCenterEnabled, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" MaxWidth="500">
+Silently sends a copy of every alert to Windows itself (no second popup -- EveDeck's own toast stays
+the only visible one), so your alert history is still there from the system clock's flyout even
+after the popup has disappeared. Depends on Windows notifications being allowed for EveDeck in
+Settings &gt; System &gt; Notifications.
+                    </TextBlock>
+                  </StackPanel>
                 </Grid>
               </ScrollViewer>
             </Grid>
@@ -2060,6 +2126,7 @@ Apps listed here stay visually above EveDeck's corner-overlay tiles/labels even 
               <TextBlock Text="Comms" VerticalAlignment="Center"/>
             </StackPanel>
           </TabItem.Header>
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="12">
             <TextBlock Text="Comms Overlay" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,4"/>
             <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,16" MaxWidth="640">
@@ -2100,7 +2167,55 @@ Apps listed here stay visually above EveDeck's corner-overlay tiles/labels even 
                 <TextBlock Text="{Binding MumblePluginInstallStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
+
+            <!-- Jabber ping bridge: reads Pidgin's own HTML conversation logs, no login of its own. -->
+            <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="14" MaxWidth="480" Margin="0,12,0,0">
+              <StackPanel>
+                <DockPanel>
+                  <CheckBox DockPanel.Dock="Right" Content="Enabled" IsChecked="{Binding JabberPingEnabled, UpdateSourceTrigger=PropertyChanged}"/>
+                  <TextBlock Text="Jabber Ping Bridge" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                </DockPanel>
+                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0">
+                  Turns new messages in a Pidgin conversation into a toast + sound -- reads Pidgin's own
+                  saved log files, the same way EveDeck already reads EVE's chat/game logs. No separate
+                  login and EveDeck never joins the conversation as its own participant. Requires logging
+                  enabled in Pidgin itself (Tools &gt; Preferences &gt; Logging) for the conversation you
+                  pick below.
+                </TextBlock>
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                  <TextBlock Text="Conversation" VerticalAlignment="Center" Width="90" Foreground="{StaticResource MutedBrush}"/>
+                  <TextBox Text="{Binding JabberPingConversationName, UpdateSourceTrigger=PropertyChanged}"
+                           Width="220" Padding="6,4" FontSize="12"
+                           ToolTip="Substring match against the Pidgin log folder name, e.g. &quot;directorbot&quot; or &quot;beehive&quot;"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                  <TextBlock Text="Must contain" VerticalAlignment="Center" Width="90" Foreground="{StaticResource MutedBrush}"/>
+                  <TextBox Text="{Binding JabberPingRequiredPhrase, UpdateSourceTrigger=PropertyChanged}"
+                           Width="220" Padding="6,4" FontSize="12"
+                           ToolTip="Optional. Only alert when the message contains this text -- leave blank to alert on every message in the conversation."/>
+                </StackPanel>
+                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
+                  Leave "Must contain" blank to alert on every message. If the same bot also sends you
+                  non-ping status updates in this conversation, a phrase unique to real pings (e.g. part
+                  of your ping tool's own broadcast signature) filters those out.
+                </TextBlock>
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                  <TextBlock Text="Mumble server" VerticalAlignment="Center" Width="90" Foreground="{StaticResource MutedBrush}"/>
+                  <TextBox Text="{Binding MumbleServerHost, UpdateSourceTrigger=PropertyChanged}"
+                           Width="220" Padding="6,4" FontSize="12"
+                           ToolTip="Your corp/alliance Mumble server address, e.g. mumble.example.com"/>
+                </StackPanel>
+                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
+                  When a ping's body includes a "Comms:" field and a server is set here, the toast adds
+                  a click-to-join Mumble link for that channel. Leave blank to skip this -- pings still
+                  alert normally either way.
+                </TextBlock>
+                <TextBlock Text="{Binding JabberBridgeStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
           </StackPanel>
+          </ScrollViewer>
         </TabItem>
 
         <!-- ──────────────────── PLANETS TAB ──────────────────── -->

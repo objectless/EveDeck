@@ -26,6 +26,12 @@ internal readonly record struct ToastLine(string Primary, string? Secondary);
 // once as a header instead of being repeated at the front of every row.
 internal readonly record struct ToastGroup(string Header, IReadOnlyList<ToastLine> Lines);
 
+// Corner/edge the toast stack anchors to, parsed from AppSettings.ToastPosition. Bottom* anchors the
+// stack's BOTTOM edge and grows upward as cards stack up (newest nearest the anchored edge, matching
+// Windows' own notification behavior near the system clock); Top* anchors the top edge and grows
+// downward (the original, only, behavior before this setting existed).
+internal enum ToastAnchor { TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, BottomRight }
+
 // One always-on-top window that stacks short-lived Discord-style toast notifications (chat keyword
 // matches, non-combat game events, PI alerts, bundled combat alerts) in the top-right corner of a
 // monitor. Deliberately allowed to render OVER the corner-overlay preview tiles/master rect: during
@@ -64,18 +70,31 @@ internal sealed class ToastNotificationWindow : Window
     private static readonly Color BodyFg = Color.FromRgb(0xB5, 0xBA, 0xC1);
 
     private readonly StackPanel _stack = new() { VerticalAlignment = VerticalAlignment.Top };
-    private readonly int _physX, _physTop, _physWidth, _physMaxHeight;
+    private readonly int _physX, _physWidth, _physMaxHeight;
+    private readonly int _physTopFixed; // Top* anchors: fixed top edge, stack grows downward
+    private readonly int _physBottomFixed; // Bottom* anchors: fixed bottom edge, stack grows upward
+    private readonly bool _growUpward;
     private readonly double _dpiScale;
     private readonly double _toastWidthDip;
 
-    public ToastNotificationWindow(int monitorPhysX, int monitorPhysY, int monitorPhysWidth, int monitorPhysHeight, double dpiScale)
+    // `monitorWork*` should be the monitor's WORK AREA (excludes the taskbar), not its full bounds --
+    // that's what makes BottomRight land just above the system clock instead of behind the taskbar.
+    public ToastNotificationWindow(int monitorWorkX, int monitorWorkY, int monitorWorkWidth, int monitorWorkHeight, double dpiScale, ToastAnchor anchor)
     {
         _dpiScale = dpiScale;
         _toastWidthDip = ToastWidthPhys / dpiScale;
         _physWidth = ToastWidthPhys;
-        _physMaxHeight = (int)((monitorPhysHeight - MarginPhys * 2) * MaxStackFractionOfMonitor);
-        _physX = monitorPhysX + monitorPhysWidth - ToastWidthPhys - MarginPhys;
-        _physTop = monitorPhysY + MarginPhys;
+        _physMaxHeight = (int)((monitorWorkHeight - MarginPhys * 2) * MaxStackFractionOfMonitor);
+        _growUpward = anchor is ToastAnchor.BottomLeft or ToastAnchor.BottomCenter or ToastAnchor.BottomRight;
+
+        _physX = anchor switch
+        {
+            ToastAnchor.TopLeft or ToastAnchor.BottomLeft => monitorWorkX + MarginPhys,
+            ToastAnchor.TopCenter or ToastAnchor.BottomCenter => monitorWorkX + (monitorWorkWidth - ToastWidthPhys) / 2,
+            _ => monitorWorkX + monitorWorkWidth - ToastWidthPhys - MarginPhys,
+        };
+        _physTopFixed = monitorWorkY + MarginPhys;
+        _physBottomFixed = monitorWorkY + monitorWorkHeight - MarginPhys;
 
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
@@ -90,11 +109,15 @@ internal sealed class ToastNotificationWindow : Window
         TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
 
         Left = _physX / dpiScale;
-        Top = _physTop / dpiScale;
+        Top = TopForHeight(0) / dpiScale;
         Width = _physWidth / dpiScale;
         Height = 0;
         Content = _stack;
     }
+
+    // Top* anchors keep a fixed top edge; Bottom* anchors keep a fixed BOTTOM edge, so the top edge
+    // has to move up as the stack grows taller.
+    private int TopForHeight(int height) => _growUpward ? _physBottomFixed - height : _physTopFixed;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -109,7 +132,17 @@ internal sealed class ToastNotificationWindow : Window
         Win32Native.SetWindowLongPtr(hwnd, Win32Native.GwlExStyleIndex,
             new nint(exStyle | Win32Native.WsExNoActivate | Win32Native.WsExToolWindow));
 
-        UpdateBounds();
+        // Deliberately does NOT call UpdateBounds() here. This fires mid-way through the external
+        // .Show() call (before EnsureToastWindow's caller has added the first card), so calling
+        // UpdateBounds() with zero children would set Visibility=Hidden WHILE WPF's own Show() is
+        // still completing -- a re-entrant assignment that raced .Show()'s own Visibility bookkeeping
+        // badly enough that the SUBSEQUENT Visibility=Visible from the first real AddCard became a
+        // silent no-op (WPF skips the DP callback when the new value already matches its cached one).
+        // Net effect, confirmed live: the very first toast of a session was created with a real HWND
+        // at the right position/size, but IsWindowVisible was false -- invisible, not merely delayed.
+        // The window starts at Height=0 from the constructor either way, so there is nothing useful
+        // for this handler to size/show yet; AddCard's own UpdateBounds() call (after .Show() has
+        // fully returned) is the only place this window's Visibility should ever be touched.
     }
 
     public nint Handle => new WindowInteropHelper(this).Handle;
@@ -151,9 +184,10 @@ internal sealed class ToastNotificationWindow : Window
         _stack.Measure(new System.Windows.Size(_toastWidthDip, double.PositiveInfinity));
         var neededPhys = (int)Math.Ceiling(_stack.DesiredSize.Height * _dpiScale);
         var height = Math.Min(neededPhys, _physMaxHeight);
+        var top = TopForHeight(height);
 
         Height = height / _dpiScale;
-        Win32Native.SetWindowPos(hwnd, 0, _physX, _physTop, _physWidth, height,
+        Win32Native.SetWindowPos(hwnd, 0, _physX, top, _physWidth, height,
             Win32Native.SwpNoActivate | Win32Native.SwpNoZOrder);
         Visibility = Visibility.Visible;
     }
@@ -217,22 +251,149 @@ internal sealed class ToastNotificationWindow : Window
         AddCard(title, body, accentHex, avatar, onClick, VerticalAlignment.Top);
     }
 
+    // Intel-report variant: `title` stays "SYSTEM -- N jumps away" (unchanged from the plain string
+    // overload), but the body leads with an icon row for what the report actually said, when the
+    // intel line had anything past the bare system name to go on. For a Sighting, `primaryDetail`/
+    // `secondaryDetail` are typically a pilot name and the ship they're in (see
+    // IntelSystemTokenizer.ResolvePilotAndShip) -- `secondaryDetail` null means only one of the two
+    // was resolved (or ship-name recognition wasn't available), so `primaryDetail` alone is shown,
+    // identical to this method's original single-detail behavior. `shipIcon`, when given (a resolved
+    // ship whose icon is already cached -- see ShipIconCacheService), replaces the plain accent dot
+    // with the actual ship's icon. NoVisual/Clear ignore both `shipIcon` and the details in favor of
+    // a fixed label. Every detail null/empty renders with no icon row at all -- purely additive over
+    // a bare "system was mentioned" line.
+    public void ShowIntelToast(string title, IntelReportKind kind, string? primaryDetail, string? secondaryDetail, string rawMessage, string accentHex, ImageSource? shipIcon = null)
+    {
+        var accent = BrushFromHex(accentHex, Color.FromRgb(0x8B, 0x5C, 0xF6));
+        var body = new StackPanel();
+
+        var label = kind switch
+        {
+            IntelReportKind.NoVisual => "No visual",
+            IntelReportKind.Clear => "Clear",
+            _ => primaryDetail ?? "",
+        };
+        var secondary = kind == IntelReportKind.Sighting ? secondaryDetail : null;
+        if (label.Length > 0)
+        {
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            FrameworkElement icon = kind switch
+            {
+                IntelReportKind.NoVisual => BuildNoVisualIcon(),
+                IntelReportKind.Clear => BuildClearIcon(),
+                IntelReportKind.Sighting when shipIcon is not null => BuildShipIcon(shipIcon),
+                _ => new Ellipse { Width = 8, Height = 8, Fill = accent, Margin = new Thickness(0, 5, 0, 0) },
+            };
+            Grid.SetColumn(icon, 0);
+
+            // Reuses BuildRow's exact two-tier layout (primary + muted secondary line beneath it) when
+            // a ship AND a pilot both resolved, instead of the single-line label used everywhere else
+            // in this method -- same visual language already established for PI's bundled alert rows.
+            FrameworkElement labelElement = !string.IsNullOrWhiteSpace(secondary)
+                ? BuildRow(new ToastLine(label, secondary), accent, includeDot: false)
+                : new TextBlock
+                {
+                    Text = label,
+                    FontSize = 12.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(kind == IntelReportKind.Clear ? Color.FromRgb(0x4A, 0xDE, 0x80) : TitleFg),
+                    TextWrapping = TextWrapping.Wrap,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+            labelElement.Margin = new Thickness(8, 0, 0, 0);
+            Grid.SetColumn(labelElement, 1);
+
+            row.Children.Add(icon);
+            row.Children.Add(labelElement);
+            body.Children.Add(row);
+        }
+
+        body.Children.Add(new TextBlock
+        {
+            Text = rawMessage,
+            FontSize = 12,
+            Foreground = new SolidColorBrush(BodyFg),
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        AddCard(title, body, accentHex, null, null, VerticalAlignment.Top);
+    }
+
+    // Eye outline + pupil, struck through -- "no visual": the system was named but nobody's actually
+    // laid eyes on what's in it (spotted on d-scan/local mention only). Drawn as plain vector shapes
+    // rather than an icon-font glyph so it renders identically regardless of what fonts are installed.
+    private static FrameworkElement BuildNoVisualIcon()
+    {
+        var red = new SolidColorBrush(Color.FromRgb(0xF2, 0x3F, 0x42));
+        var canvas = new Canvas { Width = 16, Height = 16, Margin = new Thickness(0, 2, 0, 0) };
+        canvas.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M1,8 C3,3 13,3 15,8 C13,13 3,13 1,8 Z"),
+            Stroke = red,
+            StrokeThickness = 1.4,
+        });
+        var pupil = new Ellipse { Width = 4, Height = 4, Fill = red };
+        Canvas.SetLeft(pupil, 6);
+        Canvas.SetTop(pupil, 6);
+        canvas.Children.Add(pupil);
+        canvas.Children.Add(new Line { X1 = 0, Y1 = 15, X2 = 16, Y2 = 1, Stroke = red, StrokeThickness = 1.6 });
+        return canvas;
+    }
+
+    // A resolved ship's actual icon (ESI images CDN, pre-cached by ShipIconCacheService) in a small
+    // rounded frame -- same visual slot as the plain accent dot/crossed-eye/checkmark above it.
+    private static FrameworkElement BuildShipIcon(ImageSource icon) => new Border
+    {
+        Width = 18,
+        Height = 18,
+        CornerRadius = new CornerRadius(3),
+        ClipToBounds = true,
+        Child = new System.Windows.Controls.Image { Source = icon, Stretch = Stretch.UniformToFill },
+    };
+
+    // Simple checkmark -- a previously-reported system has been called clear.
+    private static FrameworkElement BuildClearIcon()
+    {
+        var green = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+        var canvas = new Canvas { Width = 16, Height = 16, Margin = new Thickness(0, 2, 0, 0) };
+        canvas.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M2,8 L6,12 L14,3"),
+            Stroke = green,
+            StrokeThickness = 2,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
+        });
+        return canvas;
+    }
+
     // One alert row: accent dot + primary (white) over an optional muted secondary line.
-    private static FrameworkElement BuildRow(ToastLine line, SolidColorBrush accent)
+    // `includeDot` suppresses the leading accent dot for callers that already draw their own leading
+    // icon in an outer layout (e.g. ShowIntelToast's crossed-eye/checkmark row) -- true everywhere
+    // else, unchanged from this method's original single-purpose behavior.
+    private static FrameworkElement BuildRow(ToastLine line, SolidColorBrush accent, bool includeDot = true)
     {
         var row = new Grid { Margin = new Thickness(0, 5, 0, 0) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        var dot = new Ellipse
+        if (includeDot)
         {
-            Width = 5,
-            Height = 5,
-            Fill = accent,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 6, 8, 0),
-        };
-        Grid.SetColumn(dot, 0);
+            var dot = new Ellipse
+            {
+                Width = 5,
+                Height = 5,
+                Fill = accent,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 6, 8, 0),
+            };
+            Grid.SetColumn(dot, 0);
+            row.Children.Add(dot);
+        }
 
         var text = new StackPanel();
         text.Children.Add(new TextBlock
@@ -255,7 +416,6 @@ internal sealed class ToastNotificationWindow : Window
         }
         Grid.SetColumn(text, 1);
 
-        row.Children.Add(dot);
         row.Children.Add(text);
         return row;
     }
@@ -263,8 +423,12 @@ internal sealed class ToastNotificationWindow : Window
     private void AddCard(string title, FrameworkElement? body, string accentHex, ImageSource? avatar, Action? onClick,
                          VerticalAlignment avatarAlign = VerticalAlignment.Center)
     {
+        // Oldest card is evicted at the cap. Which end is "oldest" depends on stack direction: a
+        // top-anchored stack inserts newest at index 0 (oldest trails at the end); a bottom-anchored
+        // stack appends newest at the end instead (oldest leads at index 0) so the newest card lands
+        // nearest the anchored edge, matching Windows' own notification stacking near the tray.
         if (_stack.Children.Count >= MaxVisible)
-            _stack.Children.RemoveAt(_stack.Children.Count - 1);
+            _stack.Children.RemoveAt(_growUpward ? 0 : _stack.Children.Count - 1);
 
         var accent = BrushFromHex(accentHex, Color.FromRgb(0x2B, 0xC0, 0xE4));
 
@@ -368,7 +532,7 @@ internal sealed class ToastNotificationWindow : Window
             };
         }
 
-        _stack.Children.Insert(0, card);
+        if (_growUpward) _stack.Children.Add(card); else _stack.Children.Insert(0, card);
         UpdateBounds();
 
         card.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)));

@@ -32,6 +32,11 @@ public sealed class ChatLogWatcherService : IDisposable
     public event Action<ChatAlertRule, string>? KeywordMatched;
     // Raised when a character's Local channel reports a solar-system change: (character, system name).
     public event Action<string, string>? SystemChanged;
+    // Raised for EVERY new timestamped chat line, regardless of whether any rule matched it: (channel,
+    // raw line text). KeywordMatched only fires for substring hits against a configured rule, which
+    // can't answer "does this line mention any of ~8000 system names" -- that needs to see every line
+    // and run its own lookup (IntelSystemTokenizer), not a per-rule substring check.
+    public event Action<string, string>? LineReceived;
     public event Action<string>? ErrorOccurred;
 
     public Func<IEnumerable<ChatAlertRule>>? RulesProvider { get; set; }
@@ -185,7 +190,7 @@ public sealed class ChatLogWatcherService : IDisposable
         if (!matchKeywords) return;
 
         var rules = RulesProvider?.Invoke().Where(r => r.Enabled && !string.IsNullOrWhiteSpace(r.Keyword)).ToList();
-        if (rules is null || rules.Count == 0) return;
+        var channel = ChannelNameFromFile(fileName);
 
         foreach (var line in lines)
         {
@@ -194,6 +199,9 @@ public sealed class ChatLogWatcherService : IDisposable
             // session-header/MOTD banner text matching a keyword was a false-positive source on relog.
             if (!line.TrimStart().StartsWith('[')) continue;
 
+            LineReceived?.Invoke(channel, line);
+
+            if (rules is null) continue;
             foreach (var rule in rules)
             {
                 if (!string.IsNullOrWhiteSpace(rule.CharacterName)
@@ -201,7 +209,7 @@ public sealed class ChatLogWatcherService : IDisposable
                     continue;
 
                 if (line.IndexOf(rule.Keyword, StringComparison.OrdinalIgnoreCase) >= 0)
-                    KeywordMatched?.Invoke(rule, ChannelNameFromFile(fileName));
+                    KeywordMatched?.Invoke(rule, channel);
             }
         }
     }

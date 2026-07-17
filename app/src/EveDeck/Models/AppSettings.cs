@@ -149,6 +149,46 @@ public sealed class AppSettings
     // collection, so user edits (including deleting every rule) persist as-is.
     public ObservableCollection<GameEventRule> GameEventRules { get; set; } = new(GameEventRule.Defaults());
 
+    // ── Intel jump-distance alert ─────────────────────────────────────────────
+    // Off until the user opts in -- enabling it triggers a one-time ESI crawl to build the solar
+    // system/stargate graph (SystemJumpGraphService), which takes real wall-clock time on first run.
+    public bool IntelJumpAlertEnabled { get; set; }
+    // Which chatlog channel counts as "intel" -- substring match against the channel name parsed
+    // from the chatlog filename (same convention as ChatAlertRule.CharacterName's substring match).
+    public string IntelChannelName { get; set; } = "";
+    // Alert when a system named in the intel channel is within this many jumps of ANY currently
+    // tracked character's current system (the minimum across all of them).
+    public int IntelJumpAlertMaxJumps { get; set; } = 5;
+
+    // ── Jabber ping bridge (Comms tab) ────────────────────────────────────────
+    // Reads Pidgin's own HTML conversation logs (the user must enable logging in Pidgin itself) --
+    // no XMPP login of its own, no second identity in the room. See JabberPingWatcherService.
+    public bool JabberPingEnabled { get; set; }
+    // Substring match (case-insensitive) against the Pidgin log conversation folder name, e.g.
+    // "directorbot" or "beehive".
+    public string JabberPingConversationName { get; set; } = "";
+    // Optional: only alert on messages containing this substring (case-insensitive). Empty = alert
+    // on every message in the matched conversation. Lets the user filter a bot's real broadcast
+    // pings from other chatter/self-status noise in the same conversation without EveDeck hardcoding
+    // any one ping tool's format.
+    public string JabberPingRequiredPhrase { get; set; } = "";
+    // Mumble server host (e.g. "mumble.example.com") used to build a "join comms" mumble:// link
+    // when a ping's body contains a "Comms:" field. Blank = link building is skipped entirely (a
+    // ping toast without this configured just shows the plain message, same as before this existed).
+    public string MumbleServerHost { get; set; } = "";
+
+    // ── Toast notification placement + native OS mirror ───────────────────────
+    // Corner/edge the toast stack anchors to. One of: TopLeft, TopCenter, TopRight, BottomLeft,
+    // BottomCenter, BottomRight. Bottom* stacks grow upward (newest nearest the anchored edge),
+    // Top* stacks grow downward -- see ToastAnchor in ToastNotificationWindow.
+    public string ToastPosition { get; set; } = "BottomRight";
+    // Also mirrors every toast into the real Windows Notification Center (SuppressPopup -- no
+    // second banner, EveDeck's own styled popup stays the only visible one) so alerts are still
+    // reviewable from the system clock's flyout after EveDeck's popup has faded. Best-effort: OS
+    // notification plumbing this app doesn't control (AUMID registration, the user's own Windows
+    // notification settings) can silently no-op this without affecting the primary toast pipeline.
+    public bool NativeNotificationCenterEnabled { get; set; } = true;
+
     // Abyss Mode: suppresses the SOUND on tile-glow (FlashOnTile) game events while enabled, but
     // keeps the visual glow. Abyssal Deadspace lets up to three characters take continuous combat
     // damage simultaneously in their own instances -- without this the Combat rule's default sound

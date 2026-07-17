@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
@@ -33,6 +34,20 @@ public partial class MainWindow : Window
     // evedeck:// URL commands forwarded from App (protocol pipe / startup args); routed through
     // the view-model's SafetyGuard-validated dispatcher.
     internal void HandleProtocolUrl(string url) => _viewModel.HandleProtocolUrl(url);
+
+    // A native (Windows Action Center) notification was clicked -- see NativeNotificationService.
+    // A mumble:// payload (the Jabber ping bridge's "join comms" link) opens Mumble directly, same as
+    // clicking EveDeck's own in-app toast copy; anything else just brings EveDeck to the front.
+    internal void HandleNativeNotificationActivated(string? payload)
+    {
+        if (!string.IsNullOrEmpty(payload) && payload.StartsWith("mumble://", StringComparison.OrdinalIgnoreCase))
+        {
+            try { Process.Start(new ProcessStartInfo(payload) { UseShellExecute = true }); }
+            catch { /* best-effort -- Mumble may not be installed/registered for the mumble:// scheme */ }
+            return;
+        }
+        ShowFromTray();
+    }
 
     public MainWindow()
     {

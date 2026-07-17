@@ -96,6 +96,15 @@ public partial class App : Application
         _protocolHandler.StartServer(url =>
             Dispatcher.BeginInvoke(() => mainWindow.HandleProtocolUrl(url)));
 
+        // Native Windows toast notifications (Action Center mirror of EveDeck's own toast popups --
+        // see NativeNotificationService). Same best-effort posture as the protocol registration above.
+        try
+        {
+            Services.NativeNotificationService.Initialize(payload =>
+                Dispatcher.BeginInvoke(() => mainWindow.HandleNativeNotificationActivated(payload)));
+        }
+        catch { } // best-effort; OS notification plumbing is outside EveDeck's control
+
         // Launched directly via a link with no prior instance: run the command once the UI is up.
         if (protocolUrl is not null)
             Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,

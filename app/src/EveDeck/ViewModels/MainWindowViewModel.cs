@@ -30,6 +30,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly ClientLaunchService _clientLaunchService = new();
     private readonly ChatLogWatcherService _chatLogWatcherService = new();
     private readonly GameLogWatcherService _gameLogWatcherService = new();
+    private readonly JabberPingWatcherService _jabberPingWatcherService = new();
     private CancellationTokenSource? _launchGroupCts;
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -275,6 +276,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         InitLaunchGroups();
         InitChatAlerts();
         InitPi();
+        InitIntelJumpAlert();
+        InitJabberPing();
 
         Log.Info("EveDeck started.");
         _ = CheckForUpdateAsync();
@@ -2132,6 +2135,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _autoApplyTimer.Stop();
         _launchGroupCts?.Cancel();
         StopChatAlerts();
+        _jabberPingWatcherService.Stop();
         StopPi();
         StopCornerOverlays();
         StopTalkerOverlay();

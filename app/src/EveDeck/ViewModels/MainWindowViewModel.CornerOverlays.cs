@@ -1041,6 +1041,21 @@ public sealed partial class MainWindowViewModel
         if (EnsureToastWindow() is not { } window) return;
         window.ShowToast(title, message, accentHex, SeatAvatar(seat), SeatClickAction(seat));
         AssertToastZOrder();
+        MirrorToNativeNotificationCenter(title, message);
+    }
+
+    // Seatless variant with a caller-supplied click action instead of a seat's centre-seat action --
+    // e.g. the Jabber ping bridge's "open the Mumble join link" click, which has no seat/avatar to
+    // attach to. Distinct arity from the seat overload above so both can keep defaulting their last
+    // parameter without becoming ambiguous at call sites. `nativeArgument`, when given, is handed to
+    // the native Notification Center mirror too, so clicking EITHER copy does the same thing (e.g.
+    // both open the same mumble:// link).
+    internal void ShowToast(string title, string message, string accentHex, Action? onClick, string? nativeArgument = null)
+    {
+        if (EnsureToastWindow() is not { } window) return;
+        window.ShowToast(title, message, accentHex, null, onClick);
+        AssertToastZOrder();
+        MirrorToNativeNotificationCenter(title, message, nativeArgument);
     }
 
     // Multi-line variant: each alert becomes its own readable row instead of a newline-joined blob.
@@ -1050,6 +1065,7 @@ public sealed partial class MainWindowViewModel
         if (EnsureToastWindow() is not { } window) return;
         window.ShowToast(title, lines, accentHex, SeatAvatar(seat), SeatClickAction(seat));
         AssertToastZOrder();
+        MirrorToNativeNotificationCenter(title, string.Join(" | ", lines.Select(l => l.Primary)));
     }
 
     // Grouped variant: rows clustered under per-group headers -- see RaisePiAlerts (grouped per character).
@@ -1059,6 +1075,18 @@ public sealed partial class MainWindowViewModel
         if (EnsureToastWindow() is not { } window) return;
         window.ShowToast(title, groups, accentHex, SeatAvatar(seat), SeatClickAction(seat));
         AssertToastZOrder();
+        MirrorToNativeNotificationCenter(title, string.Join(" | ", groups.SelectMany(g => g.Lines.Select(l => $"{g.Header}: {l.Primary}"))));
+    }
+
+    // Intel-report variant -- see IntelSystemTokenizer.ClassifyTrailingText/ResolvePilotAndShip for
+    // what kind/primaryDetail/secondaryDetail mean. `shipIcon` is the resolved ship's cached icon
+    // (ShipIconCacheService), when one was found.
+    internal void ShowIntelToast(string title, Utilities.IntelReportKind kind, string? primaryDetail, string? secondaryDetail, string rawMessage, string accentHex, System.Windows.Media.ImageSource? shipIcon = null)
+    {
+        if (EnsureToastWindow() is not { } window) return;
+        window.ShowIntelToast(title, kind, primaryDetail, secondaryDetail, rawMessage, accentHex, shipIcon);
+        AssertToastZOrder();
+        MirrorToNativeNotificationCenter(title, rawMessage);
     }
 
     private Views.ToastNotificationWindow? EnsureToastWindow()
@@ -1068,11 +1096,34 @@ public sealed partial class MainWindowViewModel
         var monitor = Monitors.FirstOrDefault(m => m.IsPrimary) ?? Monitors.FirstOrDefault();
         if (monitor is null) return null;
         var dpiScale = monitor.DpiX / 96.0;
+        var anchor = ParseToastAnchor(_settings.ToastPosition);
+        // WORK area, not full Bounds -- Bounds includes the strip behind the taskbar, which is
+        // exactly the strip a Bottom* anchor needs to clear to land "above the system clock".
         _toastWindow = new Views.ToastNotificationWindow(
-            monitor.Bounds.X, monitor.Bounds.Y, monitor.Bounds.Width, monitor.Bounds.Height, dpiScale);
+            monitor.WorkArea.X, monitor.WorkArea.Y, monitor.WorkArea.Width, monitor.WorkArea.Height, dpiScale, anchor);
         _toastWindow.Show();
         _toastHwnd = _toastWindow.Handle;
         return _toastWindow;
+    }
+
+    private static Views.ToastAnchor ParseToastAnchor(string value) => value switch
+    {
+        "TopLeft" => Views.ToastAnchor.TopLeft,
+        "TopCenter" => Views.ToastAnchor.TopCenter,
+        "TopRight" => Views.ToastAnchor.TopRight,
+        "BottomLeft" => Views.ToastAnchor.BottomLeft,
+        "BottomCenter" => Views.ToastAnchor.BottomCenter,
+        _ => Views.ToastAnchor.BottomRight,
+    };
+
+    // Best-effort mirror into the real Windows Notification Center so alerts are still reviewable
+    // (from clicking the system clock) after EveDeck's own popup has faded. SuppressPopup means
+    // Windows never shows its own banner for these -- EveDeck's styled popup stays the only visible
+    // one. See NativeNotificationService's own doc comment for why this is wrapped this defensively.
+    private void MirrorToNativeNotificationCenter(string title, string message, string? argument = null)
+    {
+        if (!_settings.NativeNotificationCenterEnabled) return;
+        Services.NativeNotificationService.Show(title, message, argument);
     }
 
     private static System.Windows.Media.ImageSource? SeatAvatar(SlotAssignment? seat) => seat?.RunningPortrait?.Image;
