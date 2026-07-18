@@ -149,33 +149,40 @@ public sealed class AppSettings
     // collection, so user edits (including deleting every rule) persist as-is.
     public ObservableCollection<GameEventRule> GameEventRules { get; set; } = new(GameEventRule.Defaults());
 
-    // ── Intel jump-distance alert ─────────────────────────────────────────────
+    // ── Intel jump-distance alert (Comms tab) ─────────────────────────────────
     // Off until the user opts in -- enabling it triggers a one-time ESI crawl to build the solar
     // system/stargate graph (SystemJumpGraphService), which takes real wall-clock time on first run.
     public bool IntelJumpAlertEnabled { get; set; }
-    // Which chatlog channel counts as "intel" -- substring match against the channel name parsed
-    // from the chatlog filename (same convention as ChatAlertRule.CharacterName's substring match).
+    // Superseded by IntelChannelRules below -- kept ONLY so MainWindowViewModel.IntelJumpAlert.cs's
+    // one-time startup migration can read an existing single-channel value out of an older
+    // settings.json and turn it into the first entry of the new per-channel list. Never written to
+    // or read from after that migration runs; do not add new usages.
     public string IntelChannelName { get; set; } = "";
-    // Alert when a system named in the intel channel is within this many jumps of ANY currently
-    // tracked character's current system (the minimum across all of them).
+    // Every locally-discovered chatlog channel the user has reviewed, each independently
+    // enabled/disabled with its own alert sound -- see ChatLogWatcherService.DiscoverChannels() and
+    // MainWindowViewModel.IntelJumpAlert.cs's DiscoverIntelChannels.
+    public ObservableCollection<IntelChannelRule> IntelChannelRules { get; set; } = new();
+    // Alert when a system named in an enabled intel channel is within this many jumps of ANY
+    // currently tracked character's current system (the minimum across all of them).
     public int IntelJumpAlertMaxJumps { get; set; } = 5;
 
     // ── Jabber ping bridge (Comms tab) ────────────────────────────────────────
     // Reads Pidgin's own HTML conversation logs (the user must enable logging in Pidgin itself) --
     // no XMPP login of its own, no second identity in the room. See JabberPingWatcherService.
     public bool JabberPingEnabled { get; set; }
-    // Substring match (case-insensitive) against the Pidgin log conversation folder name, e.g.
-    // "directorbot" or "beehive".
+    // Superseded by JabberConversationRules below -- kept ONLY so MainWindowViewModel.JabberPing.cs's
+    // one-time startup migration can read an existing single-conversation value out of an older
+    // settings.json and turn it into the first entry of the new per-conversation list. Never written
+    // to or read from after that migration runs; do not add new usages.
     public string JabberPingConversationName { get; set; } = "";
-    // Optional: only alert on messages containing this substring (case-insensitive). Empty = alert
-    // on every message in the matched conversation. Lets the user filter a bot's real broadcast
-    // pings from other chatter/self-status noise in the same conversation without EveDeck hardcoding
-    // any one ping tool's format.
+    // Superseded by JabberConversationRule.RequiredPhrase -- same migration-only role as
+    // JabberPingConversationName above.
     public string JabberPingRequiredPhrase { get; set; } = "";
-    // Mumble server host (e.g. "mumble.example.com") used to build a "join comms" mumble:// link
-    // when a ping's body contains a "Comms:" field. Blank = link building is skipped entirely (a
-    // ping toast without this configured just shows the plain message, same as before this existed).
-    public string MumbleServerHost { get; set; } = "";
+    // Every locally-discovered Pidgin conversation folder the user has reviewed, each independently
+    // enabled/disabled with its own required-phrase filter -- see
+    // JabberPingWatcherService.DiscoverConversations() and MainWindowViewModel.JabberPing.cs's
+    // DiscoverJabberConversations.
+    public ObservableCollection<JabberConversationRule> JabberConversationRules { get; set; } = new();
 
     // ── Toast notification placement + native OS mirror ───────────────────────
     // Corner/edge the toast stack anchors to. One of: TopLeft, TopCenter, TopRight, BottomLeft,

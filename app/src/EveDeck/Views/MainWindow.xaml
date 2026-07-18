@@ -122,7 +122,7 @@
                    RenderOptions.BitmapScalingMode="HighQuality"/>
             <TextBlock Text="EveDeck" FontWeight="SemiBold" FontSize="13"
                        VerticalAlignment="Center"/>
-            <TextBlock Text="  Window layout and focus manager"
+            <TextBlock Text="  Multibox toolkit for EVE Online"
                        Foreground="{StaticResource MutedBrush}"
                        Margin="8,0,0,0"
                        VerticalAlignment="Center"/>
@@ -1511,7 +1511,6 @@ Both AMD and Nvidia let you set a virtual resolution higher than your panel's na
                   <ListBoxItem Content="Chat Alerts"/>
                   <ListBoxItem Content="Game Event Alerts"/>
                   <ListBoxItem Content="Overlay Allow List"/>
-                  <ListBoxItem Content="Intel Alerts"/>
                   <ListBoxItem Content="Notifications"/>
                 </ListBox>
               </Border>
@@ -1966,39 +1965,8 @@ Apps listed here stay visually above EveDeck's corner-overlay tiles/labels even 
               <Button Content="+ Add App" Command="{Binding AddOverlayAllowedAppCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
                   </StackPanel>
 
-                  <!-- section 15: Intel Alerts -->
+                  <!-- section 15: Notifications (Intel Alerts moved to the Comms tab) -->
                   <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=15}">
-                    <TextBlock Text="Intel Jump-Distance Alert" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                    <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10" MaxWidth="640">
-Watches a chatlog channel you designate as "intel" for solar system names, and raises a toast + sound
-when a mentioned system is within the given number of jumps of any of your currently tracked
-characters -- also recognizes ship names and common faction abbreviations (e.g. "CFI") alongside a
-pilot name, and picks up "no visual"/"clear" callouts. Ships with a built-in system map and ship
-dictionary, so this works immediately; "Build system map" below re-crawls ESI's public data for
-current systems/ships (only needed after a new expansion, or if you want the latest right away).
-                    </TextBlock>
-                    <CheckBox Content="Enabled" IsChecked="{Binding IntelJumpAlertEnabled, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                      <TextBlock Text="Intel channel" VerticalAlignment="Center" Width="110" Foreground="{StaticResource MutedBrush}"/>
-                      <TextBox Text="{Binding IntelChannelName, UpdateSourceTrigger=PropertyChanged}"
-                               Width="220" Padding="6,4" FontSize="12"
-                               ToolTip="Substring match against the chatlog channel name, e.g. &quot;Intel-Delve&quot;"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                      <TextBlock Text="Alert within" VerticalAlignment="Center" Width="110" Foreground="{StaticResource MutedBrush}"/>
-                      <TextBox Text="{Binding IntelJumpAlertMaxJumps, UpdateSourceTrigger=PropertyChanged}"
-                               Width="50" Padding="6,4" FontSize="12"/>
-                      <TextBlock Text="jumps" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{StaticResource MutedBrush}"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                      <Button Content="Build system map" Command="{Binding BuildIntelMapCommand}" Padding="10,4"
-                              ToolTip="Re-crawls ESI for the current system map and ship dictionary. Not required for normal use -- EveDeck ships with a recent snapshot already built in."/>
-                    </StackPanel>
-                    <TextBlock Text="{Binding IntelMapStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap" MaxWidth="500"/>
-                  </StackPanel>
-
-                  <!-- section 16: Notifications -->
-                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=16}">
                     <TextBlock Text="Notifications" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
                     <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,14" MaxWidth="640">
 Controls where EveDeck's own toast popups appear on screen, and whether they're also mirrored into
@@ -2179,39 +2147,95 @@ Settings &gt; System &gt; Notifications.
                 <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0">
                   Turns new messages in a Pidgin conversation into a toast + sound -- reads Pidgin's own
                   saved log files, the same way EveDeck already reads EVE's chat/game logs. No separate
-                  login and EveDeck never joins the conversation as its own participant. Requires logging
-                  enabled in Pidgin itself (Tools &gt; Preferences &gt; Logging) for the conversation you
-                  pick below.
+                  login and EveDeck never joins any conversation as its own participant. Requires logging
+                  enabled in Pidgin itself (Tools &gt; Preferences &gt; Logging) for whichever conversations
+                  you enable below. Enable whichever conversations below are actually your ping
+                  bots/rooms; newly discovered ones start disabled until you opt in, and each gets its
+                  own optional "must contain" filter.
                 </TextBlock>
-                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                  <TextBlock Text="Conversation" VerticalAlignment="Center" Width="90" Foreground="{StaticResource MutedBrush}"/>
-                  <TextBox Text="{Binding JabberPingConversationName, UpdateSourceTrigger=PropertyChanged}"
-                           Width="220" Padding="6,4" FontSize="12"
-                           ToolTip="Substring match against the Pidgin log folder name, e.g. &quot;directorbot&quot; or &quot;beehive&quot;"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                  <TextBlock Text="Must contain" VerticalAlignment="Center" Width="90" Foreground="{StaticResource MutedBrush}"/>
-                  <TextBox Text="{Binding JabberPingRequiredPhrase, UpdateSourceTrigger=PropertyChanged}"
-                           Width="220" Padding="6,4" FontSize="12"
-                           ToolTip="Optional. Only alert when the message contains this text -- leave blank to alert on every message in the conversation."/>
-                </StackPanel>
-                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
-                  Leave "Must contain" blank to alert on every message. If the same bot also sends you
-                  non-ping status updates in this conversation, a phrase unique to real pings (e.g. part
-                  of your ping tool's own broadcast signature) filters those out.
-                </TextBlock>
-                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                  <TextBlock Text="Mumble server" VerticalAlignment="Center" Width="90" Foreground="{StaticResource MutedBrush}"/>
-                  <TextBox Text="{Binding MumbleServerHost, UpdateSourceTrigger=PropertyChanged}"
-                           Width="220" Padding="6,4" FontSize="12"
-                           ToolTip="Your corp/alliance Mumble server address, e.g. mumble.example.com"/>
-                </StackPanel>
-                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap">
-                  When a ping's body includes a "Comms:" field and a server is set here, the toast adds
-                  a click-to-join Mumble link for that channel. Leave blank to skip this -- pings still
-                  alert normally either way.
+                <DockPanel Margin="0,12,0,4">
+                  <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshJabberConversationsCommand}"
+                          Padding="8,4" FontSize="11"
+                          ToolTip="Re-scan Pidgin's log folder for conversations -- run this after opening a new conversation window in Pidgin"/>
+                  <TextBlock Text="Conversations" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                </DockPanel>
+                <ItemsControl ItemsSource="{Binding JabberConversationRules}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <DockPanel Margin="0,3">
+                        <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
+                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <Button DockPanel.Dock="Right" Content="Remove" Padding="7,3" FontSize="11" Margin="6,0,0,0"
+                                Command="{Binding DataContext.RemoveJabberConversationRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}"/>
+                        <TextBox DockPanel.Dock="Right" Width="110" FontSize="11" Margin="6,0,0,0" Padding="4,2"
+                                 Text="{Binding RequiredPhrase, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Optional. Only alert when the message contains this text -- leave blank to alert on every message in this conversation."/>
+                        <TextBlock Text="{Binding ConversationName}" VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                      </DockPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap">
+                  Leave a conversation's "must contain" blank to alert on every message in it. If the
+                  same bot also sends non-ping status updates, a phrase unique to real pings (e.g. part
+                  of your ping tool's own broadcast signature) filters those out. When a ping's body
+                  includes a link (e.g. a shortened "gnf.lt" URL), the toast becomes clickable and opens
+                  it directly -- a bare channel name with no link isn't clickable, EveDeck doesn't ask
+                  for a Mumble server address to guess a join link from anymore.
                 </TextBlock>
                 <TextBlock Text="{Binding JabberBridgeStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
+
+            <!-- Intel Channel Alerts: moved here from Options, see MainWindowViewModel.IntelJumpAlert.cs -->
+            <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="14" MaxWidth="480" Margin="0,12,0,0">
+              <StackPanel>
+                <DockPanel>
+                  <CheckBox DockPanel.Dock="Right" Content="Enabled" IsChecked="{Binding IntelJumpAlertEnabled, UpdateSourceTrigger=PropertyChanged}"/>
+                  <TextBlock Text="Intel Channel Alerts" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                </DockPanel>
+                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0">
+                  Watches your local EVE chatlog channels for solar system names, and raises a toast +
+                  sound when a mentioned system is within range of any tracked character -- also
+                  recognizes ship names/faction abbreviations alongside a pilot name (click to look them
+                  up on zKillboard), and "no visual"/"clear" callouts. Enable whichever channels below
+                  are actually your intel channels; newly discovered ones start disabled until you opt
+                  in, and each gets its own alert sound.
+                </TextBlock>
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                  <TextBlock Text="Alert within" VerticalAlignment="Center" Width="90" Foreground="{StaticResource MutedBrush}"/>
+                  <TextBox Text="{Binding IntelJumpAlertMaxJumps, UpdateSourceTrigger=PropertyChanged}"
+                           Width="50" Padding="6,4" FontSize="12"/>
+                  <TextBlock Text="jumps" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{StaticResource MutedBrush}"/>
+                </StackPanel>
+                <DockPanel Margin="0,12,0,4">
+                  <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshIntelChannelsCommand}"
+                          Padding="8,4" FontSize="11"
+                          ToolTip="Re-scan your local chatlog folder for channels -- run this after opening a new channel window in EVE"/>
+                  <TextBlock Text="Channels" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                </DockPanel>
+                <ItemsControl ItemsSource="{Binding IntelChannelRules}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <DockPanel Margin="0,3">
+                        <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
+                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <Button DockPanel.Dock="Right" Content="Remove" Padding="7,3" FontSize="11" Margin="6,0,0,0"
+                                Command="{Binding DataContext.RemoveIntelChannelRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}"/>
+                        <ComboBox DockPanel.Dock="Right" Width="100" FontSize="11" Margin="6,0,0,0"
+                                  ItemsSource="{Binding DataContext.IntelAlertSoundOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  SelectedItem="{Binding Sound, UpdateSourceTrigger=PropertyChanged}"/>
+                        <TextBlock Text="{Binding ChannelName}" VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                      </DockPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Content="Build system map" Command="{Binding BuildIntelMapCommand}" Padding="10,4" Margin="0,12,0,0" HorizontalAlignment="Left"
+                        ToolTip="Re-crawls ESI for the current system map and ship dictionary. Not required for normal use -- EveDeck ships with a recent snapshot already built in."/>
+                <TextBlock Text="{Binding IntelMapStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
           </StackPanel>
@@ -2736,8 +2760,8 @@ Input broadcasting, input multiplexing, gameplay key forwarding, mouse click for
                        RenderOptions.BitmapScalingMode="HighQuality"/>
                 <StackPanel VerticalAlignment="Center">
                   <TextBlock Text="EveDeck" FontSize="24" FontWeight="Bold"/>
-                  <TextBlock Text="A window layout and focus manager for multiboxing EVE Online."
-                             Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,4,0,0"/>
+                  <TextBlock Text="A multibox toolkit for EVE Online -- EULA-safe window layout &amp; focus management, plus intel alerts and comms integrations."
+                             Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="420"/>
                   <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                     <Border Background="#163527" CornerRadius="3" Padding="8,3">
                       <TextBlock Text="{Binding VersionText}" Foreground="#22C55E" FontWeight="SemiBold" FontSize="12"/>

@@ -350,7 +350,10 @@
     </Style>
 
     <!-- Editable ComboBox for the Hotkeys-tab character target picker. Uses Text binding (not
-         SelectedItem) so a churning ItemsSource can never null out the bound value. -->
+         SelectedItem) so a churning ItemsSource can never null out the bound value.
+         Any editable ComboBox in this app must use this style: the default (unkeyed) ComboBox
+         style below has no PART_EditableTextBox in its template, so IsEditable="True" against it
+         silently renders blank text (no error) instead of failing loudly. -->
     <Style TargetType="{x:Type ComboBox}" x:Key="CharacterPickerCombo">
       <Setter Property="IsEditable" Value="True"/>
       <Setter Property="IsTextSearchEnabled" Value="True"/>

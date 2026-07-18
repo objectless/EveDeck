@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Text.RegularExpressions;
+using System.Linq;
 
 namespace EveDeck.Services;
 
@@ -28,15 +29,13 @@ public sealed class JabberPingWatcherService : IDisposable
     // periodic resync bounds how long a missed ping can stay unnoticed.
     private static readonly TimeSpan ResyncInterval = TimeSpan.FromSeconds(45);
 
-    // Raised for each real chat message (not join/leave/topic system lines) in a conversation
-    // folder whose name matches the configured filter: (senderName, cleanedMessageText).
-    public event Action<string, string>? MessageReceived;
+    // Raised for each real chat message (not join/leave/topic system lines) in ANY conversation
+    // folder, regardless of whether the user has opted into it: (conversationFolderName, senderName,
+    // cleanedMessageText). Mirrors ChatLogWatcherService.LineReceived's shape -- every line is
+    // surfaced and the subscriber (MainWindowViewModel.JabberPing.cs) matches it against its own list
+    // of enabled JabberConversationRules, the same way OnIntelLineReceived matches IntelChannelRules.
+    public event Action<string, string, string>? MessageReceived;
     public event Action<string>? ErrorOccurred;
-
-    // Substring match (case-insensitive) against the containing conversation folder's name, e.g.
-    // "directorbot" matches ...\jabber\<account>\directorbot@goonfleet.com\*.html, "beehive" matches
-    // ...\beehive@conference.goonfleet.com.chat\*.html. Null/empty matches nothing (feature is off).
-    public Func<string?>? ConversationNameFilterProvider { get; set; }
 
     // Pidgin's HTML log writer marks a real spoken/broadcast message with a colored sender span;
     // system lines (join/leave/topic-change) use a plain span with no color attribute at all, so
@@ -63,6 +62,15 @@ public sealed class JabberPingWatcherService : IDisposable
     private static readonly Regex CommsFieldRegex = new(
         @"^\s*Comms:\s*(?<value>.+?)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline);
 
+    // Some ping tools' "Comms:" value isn't a bare channel name -- it can be a channel name PLUS an
+    // embedded plain link, e.g. real captured text "Op 2 https://gnf.lt/vLwgoyY.html" (a mumble
+    // channel followed by a shortened link to further details). Naively splitting a value like that
+    // on '/' and treating every piece as a mumble channel path segment mangles the link INTO the
+    // mumble:// URI instead of recognizing it as its own link, producing a broken result like
+    // "mumble://host/Op 2 https:/gnf.lt/vLwgoyY.html". A link, when present, is always the more
+    // useful and reliable click target -- callers should prefer it over channel-path construction.
+    private static readonly Regex EmbeddedLinkRegex = new(@"https?://\S+", RegexOptions.Compiled);
+
     // True once Start() has successfully stood up the FileSystemWatcher. Surfaced in the UI so "is
     // this actually running" isn't a silent guess -- see AppSettings.JabberPingEnabled's Options tab.
     public bool IsRunning { get; private set; }
@@ -86,6 +94,22 @@ public sealed class JabberPingWatcherService : IDisposable
                     $"Jabber logs folder not found at {_logsRoot} -- enable logging in Pidgin " +
                     "(Tools > Preferences > Logging) for the conversation you want to bridge, then " +
                     "send or receive at least one message so Pidgin creates the folder.");
+                return;
+            }
+
+            // A second silent-failure mode distinct from the folder-missing one above: Pidgin is
+            // logging, but its "Log format" preference is set to Plain Text rather than HTML. The
+            // folder exists, files get written, but none of them are *.html -- the watcher would
+            // arm successfully and IsRunning would read true while genuinely never seeing a message.
+            // Only fire this when there's log content of ANY kind but zero HTML among it; a totally
+            // fresh install with no logs yet is the normal "nothing logged so far" case, not this.
+            if (!Directory.EnumerateFiles(_logsRoot, "*.html", SearchOption.AllDirectories).Any()
+                && Directory.EnumerateFiles(_logsRoot, "*.*", SearchOption.AllDirectories).Any())
+            {
+                ErrorOccurred?.Invoke(
+                    $"Found Jabber logs at {_logsRoot} but none are HTML format -- EveDeck only reads " +
+                    "HTML logs. In Pidgin, set Tools > Preferences > Logging > Log format to HTML, " +
+                    "then send or receive a new message in the conversation you want to bridge.");
                 return;
             }
 
@@ -136,6 +160,32 @@ public sealed class JabberPingWatcherService : IDisposable
         _watcher = null;
     }
 
+    // Scans the logs root for conversation folders that actually contain at least one HTML log file,
+    // so the Options UI can offer a picker (mirrors EveSettingsService.FindSettingsFolders' role for
+    // the Profile Sync tab) instead of requiring the exact Pidgin folder name typed in blind. Folder
+    // layout is <logsRoot>\<account>\<conversation>\*.html -- inspired by RIFT's own config UX of
+    // picking intel channels from a discovered list rather than free-typing a channel name.
+    public IReadOnlyList<string> DiscoverConversations()
+    {
+        var names = new List<string>();
+        if (!Directory.Exists(_logsRoot)) return names;
+
+        try
+        {
+            foreach (var accountDir in Directory.EnumerateDirectories(_logsRoot))
+            foreach (var convoDir in Directory.EnumerateDirectories(accountDir))
+            {
+                if (Directory.EnumerateFiles(convoDir, "*.html").Any())
+                    names.Add(Path.GetFileName(convoDir));
+            }
+        }
+        catch { } // best-effort -- a locked/unreadable folder just doesn't show up in the list
+
+        return names.Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     // Pulls a "Comms: <channel>" field out of an already-cleaned ping body, e.g. "Comms: Fleet 1" or
     // "Comms: TypeX/Fleet". Null when the ping didn't include one -- most pings won't, this is
     // opportunistic. Pure, no I/O, mirrors TryParseMessageLine's own testable shape.
@@ -143,6 +193,14 @@ public sealed class JabberPingWatcherService : IDisposable
     {
         var match = CommsFieldRegex.Match(body);
         return match.Success ? match.Groups["value"].Value.Trim() : null;
+    }
+
+    // Pulls a plain http(s) link out of an already-extracted Comms value, if one is embedded in it
+    // (see EmbeddedLinkRegex). Null when the value is a bare channel name with no link.
+    internal static string? TryExtractEmbeddedLink(string commsValue)
+    {
+        var match = EmbeddedLinkRegex.Match(commsValue);
+        return match.Success ? match.Value : null;
     }
 
     private void OnFileChanged(object? sender, FileSystemEventArgs e)
@@ -186,11 +244,7 @@ public sealed class JabberPingWatcherService : IDisposable
 
     private void ReadNewLines(string path)
     {
-        var filter = ConversationNameFilterProvider?.Invoke();
-        if (string.IsNullOrWhiteSpace(filter)) return;
-
         var conversationFolder = Path.GetFileName(Path.GetDirectoryName(path)) ?? "";
-        if (conversationFolder.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) return;
 
         _readOffsetByFile.TryGetValue(path, out var offset);
 
@@ -211,7 +265,7 @@ public sealed class JabberPingWatcherService : IDisposable
         {
             var parsed = TryParseMessageLine(line);
             if (parsed is not var (messageSender, body)) continue;
-            MessageReceived?.Invoke(messageSender, body);
+            MessageReceived?.Invoke(conversationFolder, messageSender, body);
         }
     }
 

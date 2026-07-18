@@ -125,4 +125,26 @@ public class JabberPingWatcherServiceTests
     {
         Assert.Null(JabberPingWatcherService.TryExtractCommsChannel("Sub Cap only\nFormup: C-J6MT"));
     }
+
+    [Fact]
+    public void TryExtractEmbeddedLink_RealCapturedComms_ChannelPlusShortenedLink_FindsLink()
+    {
+        // Real captured case: "Comms: Op 2 https://gnf.lt/vLwgoyY.html" -- a mumble channel name
+        // followed by a shortened link, previously mangled into a broken mumble:// URI instead of
+        // being recognized as a link in its own right.
+        var commsValue = "Op 2 https://gnf.lt/vLwgoyY.html";
+        Assert.Equal("https://gnf.lt/vLwgoyY.html", JabberPingWatcherService.TryExtractEmbeddedLink(commsValue));
+    }
+
+    [Fact]
+    public void TryExtractEmbeddedLink_BareChannelName_ReturnsNull()
+    {
+        Assert.Null(JabberPingWatcherService.TryExtractEmbeddedLink("Fleet 1"));
+    }
+
+    [Fact]
+    public void TryExtractEmbeddedLink_LinkOnly_FindsLink()
+    {
+        Assert.Equal("http://example.com/x", JabberPingWatcherService.TryExtractEmbeddedLink("http://example.com/x"));
+    }
 }

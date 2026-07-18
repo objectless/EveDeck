@@ -6,9 +6,11 @@
 
 ### Command your fleet. One window at a time.
 
-**An EULA-safe window layout &amp; focus manager for EVE Online multiboxing.**<br />
-Live GPU-quality previews, hotkey focus switching, and resolution-independent layout
-profiles — all from a single self-contained Windows app.
+**A multibox toolkit for EVE Online — EULA-safe window layout &amp; focus management, plus
+intel alerts and comms integrations.**<br />
+Live GPU-quality previews, hotkey focus switching, resolution-independent layout profiles,
+jump-distance intel alerts, and Mumble/Jabber comms bridges — all from a single
+self-contained Windows app.
 
 [![Download latest](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fevedeck.space%2Fapi%2Fversion&query=%24.version&prefix=v&label=Download&color=2563eb&style=for-the-badge)](https://github.com/objectless/EveDeck/releases/latest)
 [![Website](https://img.shields.io/badge/evedeck.space-visit-2563eb?style=for-the-badge)](https://evedeck.space)

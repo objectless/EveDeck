@@ -262,7 +262,7 @@ internal sealed class ToastNotificationWindow : Window
     // with the actual ship's icon. NoVisual/Clear ignore both `shipIcon` and the details in favor of
     // a fixed label. Every detail null/empty renders with no icon row at all -- purely additive over
     // a bare "system was mentioned" line.
-    public void ShowIntelToast(string title, IntelReportKind kind, string? primaryDetail, string? secondaryDetail, string rawMessage, string accentHex, ImageSource? shipIcon = null)
+    public void ShowIntelToast(string title, IntelReportKind kind, string? primaryDetail, string? secondaryDetail, string rawMessage, string accentHex, ImageSource? shipIcon = null, Action? onClick = null)
     {
         var accent = BrushFromHex(accentHex, Color.FromRgb(0x8B, 0x5C, 0xF6));
         var body = new StackPanel();
@@ -319,7 +319,7 @@ internal sealed class ToastNotificationWindow : Window
             TextWrapping = TextWrapping.Wrap,
         });
 
-        AddCard(title, body, accentHex, null, null, VerticalAlignment.Top);
+        AddCard(title, body, accentHex, null, onClick, VerticalAlignment.Top);
     }
 
     // Eye outline + pupil, struck through -- "no visual": the system was named but nobody's actually

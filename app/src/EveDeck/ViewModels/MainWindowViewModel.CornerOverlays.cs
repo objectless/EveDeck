@@ -1080,13 +1080,16 @@ public sealed partial class MainWindowViewModel
 
     // Intel-report variant -- see IntelSystemTokenizer.ClassifyTrailingText/ResolvePilotAndShip for
     // what kind/primaryDetail/secondaryDetail mean. `shipIcon` is the resolved ship's cached icon
-    // (ShipIconCacheService), when one was found.
-    internal void ShowIntelToast(string title, Utilities.IntelReportKind kind, string? primaryDetail, string? secondaryDetail, string rawMessage, string accentHex, System.Windows.Media.ImageSource? shipIcon = null)
+    // (ShipIconCacheService), when one was found. `onClick`/`nativeArgument` are the toast's
+    // click-to-open-zKillboard action when a Sighting resolved a pilot name (see
+    // MainWindowViewModel.IntelJumpAlert.cs's BuildZkillSearchUrl) -- same dual-mirror convention as
+    // the Jabber ping toast's "click to join comms" link.
+    internal void ShowIntelToast(string title, Utilities.IntelReportKind kind, string? primaryDetail, string? secondaryDetail, string rawMessage, string accentHex, System.Windows.Media.ImageSource? shipIcon = null, Action? onClick = null, string? nativeArgument = null)
     {
         if (EnsureToastWindow() is not { } window) return;
-        window.ShowIntelToast(title, kind, primaryDetail, secondaryDetail, rawMessage, accentHex, shipIcon);
+        window.ShowIntelToast(title, kind, primaryDetail, secondaryDetail, rawMessage, accentHex, shipIcon, onClick);
         AssertToastZOrder();
-        MirrorToNativeNotificationCenter(title, rawMessage);
+        MirrorToNativeNotificationCenter(title, rawMessage, nativeArgument);
     }
 
     private Views.ToastNotificationWindow? EnsureToastWindow()

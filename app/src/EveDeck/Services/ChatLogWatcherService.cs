@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Text;
 using EveDeck.Models;
 
@@ -219,6 +220,34 @@ public sealed class ChatLogWatcherService : IDisposable
     {
         var underscore = fileName.IndexOf('_');
         return underscore > 0 ? fileName[..underscore] : fileName;
+    }
+
+    // Every distinct channel name found among locally-logged chatlogs, for the Intel Channel Alerts
+    // picker (see MainWindowViewModel.IntelJumpAlert.cs's DiscoverIntelChannels) -- mirrors
+    // JabberPingWatcherService.DiscoverConversations()'s role for the Jabber picker. Excludes
+    // "Local_*" files: Local is per-character system chat (already used differently, for
+    // SystemChanged/current-system tracking above), not a channel a user would designate as
+    // "intel" -- everything else (corp/alliance/fleet/custom intel channels) is surfaced so the
+    // user can pick which ones actually are their intel channels.
+    public IReadOnlyList<string> DiscoverChannels()
+    {
+        var names = new List<string>();
+        if (!Directory.Exists(_chatlogsFolder)) return names;
+
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(_chatlogsFolder, "*.txt"))
+            {
+                var fileName = Path.GetFileName(path);
+                if (fileName.StartsWith("Local_", StringComparison.OrdinalIgnoreCase)) continue;
+                names.Add(ChannelNameFromFile(fileName));
+            }
+        }
+        catch { } // best-effort -- a locked/unreadable folder just yields no candidates
+
+        return names.Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public void Dispose() => Stop();

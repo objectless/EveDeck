@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Media;
 using EveDeck.Models;
@@ -7,7 +9,7 @@ using Application = System.Windows.Application;
 
 namespace EveDeck.ViewModels;
 
-// Intel-channel jump-distance alert: a system named in the designated intel chatlog channel that is
+// Intel-channel jump-distance alert: a system named in any enabled intel chatlog channel that is
 // within N jumps of any currently tracked character raises a toast. Built from ChatLogWatcherService's
 // per-line LineReceived event (every line, unlike KeywordMatched's per-rule substring hits -- a system
 // mention isn't a configured keyword) + SystemJumpGraphService's cached ESI stargate graph.
@@ -40,17 +42,15 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    public string IntelChannelName
-    {
-        get => _settings.IntelChannelName;
-        set
-        {
-            if (_settings.IntelChannelName == value) return;
-            _settings.IntelChannelName = value;
-            OnPropertyChanged();
-            Save();
-        }
-    }
+    // Every locally-discovered chatlog channel the user has reviewed, each independently
+    // enabled/disabled with its own alert sound -- see ChatLogWatcherService.DiscoverChannels() and
+    // DiscoverIntelChannels/RefreshIntelChannelsCommand below.
+    public ObservableCollection<IntelChannelRule> IntelChannelRules => _settings.IntelChannelRules;
+
+    public RelayCommand RefreshIntelChannelsCommand { get; private set; } = null!;
+    public RelayCommand RemoveIntelChannelRuleCommand { get; private set; } = null!;
+
+    public IReadOnlyList<IntelAlertSound> IntelAlertSoundOptions { get; } = Enum.GetValues<IntelAlertSound>();
 
     public int IntelJumpAlertMaxJumps
     {
@@ -77,6 +77,26 @@ public sealed partial class MainWindowViewModel
     private void InitIntelJumpAlert()
     {
         BuildIntelMapCommand = new RelayCommand(() => _ = BuildSystemJumpGraphAsync(), () => !_isBuildingIntelMap);
+        RefreshIntelChannelsCommand = new RelayCommand(DiscoverIntelChannels);
+        RemoveIntelChannelRuleCommand = new RelayCommand(parameter =>
+        {
+            if (parameter is not IntelChannelRule rule) return;
+            _settings.IntelChannelRules.Remove(rule);
+            Save();
+        }, parameter => parameter is IntelChannelRule);
+
+        // One-time migration: the old single-channel setting becomes the first (enabled) entry in
+        // the new per-channel list, so upgrading users don't lose their configured intel channel.
+        // IntelChannelRules stays non-empty forever after a real channel gets added, so this can
+        // only ever fire once per install (a user who deliberately empties the list back to zero
+        // entries just gets nothing re-migrated, since IntelChannelName isn't cleared -- an edge
+        // case not worth guarding, re-adding a channel by hand there is a one-click Refresh away).
+        if (_settings.IntelChannelRules.Count == 0 && !string.IsNullOrWhiteSpace(_settings.IntelChannelName))
+        {
+            _settings.IntelChannelRules.Add(new IntelChannelRule { ChannelName = _settings.IntelChannelName, Enabled = true });
+            Save();
+        }
+        DiscoverIntelChannels();
 
         _chatLogWatcherService.LineReceived += (channel, line) =>
         {
@@ -106,6 +126,25 @@ public sealed partial class MainWindowViewModel
         {
             _ = BuildSystemJumpGraphAsync();
         }
+    }
+
+    // Adds any newly-discovered chatlog channel as a new (disabled) IntelChannelRule -- never
+    // touches or removes existing entries, so per-channel Enabled/Sound choices survive a refresh.
+    // New discoveries start disabled: alerting shouldn't silently turn on for a channel the user
+    // hasn't deliberately reviewed and opted into (same "don't guess" convention as the Jabber
+    // ping's required-phrase filter).
+    private void DiscoverIntelChannels()
+    {
+        var found = _chatLogWatcherService.DiscoverChannels();
+        var existing = new HashSet<string>(
+            _settings.IntelChannelRules.Select(r => r.ChannelName), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in found)
+        {
+            if (existing.Contains(name)) continue;
+            _settings.IntelChannelRules.Add(new IntelChannelRule { ChannelName = name, Enabled = false });
+        }
+        Save();
     }
 
     // Falls back to the system-jump graph snapshot bundled next to the exe (Assets\SeedData) when
@@ -186,8 +225,15 @@ public sealed partial class MainWindowViewModel
     {
         if (!_settings.IntelJumpAlertEnabled) return;
         if (_systemJumpGraph is not { Count: > 0 } graph) return;
-        if (string.IsNullOrWhiteSpace(_settings.IntelChannelName)) return;
-        if (channel.IndexOf(_settings.IntelChannelName, StringComparison.OrdinalIgnoreCase) < 0) return;
+
+        // First enabled rule whose channel name is a substring match against this line's actual
+        // channel wins -- same substring convention used everywhere else in this app (ChatAlertRule,
+        // JabberPingConversationName). Multiple enabled rules matching the same channel is an
+        // unlikely, harmless edge case (one channel just alerts with whichever rule's sound sorts
+        // first); nothing currently needs per-rule-precedence to be more precise than that.
+        var matchedRule = _settings.IntelChannelRules.FirstOrDefault(r =>
+            r.Enabled && channel.IndexOf(r.ChannelName, StringComparison.OrdinalIgnoreCase) >= 0);
+        if (matchedRule is null) return;
 
         var messageText = ExtractMessageText(line);
         var mentions = IntelSystemTokenizer.FindSystemMentionsWithTrailingText(messageText, graph);
@@ -214,7 +260,7 @@ public sealed partial class MainWindowViewModel
             if (closest is not int jumps) continue;
 
             _intelAlertedAt[system] = now;
-            SystemSounds.Exclamation.Play();
+            PlayIntelSound(matchedRule.Sound);
             var jumpText = jumps switch { 0 => "in your system", 1 => "1 jump away", _ => $"{jumps} jumps away" };
             var (kind, detail) = IntelSystemTokenizer.ClassifyTrailingText(mention.TrailingText);
             var accent = kind == IntelReportKind.Clear ? "#22C55E" : "#8B5CF6";
@@ -226,6 +272,7 @@ public sealed partial class MainWindowViewModel
             var primaryDetail = detail;
             string? secondaryDetail = null;
             System.Windows.Media.ImageSource? shipIcon = null;
+            string? zkillUrl = null;
             if (kind == IntelReportKind.Sighting && detail is not null && _shipTypeDictionary is { Count: > 0 } ships)
             {
                 var (ship, pilotName) = IntelSystemTokenizer.ResolvePilotAndShip(detail, ships);
@@ -234,12 +281,40 @@ public sealed partial class MainWindowViewModel
                     primaryDetail = pilotName ?? resolved.Name;
                     secondaryDetail = pilotName is not null ? resolved.Name : null;
                     shipIcon = _shipIconCacheService?.TryGetCachedIcon(resolved.Id);
+                    if (pilotName is not null) zkillUrl = BuildZkillSearchUrl(pilotName);
                 }
             }
 
-            ShowIntelToast($"{system} — {jumpText}", kind, primaryDetail, secondaryDetail, messageText, accent, shipIcon);
+            Action? openZkill = zkillUrl is null ? null : () =>
+            {
+                try { Process.Start(new ProcessStartInfo(zkillUrl) { UseShellExecute = true }); }
+                catch (Exception ex) { Log.Warn($"Could not open zKillboard link: {ex.Message}"); }
+            };
+            ShowIntelToast($"{system} — {jumpText}", kind, primaryDetail, secondaryDetail, messageText, accent, shipIcon, openZkill, zkillUrl);
         }
     }
+
+    private static void PlayIntelSound(IntelAlertSound sound)
+    {
+        var systemSound = sound switch
+        {
+            IntelAlertSound.Asterisk => SystemSounds.Asterisk,
+            IntelAlertSound.Hand => SystemSounds.Hand,
+            IntelAlertSound.Question => SystemSounds.Question,
+            IntelAlertSound.Beep => SystemSounds.Beep,
+            _ => SystemSounds.Exclamation,
+        };
+        systemSound.Play();
+    }
+
+    // zKillboard's own /search/<name>/ page resolves a character name directly (confirmed working
+    // live) -- no local ESI name->ID resolution or zKillboard API call needed at all, this just
+    // opens a browser tab to their search results the same way the Jabber ping toast's "click to
+    // join comms" link works. EVEWho was considered too (the user's other named option) but its
+    // Cloudflare protection blocks even basic verification of its search URL shape, so it was
+    // dropped rather than risk shipping a link that might be wrong.
+    private static string BuildZkillSearchUrl(string pilotName)
+        => $"https://zkillboard.com/search/{Uri.EscapeDataString(pilotName)}/";
 
     // "[ 2026.07.10 04:01:23 ] CallerName > text..." -- strip the timestamp+speaker prefix so the
     // tokenizer isn't scanning the timestamp's own digits as candidate words, and the toast body
