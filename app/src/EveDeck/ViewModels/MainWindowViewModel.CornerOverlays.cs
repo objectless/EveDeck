@@ -367,14 +367,6 @@ public sealed partial class MainWindowViewModel
             _cornerSourceHandles[position] = window?.Handle ?? 0;
         }
 
-        // Group centres with a dominant master area are a REAL window (not a tile) -- ZoomTile must
-        // never let a magnified corner preview grow into that screen area, since the enlarged DWM
-        // thumbnail loses that overlap to the real master window instead of compositing above it
-        // (found live 2026-07-19, "Center Master" layout: a zoomed tile grew upward into the master
-        // slot above it and the master's own content won there). Grid-family centres (no dominant
-        // master slot) are excluded -- those are just another AddTile'd tile, not an area to avoid.
-        var masterAvoidRects = new List<(int, int, int, int)>();
-
         foreach (var group in EffectiveGroups())
         {
             var groupCenter = groupCenterSlots[group.GroupId];
@@ -395,13 +387,7 @@ public sealed partial class MainWindowViewModel
                 _tileSurface.SetSource(groupCenter, centerWindow?.Handle ?? 0);
                 _cornerSourceHandles[groupCenter] = centerWindow?.Handle ?? 0;
             }
-            else
-            {
-                masterAvoidRects.Add((masterRect.X, masterRect.Y, masterRect.Width, masterRect.Height));
-            }
         }
-
-        _tileSurface.SetMasterRects(masterAvoidRects);
 
         ApplySurfaceZOrder();
         _frameTimer.Start();
@@ -837,6 +823,11 @@ public sealed partial class MainWindowViewModel
         if (_settings.HoverPreviewStyle.Equals("Zoom", StringComparison.OrdinalIgnoreCase))
         {
             _tileSurface?.ZoomTile(position, Math.Clamp(_settings.HoverZoomFactor, 1.5, 4.0));
+            // The magnified tile can now grow over master's screen area (no longer geometrically
+            // clamped away from it) -- reassert topmost right away so the enlarged DWM thumbnail wins
+            // the compositing there instead of relying on whatever z-order state happened to be
+            // current already.
+            ReassertOwnOverlaySurfaces();
             return;
         }
 

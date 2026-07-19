@@ -41,15 +41,6 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     private readonly HashSet<int> _hiddenTiles = new();                      // positions with no live source
     private readonly int _physX, _physY, _physWidth, _physHeight;
 
-    // Master/group-centre rect(s) (client-relative, same coord space as _tiles), so ZoomTile can keep
-    // a magnified preview from growing into whatever's actually running there. Tiles never overlap
-    // master at rest, but a large enough zoom factor can grow a tile's rect into it -- found live
-    // (2026-07-19): the enlarged DWM thumbnail loses that overlap to the real master window instead
-    // of compositing above it, so the zoomed content is invisible exactly where it crosses in. This
-    // sidesteps needing to know WHY that compositing loses (fullscreen-bypass heuristic, timing,
-    // whatever) by simply never letting the zoom rect reach there.
-    private readonly List<Drawing.Rectangle> _masterRects = new();
-
     // Real per-frame GPU capture (Windows.Graphics.Capture via Vortice Direct3D11/Direct2D1), used in
     // preference to DwmRegisterThumbnail for sharper previews with controllable resize quality --
     // DWM's own thumbnail scaling has no filter control and looks soft at small tile sizes or when
@@ -90,7 +81,18 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         MouseDown += OnMouseDown;
 
         _captureService = WindowCaptureService.TryCreate(msg => Log?.Invoke(msg));
-        _capturePump.Tick += (_, _) => { if (_captureSessions.Count > 0) Redraw(); };
+        _capturePump.Tick += (_, _) =>
+        {
+            // A zoomed tile can now grow over master's screen area, so a topmost-pinned master (or
+            // anything else re-asserting its own topmost state, e.g. EVE's own window management)
+            // can win the z-order race against a single one-shot reassertion made when the zoom
+            // started -- found live 2026-07-19, needed manually unpinning master to "fix" it. Keep
+            // re-asserting at the pump's own cadence (~66ms) for as long as the zoom is active,
+            // rather than trying to guarantee we always go last relative to whatever else is
+            // repinning topmost. Gated to zoom-active only; SetZ() is a no-op cost otherwise avoided.
+            if (_zoomedPosition >= 0) SetZ();
+            if (_captureSessions.Count > 0) Redraw();
+        };
         _capturePump.Start();
     }
 
@@ -128,16 +130,6 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         _tiles[position] = new Drawing.Rectangle(physX - _physX, physY - _physY, physWidth, physHeight);
         _hiddenTiles.Add(position); // invisible until a source is set
         Redraw();
-    }
-
-    // Replaces the set of master/group-centre rects (physical screen coords) that ZoomTile must keep
-    // clear of. Call once per StartCornerOverlays alongside the AddTile calls -- one rect per active
-    // swap group's centre slot (almost always just one).
-    public void SetMasterRects(IEnumerable<(int physX, int physY, int physWidth, int physHeight)> rects)
-    {
-        _masterRects.Clear();
-        foreach (var (physX, physY, physWidth, physHeight) in rects)
-            _masterRects.Add(new Drawing.Rectangle(physX - _physX, physY - _physY, physWidth, physHeight));
     }
 
     // Points the tile's preview at the given EVE window (0 hides the tile until a client returns).
@@ -249,7 +241,6 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             rect.Top + rect.Height / 2 - h / 2, w, h);
         zoom.X = Math.Clamp(zoom.X, 0, Math.Max(0, ClientSize.Width - zoom.Width));
         zoom.Y = Math.Clamp(zoom.Y, 0, Math.Max(0, ClientSize.Height - zoom.Height));
-        zoom = ClampAwayFromMasters(rect, zoom);
 
         // WGC-backed tiles need no DWM re-registration -- Redraw's capture branch just starts asking
         // the session for frames resized to _zoomedRect instead of the tile's normal rect, and the
@@ -274,35 +265,6 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         _zoomedPosition = position;
         _zoomedRect = zoom;
         Redraw();
-    }
-
-    // Shrinks `zoom` back to `originalTileRect`'s own edge on whichever side(s) a master rect sits,
-    // for every master rect the tile is cleanly on one side of (left/right/above/below -- always
-    // true at rest, since tiles and master never overlap unzoomed). Independent per axis, so a tile
-    // diagonal to master gets both X and Y clamped correctly. Never shrinks below originalTileRect's
-    // own size: factor is always >= 1, so zoom's edge on the master's side is always at least as far
-    // out as originalTileRect's own edge there.
-    private Drawing.Rectangle ClampAwayFromMasters(Drawing.Rectangle originalTileRect, Drawing.Rectangle zoom)
-    {
-        foreach (var m in _masterRects)
-        {
-            if (originalTileRect.Right <= m.Left && zoom.Right > m.Left)
-                zoom.Width = m.Left - zoom.X;
-            else if (originalTileRect.Left >= m.Right && zoom.Left < m.Right)
-            {
-                zoom.Width -= m.Right - zoom.X;
-                zoom.X = m.Right;
-            }
-
-            if (originalTileRect.Bottom <= m.Top && zoom.Bottom > m.Top)
-                zoom.Height = m.Top - zoom.Y;
-            else if (originalTileRect.Top >= m.Bottom && zoom.Top < m.Bottom)
-            {
-                zoom.Height -= m.Bottom - zoom.Y;
-                zoom.Y = m.Bottom;
-            }
-        }
-        return zoom;
     }
 
     public void ClearZoom()
@@ -362,16 +324,19 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             g.Clear(Drawing.Color.Transparent);
             using var fill = new Drawing.SolidBrush(fillColor);
             using var opacityAttrs = _opacity < 255 ? OpacityAttributes(_opacity) : null;
-            foreach (var (position, rect) in _tiles)
+
+            // WGC-backed tiles are blitted straight into this shared bitmap (unlike DWM thumbnails,
+            // which composite themselves via their own registration order independently of this draw
+            // loop -- see the class doc comment), so THIS loop's order is what determines which tile
+            // wins any overlap. The zoomed tile can now grow over its neighbours (master-avoidance
+            // clamping was removed, see project-overlay-wgc-thumbnails memory), so it must always be
+            // drawn last regardless of dictionary iteration order, or a sibling tile drawn afterward
+            // paints over the part of it that overlaps -- found live 2026-07-19.
+            void DrawTile(int position, Drawing.Rectangle rect)
             {
-                if (_hiddenTiles.Contains(position)) continue;
+                if (_hiddenTiles.Contains(position)) return;
                 var destRect = position == _zoomedPosition ? _zoomedRect : rect;
 
-                // WGC-backed tile: blit the latest captured-and-resized frame directly (already sized
-                // to destRect by ResizeToBitmap, so this is a 1:1 draw, not another resize). DWM
-                // thumbnails composite themselves on top of this window's own content independently
-                // (see the class doc comment) -- for a WGC tile there's no DWM registration at all, so
-                // the fill rect below is only ever a placeholder until the first frame arrives.
                 if (_captureSessions.TryGetValue(position, out var session))
                 {
                     using var frame = session.TryGetResizedFrame(destRect.Width, destRect.Height);
@@ -381,12 +346,19 @@ internal sealed class TileSurfaceWindow : WinForms.Form
                             g.DrawImage(frame, destRect, 0, 0, frame.Width, frame.Height, Drawing.GraphicsUnit.Pixel, opacityAttrs);
                         else
                             g.DrawImage(frame, destRect);
-                        continue;
+                        return;
                     }
                 }
 
                 g.FillRectangle(fill, destRect);
             }
+
+            foreach (var (position, rect) in _tiles)
+            {
+                if (position != _zoomedPosition) DrawTile(position, rect);
+            }
+            if (_zoomedPosition >= 0 && _tiles.TryGetValue(_zoomedPosition, out var zoomedRect))
+                DrawTile(_zoomedPosition, zoomedRect);
         }
 
         var screenDc = Win32Native.GetDC(0);
