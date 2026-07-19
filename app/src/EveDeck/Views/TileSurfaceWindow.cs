@@ -315,6 +315,24 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     // own DWM_TNP_OPACITY, independent of this window's own rendering.
     private void Redraw()
     {
+        try
+        {
+            RedrawCore();
+        }
+        catch (Exception ex)
+        {
+            // Final safety net around the whole redraw pass -- DrawTile's own try/catch (below)
+            // handles the specific crash found live (an unhandled GDI+ ArgumentException that took
+            // down the whole app via the native JIT-debug dialog, since WPF's
+            // DispatcherUnhandledException doesn't reach a WinForms NativeWindow.Callback), but any
+            // OTHER unexpected failure in bitmap allocation, GetHbitmap, or the UpdateLayeredWindow
+            // push must never crash the app either. Skip this frame; the next pump tick retries.
+            Log?.Invoke($"Redraw failed: {ex}");
+        }
+    }
+
+    private void RedrawCore()
+    {
         if (!IsHandleCreated) return;
 
         var fillColor = Drawing.Color.FromArgb(_opacity, TileFill.R, TileFill.G, TileFill.B);
@@ -337,20 +355,36 @@ internal sealed class TileSurfaceWindow : WinForms.Form
                 if (_hiddenTiles.Contains(position)) return;
                 var destRect = position == _zoomedPosition ? _zoomedRect : rect;
 
-                if (_captureSessions.TryGetValue(position, out var session))
+                try
                 {
-                    using var frame = session.TryGetResizedFrame(destRect.Width, destRect.Height);
-                    if (frame is not null)
+                    if (_captureSessions.TryGetValue(position, out var session))
                     {
-                        if (opacityAttrs is not null)
-                            g.DrawImage(frame, destRect, 0, 0, frame.Width, frame.Height, Drawing.GraphicsUnit.Pixel, opacityAttrs);
-                        else
-                            g.DrawImage(frame, destRect);
-                        return;
+                        using var frame = session.TryGetResizedFrame(destRect.Width, destRect.Height);
+                        if (frame is not null)
+                        {
+                            if (opacityAttrs is not null)
+                                g.DrawImage(frame, destRect, 0, 0, frame.Width, frame.Height, Drawing.GraphicsUnit.Pixel, opacityAttrs);
+                            else
+                                g.DrawImage(frame, destRect);
+                            return;
+                        }
                     }
-                }
 
-                g.FillRectangle(fill, destRect);
+                    g.FillRectangle(fill, destRect);
+                }
+                catch (Exception ex)
+                {
+                    // Found live (2026-07-19): an unhandled ArgumentException here ("Parameter is not
+                    // valid" -- GDI+'s signature message for touching an already-disposed Bitmap/Image)
+                    // crashed the whole app via the native "unhandled exception" JIT-debug dialog --
+                    // WPF's DispatcherUnhandledException (App.xaml.cs) does not catch exceptions
+                    // escaping a WinForms NativeWindow.Callback, which is what a message-pump-triggered
+                    // Redraw runs under. One bad frame for one tile must never take down the whole
+                    // process; skip this tile for this pass (next pump tick tries again) and log full
+                    // detail (destRect + whichever path was taken) so a recurrence is diagnosable
+                    // instead of just another crash dialog.
+                    Log?.Invoke($"Redraw failed for tile {position} (destRect={destRect}): {ex}");
+                }
             }
 
             foreach (var (position, rect) in _tiles)

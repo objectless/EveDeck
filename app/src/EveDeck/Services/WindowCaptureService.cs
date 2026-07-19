@@ -71,7 +71,7 @@ internal sealed class WindowCaptureService : IDisposable
         try
         {
             var item = WgcInterop.CreateItemForWindow(hwnd);
-            return new CaptureSession(this, item);
+            return new CaptureSession(this, item, log);
         }
         catch (Exception ex)
         {
@@ -88,7 +88,7 @@ internal sealed class WindowCaptureService : IDisposable
     // high-quality interpolation, then reads back just that small surface to a GDI+ Bitmap. Bounding
     // the CPU readback to the DESTINATION tile size (not the source window's native resolution) is
     // the key perf mitigation vs. naive full-frame readback.
-    internal Bitmap? ResizeToBitmap(ID3D11Texture2D source, int destWidth, int destHeight, ref TileRenderTarget? cache)
+    internal Bitmap? ResizeToBitmap(ID3D11Texture2D source, int destWidth, int destHeight, ref TileRenderTarget? cache, Action<string>? log = null)
     {
         if (destWidth <= 0 || destHeight <= 0) return null;
 
@@ -135,8 +135,14 @@ internal sealed class WindowCaptureService : IDisposable
                 }
                 finally { _device.ImmediateContext.Unmap(target.Staging, 0); }
             }
-            catch
+            catch (Exception ex)
             {
+                // Diagnostic only (bisecting a live "previews blink like a refresh" report, see
+                // project-overlay-wgc-thumbnails memory) -- this was previously a silent catch, so a
+                // transient GPU/texture failure here (which forces the tile to fall back to the
+                // opaque fill placeholder for exactly one Redraw pass) had zero visibility. Full
+                // ToString(), not just Message, per this session's established practice.
+                log?.Invoke($"WGC resize/readback failed, tile will show a placeholder this frame: {ex}");
                 cache?.Dispose();
                 cache = null;
                 return null;
@@ -164,15 +170,17 @@ internal sealed class CaptureSession : IDisposable
     private readonly GraphicsCaptureItem _item;
     private readonly Direct3D11CaptureFramePool _framePool;
     private readonly GraphicsCaptureSession _session;
+    private readonly Action<string>? _log;
     private readonly object _frameLock = new();
     private ID3D11Texture2D? _latestFrame;
     private TileRenderTarget? _renderTarget;
     private bool _disposed;
 
-    internal CaptureSession(WindowCaptureService owner, GraphicsCaptureItem item)
+    internal CaptureSession(WindowCaptureService owner, GraphicsCaptureItem item, Action<string>? log = null)
     {
         _owner = owner;
         _item = item;
+        _log = log;
 
         var size = item.Size;
         _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
@@ -190,7 +198,14 @@ internal sealed class CaptureSession : IDisposable
 
         ID3D11Texture2D texture;
         try { texture = WgcInterop.TextureFromSurface(frame.Surface); }
-        catch { return; } // source window closed mid-capture, etc. -- keep the previous frame
+        catch (Exception ex)
+        {
+            // Diagnostic only (bisecting a live "previews blink like a refresh" report, see
+            // project-overlay-wgc-thumbnails memory) -- previously silent. Keeps the previous frame
+            // (source window closed mid-capture, etc.) rather than blanking the tile.
+            _log?.Invoke($"WGC frame surface->texture failed, keeping previous frame: {ex}");
+            return;
+        }
 
         lock (_frameLock)
         {
@@ -206,11 +221,24 @@ internal sealed class CaptureSession : IDisposable
 
     // Pulls the latest captured frame resized to destWidth x destHeight. Null if no frame has
     // arrived yet (session just started) or the resize/readback failed.
+    //
+    // FIXED (found live, "previews blink like a refresh" report, 2026-07-19): this used to copy
+    // _latestFrame out under _frameLock and then call ResizeToBitmap on it AFTER releasing the
+    // lock. OnFrameArrived (running concurrently on WGC's own capture thread) can dispose that exact
+    // texture the moment a new frame arrives -- if that landed while ResizeToBitmap was still mid-
+    // flight (GPU draw + copy + map takes a few ms), it called QueryInterface on an already-disposed
+    // SharpGen ComObject, throwing NullReferenceException and dropping that tile to the placeholder
+    // fill for one frame. Confirmed via a real stack trace (SharpGen.Runtime.ComObject.
+    // QueryInterface[T] -> ResizeToBitmap) recurring every 40-90s live. Fixed by holding _frameLock
+    // for the whole call, not just the reference copy, so OnFrameArrived's dispose+reassign can't
+    // interleave with an in-flight read. OnFrameArrived's own critical section is brief (dispose +
+    // pointer swap), so the capture thread only ever waits a few ms in the rare case of overlap.
     public Bitmap? TryGetResizedFrame(int destWidth, int destHeight)
     {
-        ID3D11Texture2D? frame;
-        lock (_frameLock) { frame = _latestFrame; }
-        return frame is null ? null : _owner.ResizeToBitmap(frame, destWidth, destHeight, ref _renderTarget);
+        lock (_frameLock)
+        {
+            return _latestFrame is null ? null : _owner.ResizeToBitmap(_latestFrame, destWidth, destHeight, ref _renderTarget, _log);
+        }
     }
 
     public void Dispose()
