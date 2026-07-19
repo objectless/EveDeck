@@ -250,6 +250,25 @@ public sealed class SlotAssignment : ObservableObject
         set => SetProperty(ref _focusOnlyNoSwap, value);
     }
 
+    // Skip this seat's live preview entirely (no DWM/WGC capture registered) and just show the
+    // tile's plain fill colour instead -- e.g. for a cloaky alt you don't want visible even as a
+    // thumbnail. Mirrors EVE-O Preview's per-client DisableThumbnail / PreventPreviewColor.
+    private bool _preventPreview;
+    public bool PreventPreview
+    {
+        get => _preventPreview;
+        set => SetProperty(ref _preventPreview, value);
+    }
+
+    // Skip this seat when cycling (Cycle/CycleGroup hotkeys) without unassigning it. Toggled via
+    // Shift+click on the seat's corner tile — mirrors EVE-O Preview's shift+click cycle-group toggle.
+    private bool _excludedFromCycle;
+    public bool ExcludedFromCycle
+    {
+        get => _excludedFromCycle;
+        set => SetProperty(ref _excludedFromCycle, value);
+    }
+
     // Legacy migration fields — kept for backward-compat JSON reading; null after first migration save.
     public string? AssignedWindowTitle { get; set; }
     public int? LastProcessId { get; set; }

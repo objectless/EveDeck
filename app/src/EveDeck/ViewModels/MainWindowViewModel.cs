@@ -206,6 +206,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         RemoveGameEventRuleCommand = new RelayCommand(RemoveGameEventRule, parameter => parameter is GameEventRule);
         AddOverlayAllowedAppCommand = new RelayCommand(AddOverlayAllowedApp);
         RemoveOverlayAllowedAppCommand = new RelayCommand(RemoveOverlayAllowedApp, parameter => parameter is Models.OverlayAllowedApp);
+        AddPreviewableAppCommand = new RelayCommand(AddPreviewableApp);
+        RemovePreviewableAppCommand = new RelayCommand(RemovePreviewableApp, parameter => parameter is Models.PreviewableApp);
 
         // ── Views ─────────────────────────────────────────────────
         SelectedProfile = Profiles.FirstOrDefault(p => p.Id == _settings.ActiveProfileId) ?? Profiles.FirstOrDefault();
@@ -441,6 +443,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public RelayCommand RemoveGameEventRuleCommand { get; }
     public RelayCommand AddOverlayAllowedAppCommand { get; }
     public RelayCommand RemoveOverlayAllowedAppCommand { get; }
+    public RelayCommand AddPreviewableAppCommand { get; }
+    public RelayCommand RemovePreviewableAppCommand { get; }
 
     // ── Master resolution picker (VSR/DSR supersampling) ───────────────────────
 
@@ -2064,7 +2068,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         try
         {
             Windows.Clear();
-            foreach (var window in _windowService.FindEveWindows(IncludeNotepadTestWindows))
+            var extraProcessNames = _settings.PreviewableApps.Where(a => a.Enabled).Select(a => a.ProcessName).ToList();
+            foreach (var window in _windowService.FindEveWindows(IncludeNotepadTestWindows, extraProcessNames))
                 Windows.Add(window);
 
             Monitors.Clear();

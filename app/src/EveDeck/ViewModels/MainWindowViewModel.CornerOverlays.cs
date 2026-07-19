@@ -23,6 +23,7 @@ public sealed partial class MainWindowViewModel
     private TileSurfaceWindow? _tileSurface;
     private LabelSurfaceWindow? _labelSurface;
     private readonly Dictionary<int, nint> _cornerSourceHandles = new();
+    private readonly Dictionary<int, bool> _cornerPreventedState = new();
     private readonly Dictionary<int, WindowRect> _cornerRects = new();
     private int _cursorOverPosition = -1;
 
@@ -338,6 +339,10 @@ public sealed partial class MainWindowViewModel
 
         _tileSurface = new TileSurfaceWindow(surfX, surfY, surfW, surfH);
         _tileSurface.TileClicked = OnCornerTileClicked;
+        _tileSurface.TileShiftClicked = OnCornerTileShiftClicked;
+        _tileSurface.TileRectChanged = OnCornerTileRectChanged;
+        _tileSurface.TileDragStarted = OnCornerTileDragStarted;
+        _tileSurface.TileDragging = OnCornerTileDragging;
         _tileSurface.SetOpacity(_settings.CornerOverlayPreviewOpacity);
         _tileSurface.Show();
 
@@ -493,7 +498,12 @@ public sealed partial class MainWindowViewModel
         var name = SeatLabel(occupant);
         var code = CornerCode(position);
         var text = _settings.CornerOverlayShowSlotNumber && !string.IsNullOrEmpty(code) ? $"{code} · {name}" : name;
-        return AppendSystem(text, occupant);
+        text = AppendSystem(text, occupant);
+        // Shift+click on a tile toggles this (see OnCornerTileShiftClicked) -- a plain ASCII suffix
+        // rather than a glyph, since the bundled label font's coverage of exotic Unicode isn't
+        // guaranteed the way the arrow/bracket glyphs used elsewhere in this codebase are.
+        if (Seat(occupant)?.ExcludedFromCycle == true) text += " (skip)";
+        return text;
     }
 
     // "Name · Jita" when the seat's current solar system is known (Local chatlog tracking) and the
@@ -787,6 +797,85 @@ public sealed partial class MainWindowViewModel
         _tileSurface?.ClearZoom();
         var seat = OccupantAtPosition(position);
         CenterSeat(seat);
+    }
+
+    // Shift+click: toggle this tile's occupant out of/into Cycle/CycleGroup without unassigning it
+    // or touching the real window (mirrors EVE-O Preview's shift+click cycle-group toggle).
+    private void OnCornerTileShiftClicked(int position)
+    {
+        var seat = OccupantAtPosition(position);
+        var assignment = Seat(seat);
+        if (assignment is null) return;
+        assignment.ExcludedFromCycle = !assignment.ExcludedFromCycle;
+        RefreshPositionPill(position);
+        Save();
+        Log.Info($"Seat {seat} ({SeatLabel(seat)}) {(assignment.ExcludedFromCycle ? "excluded from" : "included in")} cycling.");
+    }
+
+    // Right-drag (move) / both-buttons-drag (resize) directly on the overlay, mirroring EVE-O
+    // Preview/EVE-APM Preview. The dragged tile's rect has already visually settled by the time
+    // this fires (TileSurfaceWindow only raises it on mouse-up) -- this just needs to PERSIST it.
+    //
+    // Rather than poke the one changed LayoutSlot's raw X/Y/Width/Height directly, this reuses
+    // ApplyEditedSlots (the same persistence path the on-monitor Layout Editor uses): snapshot every
+    // OTHER position's currently-resolved rect, substitute the dragged one, and replace the whole
+    // slot list atomically. Necessary because ResolvePlacementRect's scaling paths (capture-relative
+    // and bounding-box-relative) derive from the WHOLE profile's slot geometry -- overwriting a
+    // single slot's raw numbers without going through the same path other slots use could silently
+    // shift every other slot's resolved position next time the profile is applied.
+    private void OnCornerTileRectChanged(int position, int physX, int physY, int physWidth, int physHeight)
+    {
+        if (SelectedProfile is null || SelectedProfile.Slots.Count == 0) return;
+
+        // ApplyEditedSlots doesn't always restart the whole overlay (only when cloning off a
+        // built-in profile) -- keep our own hover-hit-test rect in sync immediately regardless, since
+        // TileSurfaceWindow's own _tiles rect (what's actually drawn) already updated live during the
+        // drag and must not drift from what MaintainCornerOverlays hit-tests hover against.
+        _cornerRects[position] = new WindowRect { X = physX, Y = physY, Width = physWidth, Height = physHeight };
+
+        var monitor = Monitors.FirstOrDefault(m => m.Id == LayoutTargetMonitorId)
+            ?? Monitors.FirstOrDefault(m => m.IsPrimary)
+            ?? Monitors.FirstOrDefault();
+        if (monitor is null) return;
+
+        var items = SelectedProfile.Slots
+            .OrderBy(s => s.SlotNumber)
+            .Select(s =>
+            {
+                if (s.SlotNumber == position)
+                    return new Views.LayoutEditorSlot { SlotNumber = s.SlotNumber, Label = s.Label, X = physX, Y = physY, Width = physWidth, Height = physHeight };
+                var r = _cornerRects.TryGetValue(s.SlotNumber, out var cur) ? cur : ResolvePlacementRect(s);
+                return new Views.LayoutEditorSlot { SlotNumber = s.SlotNumber, Label = s.Label, X = r.X, Y = r.Y, Width = r.Width, Height = r.Height };
+            })
+            .ToList();
+
+        var wasBuiltIn = SelectedProfile.IsBuiltIn;
+        ApplyEditedSlots(monitor, items);
+        Log.Info($"Adjusted slot {position} by drag" + (wasBuiltIn ? " (saved to a new custom profile)." : "."));
+    }
+
+    // A drag/resize just began. MaintainCornerOverlays' hover-hit-test loop is gated off entirely
+    // for the duration (TileSurfaceWindow.IsDragging) -- which means it will NOT notice "the cursor
+    // left the peeked tile" once dragging starts, so a Peek-style (real-window swap) hover-peek that
+    // was already mid-flight would otherwise get stuck active for the whole drag. Revert it now,
+    // through the same path used when the cursor actually leaves a tile.
+    private void OnCornerTileDragStarted(int position)
+    {
+        _hoverPeekTimer.Stop();
+        _pendingHoverPosition = -1;
+        if (_cursorOverPosition >= 0)
+        {
+            OnCornerTileHoverLeft(_cursorOverPosition);
+            _cursorOverPosition = -1;
+        }
+    }
+
+    // Cheap, live-only visual feedback for every mouse-move during a drag/resize -- moves the pill
+    // label to follow the tile in real time. No persistence here (see OnCornerTileRectChanged for
+    // that, fired once on mouse-up).
+    private void OnCornerTileDragging(int position, int physX, int physY, int physWidth, int physHeight)
+    {
+        _labelSurface?.MovePill(position, new WindowRect { X = physX, Y = physY, Width = physWidth, Height = physHeight });
     }
 
     private void OnCornerTileHovered(int position)
@@ -1239,6 +1328,23 @@ public sealed partial class MainWindowViewModel
         Save();
     }
 
+    // Non-EVE apps (Previews section) whose windows should also show up as detected/assignable
+    // windows, so one can be assigned to a slot and previewed in a corner tile like any EVE client.
+    public ObservableCollection<PreviewableApp> PreviewableApps => _settings.PreviewableApps;
+
+    private void AddPreviewableApp()
+    {
+        _settings.PreviewableApps.Add(new PreviewableApp { ProcessName = "" });
+        Save();
+    }
+
+    private void RemovePreviewableApp(object? parameter)
+    {
+        if (parameter is not PreviewableApp app) return;
+        _settings.PreviewableApps.Remove(app);
+        Save();
+    }
+
     // -- Per-tick upkeep ---------------------------------------------------------
 
     internal void MaintainCornerOverlays()
@@ -1304,7 +1410,10 @@ public sealed partial class MainWindowViewModel
             _cursorOverPosition = -1;
         }
 
-        if (_settings.HoverPreviewEnabled && eveOrEwcFg && Utilities.Win32Native.GetCursorPos(out var cur))
+        // Suppressed while a tile is being dragged/resized -- moving the mouse across other tiles
+        // mid-drag shouldn't also trigger hover-peek/zoom on them (see OnCornerTileDragStarted for
+        // the matching cleanup of whatever was already active when the drag began).
+        if (_settings.HoverPreviewEnabled && eveOrEwcFg && !_tileSurface.IsDragging && Utilities.Win32Native.GetCursorPos(out var cur))
         {
             int hitPos = -1;
             foreach (var (pos, r) in _cornerRects)
@@ -1334,6 +1443,15 @@ public sealed partial class MainWindowViewModel
         foreach (var position in _cornerRects.Keys)
         {
             var seat = OccupantAtPosition(position);
+
+            var preventPreview = Seat(seat)?.PreventPreview == true;
+            _cornerPreventedState.TryGetValue(position, out var lastPrevented);
+            if (preventPreview != lastPrevented)
+            {
+                _tileSurface.SetPreviewPrevented(position, preventPreview);
+                _cornerPreventedState[position] = preventPreview;
+            }
+
             var window = FindSeatWindow(seat);
             if (window is null)
             {

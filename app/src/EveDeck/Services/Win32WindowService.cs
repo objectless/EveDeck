@@ -24,7 +24,7 @@ public sealed class Win32WindowService
     private const uint SwpShowWindow = 0x0040;
     private const uint MonitorDefaultToNearest = 0x00000002;
 
-    public IReadOnlyList<EveWindowInfo> FindEveWindows(bool includeNotepadTestWindows)
+    public IReadOnlyList<EveWindowInfo> FindEveWindows(bool includeNotepadTestWindows, IReadOnlyList<string>? extraProcessNames = null)
     {
         var windows = new List<EveWindowInfo>();
         EnumWindows((handle, _) =>
@@ -47,7 +47,9 @@ public sealed class Win32WindowService
 
             var isEve = process.ProcessName.Equals("exefile", StringComparison.OrdinalIgnoreCase);
             var isNotepadTest = includeNotepadTestWindows && process.ProcessName.Equals("notepad", StringComparison.OrdinalIgnoreCase);
-            if (!isEve && !isNotepadTest)
+            var isExtraPreviewable = extraProcessNames is { Count: > 0 }
+                && extraProcessNames.Any(p => !string.IsNullOrWhiteSpace(p) && process.ProcessName.Contains(p, StringComparison.OrdinalIgnoreCase));
+            if (!isEve && !isNotepadTest && !isExtraPreviewable)
             {
                 return true;
             }

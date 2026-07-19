@@ -121,6 +121,14 @@ internal sealed class LabelSurfaceWindow : Window
         pill.Place(physRect.X - _physX, physRect.Y - _physY, physRect.Width, physRect.Height);
     }
 
+    // Reposition-only, no appearance/content change -- cheap enough to call on every mouse-move
+    // while a tile is being live-dragged/resized on the overlay (see TileSurfaceWindow.TileDragging).
+    public void MovePill(int key, WindowRect physRect)
+    {
+        if (_pills.TryGetValue(key, out var pill))
+            pill.Place(physRect.X - _physX, physRect.Y - _physY, physRect.Width, physRect.Height);
+    }
+
     public void SetPillContent(int key, string text, CharacterPortrait? portrait,
                                string? systemName = null, string? systemColorHex = null)
     {

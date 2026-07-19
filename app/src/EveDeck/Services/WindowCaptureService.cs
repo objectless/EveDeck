@@ -160,11 +160,19 @@ internal sealed class WindowCaptureService : IDisposable
     }
 }
 
+// Common surface TileSurfaceWindow's Redraw pulls frames through, regardless of which capture
+// technology backs a given tile (WGC, or the PrintWindow screenshot fallback below) -- lets both
+// live in the same _captureSessions dictionary with no per-technology branching in Redraw itself.
+internal interface ITileCaptureSession : IDisposable
+{
+    Bitmap? TryGetResizedFrame(int destWidth, int destHeight);
+}
+
 // Per-tile capture: one GraphicsCaptureItem/FramePool/Session per live corner-tile source window.
 // FrameArrived callbacks land on WGC's own capture thread -- this class only ever atomically swaps a
 // "latest frame" reference there; all GPU/CPU work (resize + readback) happens on the caller's thread
 // (TileSurfaceWindow's pump timer) via WindowCaptureService.ResizeToBitmap, serialized by _gpuLock.
-internal sealed class CaptureSession : IDisposable
+internal sealed class CaptureSession : ITileCaptureSession
 {
     private readonly WindowCaptureService _owner;
     private readonly GraphicsCaptureItem _item;
@@ -251,6 +259,92 @@ internal sealed class CaptureSession : IDisposable
         lock (_frameLock) { _latestFrame?.Dispose(); _latestFrame = null; }
         _renderTarget?.Dispose();
         _renderTarget = null;
+    }
+}
+
+// Last-resort capture path for a window neither WGC nor DWM can produce a live thumbnail for --
+// some RDP/remote-desktop sessions and certain virtual-display setups fail both (matches EVE-O
+// Preview's "Compatibility Mode"). Uses PrintWindow, which works over RDP because it asks the
+// target process to paint itself into a provided DC rather than reading a live composited surface.
+// Deliberately slow (recaptures at most once a second, like EVE-O's own 1fps compatibility mode):
+// PrintWindow is a synchronous cross-process call, not a cheap one, and this path only exists for
+// the rare case where nothing faster is available.
+internal sealed class ScreenshotCaptureSession : ITileCaptureSession
+{
+    private static readonly TimeSpan RecaptureInterval = TimeSpan.FromSeconds(1);
+    private readonly nint _hwnd;
+    private readonly Action<string>? _log;
+    private DateTime _lastCaptureUtc = DateTime.MinValue;
+    private Bitmap? _lastCapture;
+    private bool _loggedFailure;
+
+    public ScreenshotCaptureSession(nint hwnd, Action<string>? log = null)
+    {
+        _hwnd = hwnd;
+        _log = log;
+    }
+
+    public Bitmap? TryGetResizedFrame(int destWidth, int destHeight)
+    {
+        if (destWidth <= 0 || destHeight <= 0) return null;
+
+        if (DateTime.UtcNow - _lastCaptureUtc >= RecaptureInterval)
+        {
+            _lastCaptureUtc = DateTime.UtcNow;
+            var fresh = CaptureFrame();
+            if (fresh is not null)
+            {
+                _lastCapture?.Dispose();
+                _lastCapture = fresh;
+            }
+        }
+        if (_lastCapture is null) return null;
+
+        var resized = new Bitmap(destWidth, destHeight, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(resized))
+        {
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.DrawImage(_lastCapture, new Rectangle(0, 0, destWidth, destHeight));
+        }
+        return resized;
+    }
+
+    private Bitmap? CaptureFrame()
+    {
+        try
+        {
+            if (!Utilities.Win32Native.GetWindowRect(_hwnd, out var rect)) return null;
+            var width = rect.Right - rect.Left;
+            var height = rect.Bottom - rect.Top;
+            if (width <= 0 || height <= 0) return null;
+
+            var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            bool ok;
+            using (var g = Graphics.FromImage(bitmap))
+            {
+                var hdc = g.GetHdc();
+                try { ok = Utilities.Win32Native.PrintWindow(_hwnd, hdc, Utilities.Win32Native.PwRenderFullContent); }
+                finally { g.ReleaseHdc(hdc); }
+            }
+            if (!ok)
+            {
+                if (!_loggedFailure) { _log?.Invoke($"Screenshot fallback: PrintWindow failed for window {_hwnd}."); _loggedFailure = true; }
+                bitmap.Dispose();
+                return null;
+            }
+            return bitmap;
+        }
+        catch (Exception ex)
+        {
+            if (!_loggedFailure) { _log?.Invoke($"Screenshot fallback capture failed for window {_hwnd}: {ex}"); _loggedFailure = true; }
+            return null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _lastCapture?.Dispose();
+        _lastCapture = null;
     }
 }
 

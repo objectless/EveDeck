@@ -33,12 +33,19 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     // client). See COMPLIANCE.md.
     public Action<int>? TileClicked;
 
+    // Raised on Shift+left-click instead of TileClicked -- the view-model toggles the tile's
+    // occupant out of cycling (Cycle/CycleGroup hotkeys) without unassigning it, mirroring EVE-O
+    // Preview's shift+click cycle-group toggle. Still a local UI gesture, never input forwarded
+    // into the EVE client. See COMPLIANCE.md.
+    public Action<int>? TileShiftClicked;
+
     private static readonly Drawing.Color TileFill = Drawing.Color.FromArgb(8, 10, 13);
 
     private readonly Dictionary<int, Drawing.Rectangle> _tiles = new();      // client-relative rects
     private readonly Dictionary<int, nint> _thumbnails = new();              // DWM thumbnail ids
     private readonly Dictionary<int, nint> _sources = new();                 // current source hwnd per tile
     private readonly HashSet<int> _hiddenTiles = new();                      // positions with no live source
+    private readonly HashSet<int> _preventedPositions = new();               // positions showing a plain placeholder, no live capture
     private readonly int _physX, _physY, _physWidth, _physHeight;
 
     // Real per-frame GPU capture (Windows.Graphics.Capture via Vortice Direct3D11/Direct2D1), used in
@@ -50,7 +57,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     // separate per-tile window -- so the single-surface/no-per-tick-z-order architecture that killed
     // the historical preview flicker (see project-overlay-single-surface memory) stays intact.
     private readonly WindowCaptureService? _captureService;
-    private readonly Dictionary<int, CaptureSession> _captureSessions = new();
+    private readonly Dictionary<int, ITileCaptureSession> _captureSessions = new();
     private readonly WinForms.Timer _capturePump = new() { Interval = 66 }; // ~15 fps
 
     // Opacity (0-255), applied to every tile including the master/center one: as DWM_TNP_OPACITY on
@@ -66,6 +73,37 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     private int _zoomedPosition = -1;
     private Drawing.Rectangle _zoomedRect;
 
+    // Ad-hoc live drag/resize directly on the overlay (right-drag = move, both buttons + drag =
+    // resize), mirroring EVE-O Preview/EVE-APM Preview's tile manipulation -- deliberately NOT
+    // left-click, which stays click-to-focus, or shift+left-click, which stays cycle-exclude toggle.
+    private enum TileDragMode { None, Reposition, Resize }
+    private const int MinTileSize = 40;
+    private TileDragMode _dragMode = TileDragMode.None;
+    private int _dragPosition = -1;
+    private Drawing.Point _dragStartMouse;
+    private Drawing.Rectangle _dragStartRect;
+
+    // Raised once, on mouse-up, with the FINAL physical-screen rect after a drag/resize completes.
+    // Never raised while dragging -- the view-model persists this into the active layout profile
+    // (cloning a built-in first), which is comparatively expensive and only belongs at the end of a
+    // gesture.
+    public Action<int, int, int, int, int>? TileRectChanged;
+
+    // Raised once when a drag/resize begins -- the view-model reverts any active hover-peek/zoom
+    // through the same path it already uses when the cursor leaves a tile, since the hit-test loop
+    // that would normally notice "cursor left the peeked tile" gets suppressed for the whole drag
+    // (see IsDragging below) and would otherwise leave a real-window peek-swap stuck mid-flight.
+    public Action<int>? TileDragStarted;
+
+    // Raised on every mouse-move while dragging, with the CURRENT (not yet final) physical rect --
+    // cheap, in-memory-only feedback (no profile persistence) so the pill label visually follows the
+    // tile instead of staying behind at its pre-drag position.
+    public Action<int, int, int, int, int>? TileDragging;
+
+    // Lets the view-model suppress hover-driven peek/zoom for the whole overlay while a drag/resize
+    // is in progress -- moving the mouse across other tiles mid-drag shouldn't also trigger them.
+    public bool IsDragging => _dragMode != TileDragMode.None;
+
     public TileSurfaceWindow(int physX, int physY, int physWidth, int physHeight)
     {
         _physX = physX;
@@ -79,6 +117,8 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         AutoScaleMode = WinForms.AutoScaleMode.None;
         Bounds = new Drawing.Rectangle(physX, physY, physWidth, physHeight);
         MouseDown += OnMouseDown;
+        MouseMove += OnMouseMove;
+        MouseUp += OnMouseUp;
 
         _captureService = WindowCaptureService.TryCreate(msg => Log?.Invoke(msg));
         _capturePump.Tick += (_, _) =>
@@ -132,6 +172,16 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         Redraw();
     }
 
+    // Toggles whether a position shows its real live preview or just the plain fill placeholder --
+    // e.g. for a cloaky alt the user doesn't want visible even as a thumbnail. Re-runs SetSource for
+    // whatever's currently assigned there so the capture registration state updates immediately
+    // instead of waiting for the next actual source-handle change.
+    public void SetPreviewPrevented(int position, bool prevented)
+    {
+        if (prevented) _preventedPositions.Add(position); else _preventedPositions.Remove(position);
+        if (_sources.TryGetValue(position, out var hwnd)) SetSource(position, hwnd);
+    }
+
     // Points the tile's preview at the given EVE window (0 hides the tile until a client returns).
     public void SetSource(int position, nint sourceHwnd)
     {
@@ -150,6 +200,16 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             return;
         }
 
+        // Prevented positions stay "visible" (so the plain fill placeholder draws, matching the
+        // fallback DrawTile already uses when there's no capture session) but never get a real
+        // DWM/WGC registration -- see SetPreviewPrevented.
+        if (_preventedPositions.Contains(position))
+        {
+            _hiddenTiles.Remove(position);
+            Redraw();
+            return;
+        }
+
         // Prefer real per-frame WGC capture over DWM's thumbnail when available (see _captureService's
         // doc comment); only fall back to DwmRegisterThumbnail for this tile if capture-item creation
         // fails for this specific window (rare) or the service itself is unavailable.
@@ -164,7 +224,13 @@ internal sealed class TileSurfaceWindow : WinForms.Form
 
         if (!RegisterThumbnail(position, sourceHwnd, rect))
         {
-            _hiddenTiles.Add(position);
+            // Neither WGC nor DWM could produce a live thumbnail for this window -- some RDP/remote-
+            // desktop sessions and certain virtual-display setups fail both. Fall back to periodic
+            // PrintWindow-based screenshot capture rather than leaving the tile blank (matches EVE-O
+            // Preview's "Compatibility Mode"). Genuinely last-resort: only reached when the two
+            // faster paths above have already failed for this specific window.
+            _captureSessions[position] = new ScreenshotCaptureSession(sourceHwnd, msg => Log?.Invoke(msg));
+            _hiddenTiles.Remove(position);
             Redraw();
             return;
         }
@@ -208,6 +274,18 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             return false;
         }
         return true;
+    }
+
+    // Cheap live reposition/resize during a drag -- just the dest-rect flag, not a full
+    // unregister+reregister (which RegisterThumbnail does, but that's overkill on every mouse-move).
+    private void UpdateThumbnailRect(nint thumbnailId, Drawing.Rectangle dest)
+    {
+        var props = new Win32Native.DwmThumbnailProperties
+        {
+            dwFlags = Win32Native.DwmTnpRectDestination,
+            rcDestination = new Win32Native.NativeRect { Left = dest.Left, Top = dest.Top, Right = dest.Right, Bottom = dest.Bottom },
+        };
+        Win32Native.DwmUpdateThumbnailProperties(thumbnailId, ref props);
     }
 
     // Preview transparency (0-100%, same convention as the label opacity slider) for every tile,
@@ -427,13 +505,102 @@ internal sealed class TileSurfaceWindow : WinForms.Form
 
     private void OnMouseDown(object? sender, WinForms.MouseEventArgs e)
     {
-        if (e.Button != WinForms.MouseButtons.Left) return;
-        foreach (var (position, rect) in _tiles)
+        var buttons = WinForms.Control.MouseButtons;
+        if (buttons.HasFlag(WinForms.MouseButtons.Left) && buttons.HasFlag(WinForms.MouseButtons.Right))
         {
-            if (_hiddenTiles.Contains(position) || !rect.Contains(e.Location)) continue;
-            try { TileClicked?.Invoke(position); } catch { } // subscriber exceptions must not kill the input loop
+            // Both buttons down (regardless of which was pressed first) -- upgrade an in-progress
+            // reposition drag to resize in place (no re-hit-test: the mouse may already have moved
+            // off the tile's original rect since the first button went down), or start a fresh resize
+            // if neither button's own mouse-down already claimed one.
+            if (_dragPosition >= 0) BeginDrag(TileDragMode.Resize, _dragPosition, _tiles[_dragPosition], e.Location);
+            else if (TryFindTileAt(e.Location, out var position, out var rect)) BeginDrag(TileDragMode.Resize, position, rect, e.Location);
             return;
         }
+
+        if (e.Button == WinForms.MouseButtons.Right)
+        {
+            if (TryFindTileAt(e.Location, out var position, out var rect)) BeginDrag(TileDragMode.Reposition, position, rect, e.Location);
+            return;
+        }
+
+        if (e.Button != WinForms.MouseButtons.Left) return;
+        if (!TryFindTileAt(e.Location, out var clickedPosition, out _)) return;
+        var shift = WinForms.Control.ModifierKeys.HasFlag(WinForms.Keys.Shift);
+        try { (shift ? TileShiftClicked : TileClicked)?.Invoke(clickedPosition); } catch { } // subscriber exceptions must not kill the input loop
+    }
+
+    private bool TryFindTileAt(Drawing.Point location, out int position, out Drawing.Rectangle rect)
+    {
+        foreach (var (pos, r) in _tiles)
+        {
+            if (_hiddenTiles.Contains(pos) || !r.Contains(location)) continue;
+            position = pos;
+            rect = r;
+            return true;
+        }
+        position = -1;
+        rect = default;
+        return false;
+    }
+
+    private void BeginDrag(TileDragMode mode, int position, Drawing.Rectangle rect, Drawing.Point mouseLocation)
+    {
+        // Zoom-style peek is cleared here directly (own state); a Peek-style (real-window swap) peek
+        // is the view-model's to revert, via TileDragStarted below -- it needs to go through
+        // RevertPeekSwap, not something this class can do on its own.
+        if (_zoomedPosition == position) ClearZoom();
+        _dragMode = mode;
+        _dragPosition = position;
+        _dragStartRect = rect;
+        _dragStartMouse = mouseLocation;
+        Cursor = mode == TileDragMode.Resize ? WinForms.Cursors.SizeNWSE : WinForms.Cursors.SizeAll;
+        try { TileDragStarted?.Invoke(position); } catch { } // subscriber exceptions must not kill the input loop
+    }
+
+    private void OnMouseMove(object? sender, WinForms.MouseEventArgs e)
+    {
+        if (_dragMode == TileDragMode.None || _dragPosition < 0) return;
+        var dx = e.X - _dragStartMouse.X;
+        var dy = e.Y - _dragStartMouse.Y;
+
+        var newRect = _dragStartRect;
+        if (_dragMode == TileDragMode.Reposition)
+        {
+            newRect.X = Math.Clamp(_dragStartRect.X + dx, 0, Math.Max(0, ClientSize.Width - newRect.Width));
+            newRect.Y = Math.Clamp(_dragStartRect.Y + dy, 0, Math.Max(0, ClientSize.Height - newRect.Height));
+        }
+        else // Resize
+        {
+            newRect.Width = Math.Max(MinTileSize, Math.Min(_dragStartRect.Width + dx, ClientSize.Width - newRect.X));
+            newRect.Height = Math.Max(MinTileSize, Math.Min(_dragStartRect.Height + dy, ClientSize.Height - newRect.Y));
+        }
+
+        _tiles[_dragPosition] = newRect;
+        // DWM's dest rect updates live via DwmUpdateThumbnailProperties -- no need to unregister and
+        // re-register the thumbnail on every mouse-move tick. WGC/screenshot-backed tiles need no
+        // equivalent call at all: Redraw() already reads destRect fresh from _tiles every pass.
+        if (_thumbnails.TryGetValue(_dragPosition, out var thumbId)) UpdateThumbnailRect(thumbId, newRect);
+        Redraw();
+
+        // Cheap, in-memory-only feedback -- the pill label lives on a separate window (LabelSurfaceWindow)
+        // and has no idea this tile moved unless told every frame; TileRectChanged only fires once, on
+        // mouse-up, since IT persists to the profile (comparatively expensive).
+        try { TileDragging?.Invoke(_dragPosition, newRect.X + _physX, newRect.Y + _physY, newRect.Width, newRect.Height); } catch { }
+    }
+
+    private void OnMouseUp(object? sender, WinForms.MouseEventArgs e)
+    {
+        if (_dragMode == TileDragMode.None || _dragPosition < 0) return;
+        var position = _dragPosition;
+        var finalRect = _tiles[position];
+        _dragMode = TileDragMode.None;
+        _dragPosition = -1;
+        Cursor = WinForms.Cursors.Default;
+
+        // Physical-screen coords, matching AddTile's own convention -- the view-model persists this
+        // into the active layout profile (cloning a built-in first if needed).
+        try { TileRectChanged?.Invoke(position, finalRect.X + _physX, finalRect.Y + _physY, finalRect.Width, finalRect.Height); }
+        catch { } // subscriber exceptions must not kill the input loop
     }
 
     private void UnregisterThumbnail(int position)

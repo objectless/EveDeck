@@ -246,6 +246,11 @@ public sealed class AppSettings
         new() { ProcessName = "pidgin" },
     };
 
+    // Non-EVE apps whose windows also show up as detected/assignable windows so they can be
+    // previewed in a corner tile alongside EVE clients. Empty by default -- opt-in per app, unlike
+    // OverlayAllowedApps above (which ships with sensible defaults for a DIFFERENT purpose).
+    public ObservableCollection<PreviewableApp> PreviewableApps { get; set; } = new();
+
     // ── Planetary Industry (Planets tab) ──────────────────────────────────────
     // Read-only ESI colony monitor + factory-load calculator. Off until the user opts in, since it
     // needs the esi-planets scope which older linked characters won't have granted.

@@ -966,6 +966,9 @@
                                 <CheckBox Content="Focus only (no master swap)" FontSize="10" Margin="4,2"
                                           IsChecked="{Binding FocusOnlyNoSwap, UpdateSourceTrigger=PropertyChanged}"
                                           ToolTip="Activating this seat (click/hotkey) just brings its window to the front in place, instead of swapping it into the master/centre slot. Also disables hover-peek for this seat."/>
+                                <CheckBox Content="Hide preview" FontSize="10" Margin="4,2"
+                                          IsChecked="{Binding PreventPreview, UpdateSourceTrigger=PropertyChanged}"
+                                          ToolTip="Show this seat's corner tile as a plain colour instead of a live preview -- e.g. for a cloaky alt you don't want visible even as a thumbnail."/>
                               </StackPanel>
                             </Grid>
                           </Border>
@@ -1803,6 +1806,27 @@ Shows your background clients as live mini-previews in the screen corners while 
                 <TextBlock Text="sec offline (0 = hide immediately, -1 = never hide, default)" VerticalAlignment="Center"
                            Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="6,0,0,0"/>
               </StackPanel>
+              <TextBlock Text="Preview non-EVE apps" FontSize="13" FontWeight="SemiBold" Margin="0,14,0,6"/>
+              <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,8">
+Apps listed here also show up as detected/assignable windows (Clients tab) so one can be assigned to a slot and previewed in a corner tile alongside your EVE clients -- e.g. Discord or a spreadsheet. Matched by process name (case-insensitive, partial match, no ".exe").
+              </TextBlock>
+              <ItemsControl ItemsSource="{Binding PreviewableApps}" Margin="0,0,0,6">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <DockPanel Margin="0,3">
+                      <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
+                                VerticalAlignment="Center" Margin="0,0,8,0"/>
+                      <Button DockPanel.Dock="Right" Content="Remove" Padding="7,3" FontSize="11" Margin="6,0,0,0"
+                              Command="{Binding DataContext.RemovePreviewableAppCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding}"/>
+                      <TextBox Text="{Binding ProcessName, UpdateSourceTrigger=PropertyChanged}"
+                               Width="180" Padding="6,4" FontSize="12"
+                               ToolTip="Process name substring, case-insensitive (e.g. discord, excel)"/>
+                    </DockPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Button Content="+ Add App" Command="{Binding AddPreviewableAppCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
                   </StackPanel>
                   <!-- section 8: Settings Backup -->
                   <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=8}">
@@ -2236,6 +2260,11 @@ Settings &gt; System &gt; Notifications.
                 <Button Content="Build system map" Command="{Binding BuildIntelMapCommand}" Padding="10,4" Margin="0,12,0,0" HorizontalAlignment="Left"
                         ToolTip="Re-crawls ESI for the current system map and ship dictionary. Not required for normal use -- EveDeck ships with a recent snapshot already built in."/>
                 <TextBlock Text="{Binding IntelMapStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap">
+                  For a better intel/situational-awareness app,
+                  <Hyperlink Command="{Binding OpenVoidSonarCommand}" Foreground="{StaticResource AccentBrush}">Void Sonar</Hyperlink>
+                  - voidsonar.space
+                </TextBlock>
               </StackPanel>
             </Border>
           </StackPanel>

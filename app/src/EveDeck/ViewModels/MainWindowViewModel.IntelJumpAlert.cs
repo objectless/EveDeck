@@ -74,10 +74,20 @@ public sealed partial class MainWindowViewModel
 
     public RelayCommand BuildIntelMapCommand { get; private set; } = null!;
 
+    // EveDeck's intel alert is a lightweight in-overlay complement (jump-distance toasts off local
+    // chatlogs), not a full situational-awareness tool -- Void Sonar is a dedicated third-party
+    // intel map/threat-tracking web app; link out to it rather than trying to compete with it.
+    public RelayCommand OpenVoidSonarCommand { get; private set; } = null!;
+
     private void InitIntelJumpAlert()
     {
         BuildIntelMapCommand = new RelayCommand(() => _ = BuildSystemJumpGraphAsync(), () => !_isBuildingIntelMap);
         RefreshIntelChannelsCommand = new RelayCommand(DiscoverIntelChannels);
+        OpenVoidSonarCommand = new RelayCommand(() =>
+        {
+            try { Process.Start(new ProcessStartInfo("https://voidsonar.space/") { UseShellExecute = true }); }
+            catch (Exception ex) { Log.Warn($"Could not open Void Sonar link: {ex.Message}"); }
+        });
         RemoveIntelChannelRuleCommand = new RelayCommand(parameter =>
         {
             if (parameter is not IntelChannelRule rule) return;

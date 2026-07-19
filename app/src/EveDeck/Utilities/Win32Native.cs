@@ -79,6 +79,15 @@ internal static class Win32Native
     [DllImport("user32.dll")]
     internal static extern bool GetWindowRect(nint hWnd, out NativeRect lpRect);
 
+    // PW_RENDERFULLCONTENT (0x2, Windows 8.1+) is required for hardware-accelerated (DirectX/OpenGL)
+    // content like the EVE client -- without it PrintWindow captures a blank/black frame for
+    // GPU-rendered windows. Used only as a last-resort capture path when both WGC and DWM
+    // thumbnails fail for a window (e.g. some RDP/remote-desktop or virtual-display setups).
+    internal const uint PwRenderFullContent = 0x2;
+
+    [DllImport("user32.dll")]
+    internal static extern bool PrintWindow(nint hWnd, nint hdcBlt, uint nFlags);
+
     [DllImport("user32.dll")]
     internal static extern bool MoveWindow(nint hWnd, int x, int y, int width, int height, bool repaint);
 

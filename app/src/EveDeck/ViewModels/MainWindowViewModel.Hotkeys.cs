@@ -275,7 +275,7 @@ public sealed partial class MainWindowViewModel
 
     private void Cycle(int direction)
     {
-        var assignedWindows = Assignments.SelectMany(FindAssignedWindows).ToList();
+        var assignedWindows = Assignments.Where(a => !a.ExcludedFromCycle).SelectMany(FindAssignedWindows).ToList();
         if (assignedWindows.Count == 0) { Log.Warn("No assigned windows are available to cycle."); return; }
 
         var activeHandle = _windowService.GetForegroundWindowHandle();
@@ -294,7 +294,7 @@ public sealed partial class MainWindowViewModel
         if (groupIndex < 1 || groupIndex > groups.Count) { Log.Warn($"No swap group {groupIndex} in the active profile."); return; }
         var group = groups[groupIndex - 1];
         var seatNums = group.SlotNumbers.Count == 0 ? Assignments.Select(a => a.SlotNumber) : group.SlotNumbers;
-        var windows = seatNums.Select(Seat).Where(a => a is not null)
+        var windows = seatNums.Select(Seat).Where(a => a is not null && !a.ExcludedFromCycle)
             .SelectMany(a => FindAssignedWindows(a!)).ToList();
         if (windows.Count == 0) { Log.Warn($"Group {groupIndex} has no running windows to cycle."); return; }
 
