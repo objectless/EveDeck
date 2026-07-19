@@ -1,6 +1,8 @@
+using EveDeck.Services;
 using EveDeck.Utilities;
 using WinForms = System.Windows.Forms;
 using Drawing = System.Drawing;
+using DrawingImaging = System.Drawing.Imaging;
 
 namespace EveDeck.Views;
 
@@ -39,6 +41,18 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     private readonly HashSet<int> _hiddenTiles = new();                      // positions with no live source
     private readonly int _physX, _physY, _physWidth, _physHeight;
 
+    // Real per-frame GPU capture (Windows.Graphics.Capture via Vortice Direct3D11/Direct2D1), used in
+    // preference to DwmRegisterThumbnail for sharper previews with controllable resize quality --
+    // DWM's own thumbnail scaling has no filter control and looks soft at small tile sizes or when
+    // magnified (ZoomTile). Null when unavailable (old GPU/driver), in which case every tile silently
+    // falls back to the existing DWM thumbnail path below. Captured frames are pulled by the pump
+    // timer and blitted into THIS window's own composited bitmap in Redraw() -- never drawn via a
+    // separate per-tile window -- so the single-surface/no-per-tick-z-order architecture that killed
+    // the historical preview flicker (see project-overlay-single-surface memory) stays intact.
+    private readonly WindowCaptureService? _captureService;
+    private readonly Dictionary<int, CaptureSession> _captureSessions = new();
+    private readonly WinForms.Timer _capturePump = new() { Interval = 66 }; // ~15 fps
+
     // Opacity (0-255), applied to every tile including the master/center one: as DWM_TNP_OPACITY on
     // each live thumbnail (so overlapping tiles blend against each other/the master rect, not just
     // against the desktop) AND as the backplate's own per-pixel alpha (so the backplate stops being
@@ -65,6 +79,10 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         AutoScaleMode = WinForms.AutoScaleMode.None;
         Bounds = new Drawing.Rectangle(physX, physY, physWidth, physHeight);
         MouseDown += OnMouseDown;
+
+        _captureService = WindowCaptureService.TryCreate(msg => Log?.Invoke(msg));
+        _capturePump.Tick += (_, _) => { if (_captureSessions.Count > 0) Redraw(); };
+        _capturePump.Start();
     }
 
     // Never steal focus from the EVE client the user is playing.
@@ -111,12 +129,25 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         if (_zoomedPosition == position) ClearZoom(); // occupant changed under the cursor
 
         UnregisterThumbnail(position);
+        StopCaptureSession(position);
         _sources[position] = sourceHwnd;
 
         if (sourceHwnd == 0)
         {
             _hiddenTiles.Add(position);
             Redraw();
+            return;
+        }
+
+        // Prefer real per-frame WGC capture over DWM's thumbnail when available (see _captureService's
+        // doc comment); only fall back to DwmRegisterThumbnail for this tile if capture-item creation
+        // fails for this specific window (rare) or the service itself is unavailable.
+        var session = _captureService?.CreateSession(sourceHwnd, msg => Log?.Invoke(msg));
+        if (session is not null)
+        {
+            _captureSessions[position] = session;
+            _hiddenTiles.Remove(position);
+            Redraw(); // shows the fill backdrop immediately; the pump swaps in real pixels once the first frame arrives
             return;
         }
 
@@ -129,6 +160,12 @@ internal sealed class TileSurfaceWindow : WinForms.Form
 
         _hiddenTiles.Remove(position);
         Redraw();
+    }
+
+    private void StopCaptureSession(int position)
+    {
+        if (!_captureSessions.Remove(position, out var session)) return;
+        session.Dispose();
     }
 
     private bool RegisterThumbnail(int position, nint sourceHwnd, Drawing.Rectangle dest)
@@ -194,6 +231,18 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         zoom.X = Math.Clamp(zoom.X, 0, Math.Max(0, ClientSize.Width - zoom.Width));
         zoom.Y = Math.Clamp(zoom.Y, 0, Math.Max(0, ClientSize.Height - zoom.Height));
 
+        // WGC-backed tiles need no DWM re-registration -- Redraw's capture branch just starts asking
+        // the session for frames resized to _zoomedRect instead of the tile's normal rect, and the
+        // manual GPU resize (see WindowCaptureService.ResizeToBitmap) is exactly what makes the
+        // magnified preview sharp instead of soft.
+        if (_captureSessions.ContainsKey(position))
+        {
+            _zoomedPosition = position;
+            _zoomedRect = zoom;
+            Redraw();
+            return;
+        }
+
         UnregisterThumbnail(position);
         if (!RegisterThumbnail(position, src, zoom))
         {
@@ -212,6 +261,12 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         if (_zoomedPosition < 0) return;
         var position = _zoomedPosition;
         _zoomedPosition = -1;
+
+        if (_captureSessions.ContainsKey(position))
+        {
+            Redraw(); // next pump pulls frames sized to the tile's normal rect again
+            return;
+        }
 
         if (_tiles.TryGetValue(position, out var rect) && _thumbnails.TryGetValue(position, out var id))
         {
@@ -257,10 +312,31 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         {
             g.Clear(Drawing.Color.Transparent);
             using var fill = new Drawing.SolidBrush(fillColor);
+            using var opacityAttrs = _opacity < 255 ? OpacityAttributes(_opacity) : null;
             foreach (var (position, rect) in _tiles)
             {
                 if (_hiddenTiles.Contains(position)) continue;
-                g.FillRectangle(fill, position == _zoomedPosition ? _zoomedRect : rect);
+                var destRect = position == _zoomedPosition ? _zoomedRect : rect;
+
+                // WGC-backed tile: blit the latest captured-and-resized frame directly (already sized
+                // to destRect by ResizeToBitmap, so this is a 1:1 draw, not another resize). DWM
+                // thumbnails composite themselves on top of this window's own content independently
+                // (see the class doc comment) -- for a WGC tile there's no DWM registration at all, so
+                // the fill rect below is only ever a placeholder until the first frame arrives.
+                if (_captureSessions.TryGetValue(position, out var session))
+                {
+                    using var frame = session.TryGetResizedFrame(destRect.Width, destRect.Height);
+                    if (frame is not null)
+                    {
+                        if (opacityAttrs is not null)
+                            g.DrawImage(frame, destRect, 0, 0, frame.Width, frame.Height, Drawing.GraphicsUnit.Pixel, opacityAttrs);
+                        else
+                            g.DrawImage(frame, destRect);
+                        continue;
+                    }
+                }
+
+                g.FillRectangle(fill, destRect);
             }
         }
 
@@ -312,10 +388,27 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         _thumbnails.Remove(position);
     }
 
+    // Scales a drawn image's alpha to `opacity` (0-255) via a color matrix -- the manual equivalent of
+    // DWM_TNP_OPACITY for WGC-backed tiles, which have no DWM thumbnail registration to apply that to.
+    private static DrawingImaging.ImageAttributes OpacityAttributes(byte opacity)
+    {
+        var matrix = new DrawingImaging.ColorMatrix { Matrix33 = opacity / 255f };
+        var attrs = new DrawingImaging.ImageAttributes();
+        attrs.SetColorMatrix(matrix, DrawingImaging.ColorMatrixFlag.Default, DrawingImaging.ColorAdjustType.Bitmap);
+        return attrs;
+    }
+
     protected override void OnHandleDestroyed(EventArgs e)
     {
         foreach (var id in _thumbnails.Values) Win32Native.DwmUnregisterThumbnail(id);
         _thumbnails.Clear();
+
+        _capturePump.Stop();
+        _capturePump.Dispose();
+        foreach (var session in _captureSessions.Values) session.Dispose();
+        _captureSessions.Clear();
+        _captureService?.Dispose();
+
         base.OnHandleDestroyed(e);
     }
 }

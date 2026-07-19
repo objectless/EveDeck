@@ -26,6 +26,12 @@ public sealed partial class MainWindowViewModel
     private readonly Dictionary<int, WindowRect> _cornerRects = new();
     private int _cursorOverPosition = -1;
 
+    // Safety-net timestamp for the low-frequency z-order re-assert in MaintainCornerOverlays -- a
+    // catch-all for any missed/unknown trigger path, distinct from the historical per-tick flicker
+    // bug (many windows fighting via HIGH FREQUENCY reassertion): this is one infrequent, idempotent
+    // re-assert of our own already-correctly-ordered surfaces, not a contest between windows.
+    private DateTime _lastZOrderSafetyNet = DateTime.MinValue;
+
     // HWND of the on-monitor layout editor while it's open (0 = none). The overlay surfaces are
     // always-topmost now (see ApplySurfaceZOrder), so without this the editor's own resize/drag
     // chrome can end up rendered BEHIND the preview tiles the moment it becomes foreground and the
@@ -869,7 +875,13 @@ public sealed partial class MainWindowViewModel
         catch (Exception ex) { Log.Error($"Hover peek swap failed: {ex.Message}"); return; }
 
         // The corner tile keeps rendering the same live thumbnail regardless (it captures by
-        // window handle, not by physical position), so no overlay update is needed here.
+        // window handle, not by physical position), so no overlay update is needed here. The
+        // z-order DOES need reasserting though -- same reasoning as CenterSeatInGroup: moving a
+        // real window (even with SWP_NOZORDER/SWP_NOACTIVATE) can still nudge it up a band, which
+        // used to leave the master window sitting above the always-topmost overlay surfaces after
+        // every hover-peek. This was the missing half of that fix -- CenterSeatInGroup reasserts,
+        // ExecuteHoverPeek never did, and hover-peek fires far more often than click-to-centre.
+        RefreshCornerOverlayZOrder();
 
         _peekPosition = position;
         _peekSeat = seat;
@@ -917,6 +929,9 @@ public sealed partial class MainWindowViewModel
             }
         }
         catch (Exception ex) { Log.Error($"Hover peek revert failed: {ex.Message}"); }
+
+        // Symmetric with the reassert in ExecuteHoverPeek -- the revert move can nudge z-order too.
+        RefreshCornerOverlayZOrder();
     }
 
     private void ClearPeekState()
@@ -1206,6 +1221,12 @@ public sealed partial class MainWindowViewModel
     internal void MaintainCornerOverlays()
     {
         if (_tileSurface is null) return;
+
+        if ((DateTime.UtcNow - _lastZOrderSafetyNet).TotalSeconds >= 2)
+        {
+            _lastZOrderSafetyNet = DateTime.UtcNow;
+            ApplySurfaceZOrder();
+        }
 
         if (_settings.OfflineOverlayTimeoutSeconds > 0 && !Assignments.Any(a => FindAssignedWindows(a).Any()))
         {

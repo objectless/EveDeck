@@ -222,13 +222,22 @@ public sealed class ChatLogWatcherService : IDisposable
         return underscore > 0 ? fileName[..underscore] : fileName;
     }
 
+    // Channel-log prefixes that are never worth surfacing as an intel-channel candidate: Local is
+    // per-character system chat (already used differently, for SystemChanged/current-system
+    // tracking above), and Alliance/Corp/Fleet are member-only comms that don't carry regular
+    // intel reports -- offering them just adds noise to the picker the user has to manually skip.
+    private static readonly string[] ExcludedChannelPrefixes = { "Local_", "Alliance_", "Corp_", "Fleet_" };
+
+    // Same exclusion, keyed by resolved channel name rather than log-file prefix -- lets callers
+    // (e.g. DiscoverIntelChannels' stale-entry cleanup) test a name already stripped of its file suffix.
+    public static bool IsExcludedChannelName(string channelName) =>
+        ExcludedChannelPrefixes.Any(p => string.Equals(channelName, p.TrimEnd('_'), StringComparison.OrdinalIgnoreCase));
+
     // Every distinct channel name found among locally-logged chatlogs, for the Intel Channel Alerts
     // picker (see MainWindowViewModel.IntelJumpAlert.cs's DiscoverIntelChannels) -- mirrors
     // JabberPingWatcherService.DiscoverConversations()'s role for the Jabber picker. Excludes
-    // "Local_*" files: Local is per-character system chat (already used differently, for
-    // SystemChanged/current-system tracking above), not a channel a user would designate as
-    // "intel" -- everything else (corp/alliance/fleet/custom intel channels) is surfaced so the
-    // user can pick which ones actually are their intel channels.
+    // ExcludedChannelPrefixes; everything else (custom intel channels) is surfaced so the user can
+    // pick which ones actually are their intel channels.
     public IReadOnlyList<string> DiscoverChannels()
     {
         var names = new List<string>();
@@ -239,7 +248,7 @@ public sealed class ChatLogWatcherService : IDisposable
             foreach (var path in Directory.EnumerateFiles(_chatlogsFolder, "*.txt"))
             {
                 var fileName = Path.GetFileName(path);
-                if (fileName.StartsWith("Local_", StringComparison.OrdinalIgnoreCase)) continue;
+                if (ExcludedChannelPrefixes.Any(p => fileName.StartsWith(p, StringComparison.OrdinalIgnoreCase))) continue;
                 names.Add(ChannelNameFromFile(fileName));
             }
         }

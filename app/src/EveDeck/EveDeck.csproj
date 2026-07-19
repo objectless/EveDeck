@@ -2,9 +2,14 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
-    <SupportedOSPlatformVersion>10.0.18362.0</SupportedOSPlatformVersion>
+    <!-- Bumped from 18362.0: the WGC tile-capture path (WindowCaptureService) uses
+         GraphicsCaptureSession.IsCursorCaptureEnabled, which needs 19041.0; matches the TFM's own
+         Windows SDK target already, and virtually every Win10/11 install is well past this build. -->
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Needed for the row-copy in WindowCaptureService's WGC/Direct3D readback path. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -37,6 +42,9 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.WinUI.Notifications" Version="7.1.2" />
     <PackageReference Include="Velopack" Version="1.2.0" />
+    <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\evedeck-logo.png" />

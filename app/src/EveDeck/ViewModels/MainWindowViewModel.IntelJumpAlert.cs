@@ -144,6 +144,16 @@ public sealed partial class MainWindowViewModel
             if (existing.Contains(name)) continue;
             _settings.IntelChannelRules.Add(new IntelChannelRule { ChannelName = name, Enabled = false });
         }
+
+        // Alliance/Corp/Fleet got auto-added by older versions of this method before they were
+        // excluded from discovery -- drop those stale entries too, as long as the user never
+        // enabled one (an enabled entry means they deliberately opted in despite the exclusion,
+        // so leave it alone rather than silently ripping out a live alert).
+        var stale = _settings.IntelChannelRules
+            .Where(r => !r.Enabled && ChatLogWatcherService.IsExcludedChannelName(r.ChannelName))
+            .ToList();
+        foreach (var rule in stale) _settings.IntelChannelRules.Remove(rule);
+
         Save();
     }
 
