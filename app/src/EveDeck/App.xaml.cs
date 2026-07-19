@@ -72,6 +72,12 @@ public partial class App : Application
             args.SetObserved();
         };
 
+        // Opt out of Windows' background-process power throttling (EcoQoS) -- see the doc comment
+        // on Win32Native.DisableOwnProcessPowerThrottling for why: EveDeck's main window is usually
+        // hidden to tray, so Task Manager buckets it as "Background", which can throttle exactly the
+        // time-sensitive Win32 calls (hover-peek z-order reassertion) that need to run promptly.
+        Utilities.Win32Native.DisableOwnProcessPowerThrottling();
+
         DpiBootstrap.TryEnablePerMonitorV2();
 
         // Custom splash (the built-in WPF SplashScreen isn't DPI-aware, so it drifts off-centre

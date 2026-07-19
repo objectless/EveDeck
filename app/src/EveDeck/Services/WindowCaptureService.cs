@@ -46,6 +46,7 @@ internal sealed class WindowCaptureService : IDisposable
     {
         try
         {
+            log?.Invoke($"WGC diagnostic: GraphicsCaptureSession.IsSupported() = {GraphicsCaptureSession.IsSupported()}");
             var device = D3D11.D3D11CreateDevice(DriverType.Hardware, DeviceCreationFlags.BgraSupport, null!);
             using var dxgiDevice = device.QueryInterface<IDXGIDevice>();
             var winrtDevice = WgcInterop.CreateDirect3DDeviceFromDXGIDevice(dxgiDevice);
@@ -54,7 +55,11 @@ internal sealed class WindowCaptureService : IDisposable
         }
         catch (Exception ex)
         {
-            log?.Invoke($"WGC capture unavailable, falling back to DWM thumbnails: {ex.Message}");
+            // Full ToString(), not just Message: this is a rare, one-time-at-startup path, and a
+            // bare exception message alone (e.g. "Specified cast is not valid") isn't enough to
+            // diagnose a real interop bug after the fact -- see the CreateSession catch below for
+            // the same reasoning, which is what this exact gap cost during live debugging.
+            log?.Invoke($"WGC capture unavailable, falling back to DWM thumbnails: {ex}");
             return null;
         }
     }
@@ -70,7 +75,9 @@ internal sealed class WindowCaptureService : IDisposable
         }
         catch (Exception ex)
         {
-            log?.Invoke($"WGC capture session failed for window {hwnd}: {ex.Message}");
+            // Full ToString() (type + message + stack trace), not just Message -- a bare "Specified
+            // cast is not valid" with no stack trace is nearly undiagnosable after the fact.
+            log?.Invoke($"WGC capture session failed for window {hwnd}: {ex}");
             return null;
         }
     }
@@ -288,42 +295,77 @@ internal sealed class TileRenderTarget : IDisposable
     }
 }
 
-// The two COM interop interfaces WGC needs that aren't part of the standard WinRT projection --
-// standard, well-known interop shapes (see Microsoft's own WGC samples), hand-declared here.
-[ComImport, Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-internal interface IGraphicsCaptureItemInterop
-{
-    IntPtr CreateForWindow([In] IntPtr window, [In] ref Guid iid);
-    IntPtr CreateForMonitor([In] IntPtr monitor, [In] ref Guid iid);
-}
-
-[ComImport, Guid("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-internal interface IDirect3DDxgiInterfaceAccess
-{
-    IntPtr GetInterface([In] ref Guid iid);
-}
-
 internal static class WgcInterop
 {
+    private static readonly Guid GraphicsCaptureItemInteropIid = new("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356");
+    // The real WinRT interface IID for Windows.Graphics.Capture.IGraphicsCaptureItem, used as the
+    // riid CreateForWindow queries the new item for -- NOT typeof(GraphicsCaptureItem).GUID (see the
+    // long comment on CreateItemForWindow below for why that reflection call is the wrong source).
+    private static readonly Guid GraphicsCaptureItemIid = new("79C3F95B-31F7-4EC2-A464-632EF5D30760");
+    private static readonly Guid DirectDxgiInterfaceAccessIid = new("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1");
     private static readonly Guid Id3D11Texture2DGuid = typeof(ID3D11Texture2D).GUID;
 
     [DllImport("d3d11.dll", EntryPoint = "CreateDirect3D11DeviceFromDXGIDevice", SetLastError = true, PreserveSig = true)]
     private static extern int CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
 
-    // Ownership note (verified against the exact CsWinRT source matching this app's referenced
-    // WinRT.Runtime version, since guessing wrong here is a use-after-free, not just a compile error):
-    // MarshalInterface<T>.FromAbi does its own internal QueryInterface/AddRef via ComWrappers -- it
-    // does NOT consume the pointer handed to it. So every [ComImport]/native call below that returns
-    // a fresh COM reference (CreateForWindow, CreateDirect3D11DeviceFromDXGIDevice) must still be
-    // released by us after FromAbi wraps it, same as any other +1-ref COM out-pointer.
+    [DllImport("combase.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
+    private static extern int RoGetActivationFactory(IntPtr runtimeClassId, ref Guid iid, out IntPtr factory);
+
+    [DllImport("combase.dll", PreserveSig = true)]
+    private static extern int WindowsCreateString([MarshalAs(UnmanagedType.LPWStr)] string sourceString, int length, out IntPtr hstring);
+
+    [DllImport("combase.dll", PreserveSig = true)]
+    private static extern int WindowsDeleteString(IntPtr hstring);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int CreateForWindowDelegate(IntPtr thisPtr, IntPtr window, ref Guid riid, out IntPtr result);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetInterfaceDelegate(IntPtr thisPtr, ref Guid riid, out IntPtr result);
+
+    // FIXED (found live, v1.20.0), 4th pass -- the real fix. Attempts 1-3 (RCW cast, manual QI,
+    // single-shot ActivationFactory.Get(typeName, interopIid)) all chased the FACTORY-acquisition
+    // IID and all reported E_NOINTERFACE, so all three assumed the interop factory itself was the
+    // problem. That assumption was wrong. A raw combase.dll RoGetActivationFactory P/Invoke, added
+    // as a diagnostic probe planted directly in this exact call path, proved the factory acquisition
+    // ALWAYS succeeds (S_OK) -- the E_NOINTERFACE was actually coming from the CreateForWindow method
+    // call itself, on its `riid` out-parameter. That riid was `typeof(GraphicsCaptureItem).GUID`,
+    // which for a CsWinRT-projected CLASS (not interface) is a .NET-synthesized pseudo-GUID with no
+    // relationship to the real WinRT interface IID -- confirmed live: it evaluates to
+    // cc7b16ab-e4bc-3d0e-a4eb-4fdb9ce0a1ff, nothing like the documented IGraphicsCaptureItem IID
+    // 79c3f95b-31f7-4ec2-a464-632ef5d30760 (which Microsoft's own WPF capture sample hardcodes as a
+    // constant for exactly this reason, rather than reflecting it). So the actual OS activation
+    // factory was always fine; we were just asking CreateForWindow to hand back an interface under
+    // the wrong IID and it correctly said no such interface. Fixed by using the real hardcoded IID
+    // (GraphicsCaptureItemIid above) instead of reflection.
     public static GraphicsCaptureItem CreateItemForWindow(nint hwnd)
     {
-        using var factory = ActivationFactory.Get("Windows.Graphics.Capture.GraphicsCaptureItem");
-        var interop = factory.AsInterface<IGraphicsCaptureItemInterop>();
-        var iid = typeof(GraphicsCaptureItem).GUID;
-        var itemPtr = interop.CreateForWindow(hwnd, ref iid);
-        try { return MarshalInterface<GraphicsCaptureItem>.FromAbi(itemPtr); }
-        finally { Marshal.Release(itemPtr); }
+        const string cls = "Windows.Graphics.Capture.GraphicsCaptureItem";
+        Marshal.ThrowExceptionForHR(WindowsCreateString(cls, cls.Length, out var hstr));
+        IntPtr interopPtr;
+        try
+        {
+            var interopIid = GraphicsCaptureItemInteropIid;
+            Marshal.ThrowExceptionForHR(RoGetActivationFactory(hstr, ref interopIid, out interopPtr));
+        }
+        finally { WindowsDeleteString(hstr); }
+
+        try
+        {
+            var vtbl = Marshal.ReadIntPtr(interopPtr);
+            var createForWindow = Marshal.GetDelegateForFunctionPointer<CreateForWindowDelegate>(
+                Marshal.ReadIntPtr(vtbl, 3 * IntPtr.Size));
+
+            var itemIid = GraphicsCaptureItemIid;
+            Marshal.ThrowExceptionForHR(createForWindow(interopPtr, hwnd, ref itemIid, out var itemPtr));
+            // Ownership: MarshalInterface/GraphicsCaptureItem.FromAbi does its own internal
+            // QueryInterface/AddRef via ComWrappers -- it does NOT consume itemPtr's reference, so we
+            // still release it ourselves afterward (verified against the exact CsWinRT source matching
+            // this app's referenced WinRT.Runtime version).
+            try { return GraphicsCaptureItem.FromAbi(itemPtr); }
+            finally { Marshal.Release(itemPtr); }
+        }
+        finally { Marshal.Release(interopPtr); }
     }
 
     public static IDirect3DDevice CreateDirect3DDeviceFromDXGIDevice(IDXGIDevice dxgiDevice)
@@ -334,17 +376,31 @@ internal static class WgcInterop
         finally { Marshal.Release(deviceHandle); }
     }
 
-    // Different ownership rule here, deliberately NOT releasing texturePtr: Vortice's
-    // ComObject(IntPtr) constructor (unlike MarshalInterface<T>.FromAbi above) ADOPTS the pointer's
-    // existing reference as-is -- no internal AddRef -- and Dispose()/finalization calls Release()
-    // exactly once for it (verified against SharpGen.Runtime's ComObject/CppObject source). Releasing
-    // texturePtr here too would be a double-release against whatever CaptureSession's Dispose() does
-    // to the returned ID3D11Texture2D later.
+    // Same vtable-direct technique as CreateItemForWindow, and the same reasoning for why: this went
+    // through the identical AsInterface<T>()-on-an-RCW path and would very likely hit the same bug
+    // once real frames started flowing (never actually reached live, since no capture session got
+    // this far before the CreateItemForWindow fix).
     public static ID3D11Texture2D TextureFromSurface(IDirect3DSurface surface)
     {
-        var access = ((IWinRTObject)surface).NativeObject.AsInterface<IDirect3DDxgiInterfaceAccess>();
-        var iid = Id3D11Texture2DGuid;
-        var texturePtr = access.GetInterface(ref iid);
-        return new ID3D11Texture2D(texturePtr);
+        var objRef = ((IWinRTObject)surface).NativeObject;
+        var accessIid = DirectDxgiInterfaceAccessIid;
+        Marshal.ThrowExceptionForHR(Marshal.QueryInterface(objRef.ThisPtr, in accessIid, out var accessPtr));
+        try
+        {
+            var vtbl = Marshal.ReadIntPtr(accessPtr);
+            var getInterface = Marshal.GetDelegateForFunctionPointer<GetInterfaceDelegate>(
+                Marshal.ReadIntPtr(vtbl, 3 * IntPtr.Size));
+
+            var texIid = Id3D11Texture2DGuid;
+            Marshal.ThrowExceptionForHR(getInterface(accessPtr, ref texIid, out var texturePtr));
+            // Different ownership rule here, deliberately NOT releasing texturePtr: Vortice's
+            // ComObject(IntPtr) constructor (unlike FromAbi above) ADOPTS the pointer's existing
+            // reference as-is -- no internal AddRef -- and Dispose()/finalization calls Release()
+            // exactly once for it (verified against SharpGen.Runtime's ComObject/CppObject source).
+            // Releasing texturePtr here too would be a double-release against whatever
+            // CaptureSession's Dispose() does to the returned ID3D11Texture2D later.
+            return new ID3D11Texture2D(texturePtr);
+        }
+        finally { Marshal.Release(accessPtr); }
     }
 }

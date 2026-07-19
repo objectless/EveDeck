@@ -206,4 +206,50 @@ internal static class Win32Native
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CloseHandle(nint hObject);
+
+    // EveDeck's own opt-out from Windows' background-process power throttling (EcoQoS). Its main
+    // window is normally hidden to tray (see MainWindow.xaml.cs's HideToTray) and its overlay
+    // surfaces are WS_EX_TOOLWINDOW (deliberately excluded from Alt+Tab/taskbar so they don't count
+    // as a "real" app window either) -- Task Manager buckets a process with no such window under
+    // "Background processes", which Windows can then throttle (EcoQoS/lower scheduling priority).
+    // For most background work that's fine or even desirable, but EveDeck's whole job while hidden
+    // is time-sensitive Win32 window management (topmost reassertion, hover-peek swaps) -- being
+    // throttled shows up as z-order lag (a hover-zoomed tile briefly rendering under the master
+    // window) and occasional stutter. This explicitly disables EXECUTION_SPEED throttling for this
+    // process regardless of its Task Manager classification, matching the documented pattern in
+    // H.NotifyIcon (a widely-used WPF tray-icon library) and Microsoft's own EcoQoS devblog post.
+    internal const uint ProcessPowerThrottlingCurrentVersion = 1;
+    internal const uint ProcessPowerThrottlingExecutionSpeed = 0x1;
+    internal const int ProcessInformationClassProcessPowerThrottling = 4;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ProcessPowerThrottlingState
+    {
+        public uint Version;
+        public uint ControlMask;
+        public uint StateMask;
+    }
+
+    [DllImport("kernel32.dll")]
+    internal static extern nint GetCurrentProcess();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern unsafe bool SetProcessInformation(
+        nint hProcess, int processInformationClass, void* processInformation, uint processInformationSize);
+
+    internal static unsafe void DisableOwnProcessPowerThrottling()
+    {
+        var state = new ProcessPowerThrottlingState
+        {
+            Version = ProcessPowerThrottlingCurrentVersion,
+            ControlMask = ProcessPowerThrottlingExecutionSpeed,
+            StateMask = 0, // 0 = explicitly OFF for the mechanism selected by ControlMask
+        };
+        SetProcessInformation(
+            GetCurrentProcess(),
+            ProcessInformationClassProcessPowerThrottling,
+            &state,
+            (uint)sizeof(ProcessPowerThrottlingState));
+    }
 }

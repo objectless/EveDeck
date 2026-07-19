@@ -367,6 +367,14 @@ public sealed partial class MainWindowViewModel
             _cornerSourceHandles[position] = window?.Handle ?? 0;
         }
 
+        // Group centres with a dominant master area are a REAL window (not a tile) -- ZoomTile must
+        // never let a magnified corner preview grow into that screen area, since the enlarged DWM
+        // thumbnail loses that overlap to the real master window instead of compositing above it
+        // (found live 2026-07-19, "Center Master" layout: a zoomed tile grew upward into the master
+        // slot above it and the master's own content won there). Grid-family centres (no dominant
+        // master slot) are excluded -- those are just another AddTile'd tile, not an area to avoid.
+        var masterAvoidRects = new List<(int, int, int, int)>();
+
         foreach (var group in EffectiveGroups())
         {
             var groupCenter = groupCenterSlots[group.GroupId];
@@ -387,7 +395,13 @@ public sealed partial class MainWindowViewModel
                 _tileSurface.SetSource(groupCenter, centerWindow?.Handle ?? 0);
                 _cornerSourceHandles[groupCenter] = centerWindow?.Handle ?? 0;
             }
+            else
+            {
+                masterAvoidRects.Add((masterRect.X, masterRect.Y, masterRect.Width, masterRect.Height));
+            }
         }
+
+        _tileSurface.SetMasterRects(masterAvoidRects);
 
         ApplySurfaceZOrder();
         _frameTimer.Start();
@@ -881,7 +895,9 @@ public sealed partial class MainWindowViewModel
         // used to leave the master window sitting above the always-topmost overlay surfaces after
         // every hover-peek. This was the missing half of that fix -- CenterSeatInGroup reasserts,
         // ExecuteHoverPeek never did, and hover-peek fires far more often than click-to-centre.
-        RefreshCornerOverlayZOrder();
+        // Use the cheap reassert, not RefreshCornerOverlayZOrder's full allow-list EnumWindows pass --
+        // this fires on every tile transition during fast mouse movement, see ReassertOwnOverlaySurfaces.
+        ReassertOwnOverlaySurfaces();
 
         _peekPosition = position;
         _peekSeat = seat;
@@ -931,7 +947,8 @@ public sealed partial class MainWindowViewModel
         catch (Exception ex) { Log.Error($"Hover peek revert failed: {ex.Message}"); }
 
         // Symmetric with the reassert in ExecuteHoverPeek -- the revert move can nudge z-order too.
-        RefreshCornerOverlayZOrder();
+        // Same cheap-vs-full reasoning as there: this can fire just as often.
+        ReassertOwnOverlaySurfaces();
     }
 
     private void ClearPeekState()
@@ -1009,6 +1026,21 @@ public sealed partial class MainWindowViewModel
     {
         if (_tileSurface is null) return;
         ApplySurfaceZOrder();
+    }
+
+    // Cheap subset of ApplySurfaceZOrder: just the two surfaces this app itself owns (SetWindowPos
+    // calls only). Deliberately skips BumpAllowedAppsAboveOverlaySurfaces, which does a full
+    // EnumWindows + Process.GetProcessById(...) per visible top-level window -- fine for an
+    // infrequent event (a click, the 250ms/2s periodic loop) but genuinely expensive to repeat many
+    // times a second. Hover-peek fires on every tile transition during fast mouse movement, so it
+    // needs this instead of RefreshCornerOverlayZOrder -- found live: the full version here caused
+    // visible stutter during rapid corner-hopping in combat. The allow-list bump doesn't need
+    // re-triggering per hover-peek anyway; MaintainCornerOverlays already refreshes it continuously
+    // (every tick while EVE has focus) and the safety-net re-assert covers the rest within ~2s.
+    private void ReassertOwnOverlaySurfaces()
+    {
+        _tileSurface?.SetZ();
+        _labelSurface?.SetZ();
     }
 
     // The overlay (tiles + labels) always stays topmost, over EVE, EveDeck, and every other app
