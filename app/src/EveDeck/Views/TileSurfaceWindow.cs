@@ -154,6 +154,39 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     protected override void OnPaint(WinForms.PaintEventArgs e) { }
     protected override void OnPaintBackground(WinForms.PaintEventArgs e) { }
 
+    private const int WmDwmCompositionChanged = 0x031E;
+    private const int WmDisplayChange = 0x007E;
+
+    // DWM can silently drop every live DwmRegisterThumbnail/WGC registration at once -- sleep/wake,
+    // a resolution or monitor-topology change, an RDP session connect/disconnect, or a GPU driver
+    // reset (TDR) all leave the previously-registered sources stale, so every tile goes solid black
+    // (the backplate fill) while the pill labels keep drawing fine (LabelSurfaceWindow paints its
+    // own content, nothing to invalidate). Found live 2026-07-19: previews stayed blank for a full
+    // minute of real play until an unrelated action (opening the tray icon's context menu) happened
+    // to force DWM to recomposite the desktop and "un-stuck" it -- that's an incidental trigger, not
+    // a real fix, so react to the actual OS broadcasts instead of relying on something else nudging
+    // the compositor. Both messages are broadcast to every top-level window, so no extra hook target
+    // is needed.
+    protected override void WndProc(ref WinForms.Message m)
+    {
+        base.WndProc(ref m);
+        if (m.Msg == WmDwmCompositionChanged || m.Msg == WmDisplayChange) RefreshAllSources();
+    }
+
+    // Re-runs SetSource for every currently-assigned tile, forcing a full unregister+reregister of
+    // its DWM thumbnail or WGC capture session. Deliberately only called from the WndProc hook above
+    // (a genuinely rare system event), never on a timer -- an unconditional periodic re-register is
+    // exactly what caused the historical "previews randomly refresh" bug (see
+    // project-thumbnail-random-refresh memory): unregister+reregister is visibly a brief blink, so it
+    // must stay event-driven, not polled.
+    private void RefreshAllSources()
+    {
+        if (_sources.Count == 0) return;
+        Log?.Invoke("DWM composition change detected -- re-registering all corner preview sources.");
+        foreach (var (position, hwnd) in _sources.ToArray())
+            SetSource(position, hwnd);
+    }
+
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);

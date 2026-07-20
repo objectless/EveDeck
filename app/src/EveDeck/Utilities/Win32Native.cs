@@ -88,6 +88,15 @@ internal static class Win32Native
     [DllImport("user32.dll")]
     internal static extern bool PrintWindow(nint hWnd, nint hdcBlt, uint nFlags);
 
+    // Diagnostic-only (WGC "No such interface supported" investigation) -- CreateForWindow is
+    // documented to be unreliable for minimized or non-visible windows, so logging these alongside
+    // the raw HRESULT tells us whether that's the actual cause instead of guessing.
+    [DllImport("user32.dll")]
+    internal static extern bool IsIconic(nint hWnd);
+
+    [DllImport("user32.dll")]
+    internal static extern bool IsWindowVisible(nint hWnd);
+
     [DllImport("user32.dll")]
     internal static extern bool MoveWindow(nint hWnd, int x, int y, int width, int height, bool repaint);
 

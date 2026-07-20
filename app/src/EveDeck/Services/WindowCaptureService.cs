@@ -70,7 +70,7 @@ internal sealed class WindowCaptureService : IDisposable
     {
         try
         {
-            var item = WgcInterop.CreateItemForWindow(hwnd);
+            var item = WgcInterop.CreateItemForWindow(hwnd, log);
             return new CaptureSession(this, item, log);
         }
         catch (Exception ex)
@@ -193,10 +193,31 @@ internal sealed class CaptureSession : ITileCaptureSession
         var size = item.Size;
         _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
             owner.WinRtDevice, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, size);
-        _framePool.FrameArrived += OnFrameArrived;
-        _session = _framePool.CreateCaptureSession(item);
-        _session.IsCursorCaptureEnabled = false;
-        _session.StartCapture();
+        try
+        {
+            _framePool.FrameArrived += OnFrameArrived;
+            _session = _framePool.CreateCaptureSession(item);
+            _session.IsCursorCaptureEnabled = false;
+            _session.StartCapture();
+        }
+        catch
+        {
+            // Found live 2026-07-19: a handful of specific windows fail CreateCaptureSession/
+            // StartCapture with "No such interface supported" on EVERY SetSource retry (91 times in
+            // one session, each retriggered by a seat swap or the DWM-composition-change refresh).
+            // _framePool is a real GPU-backed resource (2 full-source-resolution capture buffers)
+            // created successfully just above -- if construction throws after that without this catch,
+            // nothing ever holds a reference to Dispose it (the `new CaptureSession(...)` expression
+            // never finishes, so the object -- and its Dispose() -- never exists). Every failed retry
+            // leaked another full-resolution frame pool permanently, which is what actually exhausted
+            // GPU/GDI resources badly enough to crash the app and drag the whole desktop compositor
+            // into a slideshow. Clean up whatever succeeded, then rethrow so the caller's existing
+            // catch-and-fall-back-to-DWM behavior (WindowCaptureService.CreateSession) is unchanged.
+            _framePool.FrameArrived -= OnFrameArrived;
+            try { _session?.Dispose(); } catch { }
+            try { _framePool.Dispose(); } catch { }
+            throw;
+        }
     }
 
     private void OnFrameArrived(Direct3D11CaptureFramePool sender, object args)
@@ -460,7 +481,16 @@ internal static class WgcInterop
     // factory was always fine; we were just asking CreateForWindow to hand back an interface under
     // the wrong IID and it correctly said no such interface. Fixed by using the real hardcoded IID
     // (GraphicsCaptureItemIid above) instead of reflection.
-    public static GraphicsCaptureItem CreateItemForWindow(nint hwnd)
+    // `log`, when given, reports EXACTLY which step failed with its raw HRESULT plus the target
+    // window's minimized/visible state -- found live 2026-07-19 (second pass): the 2026-07-19
+    // "wrong IID" fix (below) resolved that specific bug, but a later long session still hit
+    // "No such interface supported" (E_NOINTERFACE) for every window, every attempt, all session,
+    // with no successes at all -- a different failure than the original bug's symptom (which DID
+    // succeed once fixed). Rather than guess which of the two remaining ThrowExceptionForHR calls
+    // is now the culprit, or guess whether CreateForWindow's well-documented unreliability for
+    // minimized/non-visible windows is the cause, label both directly so the next occurrence proves
+    // it instead of requiring another bisecting session.
+    public static GraphicsCaptureItem CreateItemForWindow(nint hwnd, Action<string>? log = null)
     {
         const string cls = "Windows.Graphics.Capture.GraphicsCaptureItem";
         Marshal.ThrowExceptionForHR(WindowsCreateString(cls, cls.Length, out var hstr));
@@ -468,7 +498,12 @@ internal static class WgcInterop
         try
         {
             var interopIid = GraphicsCaptureItemInteropIid;
-            Marshal.ThrowExceptionForHR(RoGetActivationFactory(hstr, ref interopIid, out interopPtr));
+            var hr = RoGetActivationFactory(hstr, ref interopIid, out interopPtr);
+            if (hr < 0)
+            {
+                log?.Invoke($"WGC diag: RoGetActivationFactory failed hr=0x{hr:X8} for window {hwnd}.");
+                Marshal.ThrowExceptionForHR(hr);
+            }
         }
         finally { WindowsDeleteString(hstr); }
 
@@ -479,7 +514,14 @@ internal static class WgcInterop
                 Marshal.ReadIntPtr(vtbl, 3 * IntPtr.Size));
 
             var itemIid = GraphicsCaptureItemIid;
-            Marshal.ThrowExceptionForHR(createForWindow(interopPtr, hwnd, ref itemIid, out var itemPtr));
+            var hr = createForWindow(interopPtr, hwnd, ref itemIid, out var itemPtr);
+            if (hr < 0)
+            {
+                var minimized = Utilities.Win32Native.IsIconic(hwnd);
+                var visible = Utilities.Win32Native.IsWindowVisible(hwnd);
+                log?.Invoke($"WGC diag: CreateForWindow failed hr=0x{hr:X8} for window {hwnd} (minimized={minimized}, visible={visible}).");
+                Marshal.ThrowExceptionForHR(hr);
+            }
             // Ownership: MarshalInterface/GraphicsCaptureItem.FromAbi does its own internal
             // QueryInterface/AddRef via ComWrappers -- it does NOT consume itemPtr's reference, so we
             // still release it ourselves afterward (verified against the exact CsWinRT source matching

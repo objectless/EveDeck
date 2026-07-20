@@ -63,6 +63,18 @@ public sealed partial class MainWindowViewModel
         if (handleChanged)
         {
             _lastFrameHandle = fgHandle;
+            // Temporary diagnostic (2026-07-19): user reported the active-frame draws as a solid
+            // gold box on one specific seat instead of the normal separated corner brackets.
+            // OverlayGeometry.CornerBrackets clamps its arm to Min(w,h)/2, so brackets only look
+            // "broken" when the focused window is comfortably larger than 2x the arm length (~140px
+            // at the max 70px arm) -- a genuinely small or near-square foreground rect would produce
+            // exactly this "full frame" look. Logging title+size on every real focus change to
+            // confirm what TryGetWindowRect actually reports for that seat, rather than guessing.
+            var focused = Windows.FirstOrDefault(w => w.Handle == fgHandle);
+            var mon = Monitors.FirstOrDefault(m =>
+                rect.X >= m.Bounds.X && rect.X < m.Bounds.X + m.Bounds.Width &&
+                rect.Y >= m.Bounds.Y && rect.Y < m.Bounds.Y + m.Bounds.Height);
+            Log.Info($"Active-frame focus -> '{focused?.Title ?? "?"}' rect {rect.X},{rect.Y} {rect.Width}x{rect.Height}, monitor {mon?.Summary ?? "none"}.");
         }
 
         if (handleChanged || rectChanged)
