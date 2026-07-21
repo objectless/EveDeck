@@ -48,26 +48,32 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     private readonly HashSet<int> _preventedPositions = new();               // positions showing a plain placeholder, no live capture
     private readonly int _physX, _physY, _physWidth, _physHeight;
 
-    // Real per-frame GPU capture (Windows.Graphics.Capture via Vortice Direct3D11/Direct2D1), used in
-    // preference to DwmRegisterThumbnail for sharper previews with controllable resize quality --
-    // DWM's own thumbnail scaling has no filter control and looks soft at small tile sizes or when
-    // magnified (ZoomTile). Null when unavailable (old GPU/driver), in which case every tile silently
-    // falls back to the existing DWM thumbnail path below. Captured frames are pulled by the pump
-    // timer and blitted into THIS window's own composited bitmap in Redraw() -- never drawn via a
-    // separate per-tile window -- so the single-surface/no-per-tick-z-order architecture that killed
-    // the historical preview flicker (see project-overlay-single-surface memory) stays intact.
-    private readonly WindowCaptureService? _captureService;
+    // REMOVED 2026-07-21: Windows.Graphics.Capture + Vortice Direct3D11/Direct2D1 per-frame GPU
+    // capture. It was introduced 2026-07-18 for sharper previews, but on a VRAM-heavy setup (EVE in
+    // DX12 with upscaling + frame generation across several clients) it caused escalating failures
+    // over three sessions: a leaked capture frame pool, then GetHbitmap "lack of memory" failures
+    // with an EVE client going white/needing force-close while docking, and finally a full machine
+    // hard-lock requiring a reboot. Standing up a second D3D11 device and pulling per-frame GPU
+    // textures alongside several DX12 clients is simply too much GPU/VRAM contention.
+    //
+    // We now do what EVE-O Preview and EVE-APM Preview do: DwmRegisterThumbnail ONLY. DWM is already
+    // running and already compositing every one of those windows, so a registered thumbnail costs
+    // essentially no extra GPU -- there is no second device, no per-frame texture, and nothing to
+    // starve the game of. Those tools are proven at this for years and their previews are crisp.
+    // ScreenshotCaptureSession (PrintWindow, ~1fps) stays as the last-resort fallback for windows DWM
+    // can't thumbnail at all (some RDP/virtual-display setups) -- it's plain GDI, no GPU device.
     private readonly Dictionary<int, ITileCaptureSession> _captureSessions = new();
-    private readonly WinForms.Timer _capturePump = new() { Interval = 66 }; // ~15 fps
+    // Only drives the PrintWindow fallback's ~1fps refresh and the zoom-active z-order re-assert --
+    // DWM thumbnails composite themselves and need no pump at all, which is why this can be slow now.
+    private readonly WinForms.Timer _capturePump = new() { Interval = 250 };
 
     // Reused across Redraws instead of allocating a full-surface (~14MB at 2560x1440) bitmap every
-    // frame -- at the pump's ~15fps that was ~220MB/s of large-object-heap churn feeding the GPU/
-    // memory pressure behind the GetHbitmap "lack of memory" failures (see the pump comment above).
-    // Fixed size (the surface never resizes), so allocated once on first use.
+    // frame -- that churn was part of the graphics-driver pressure behind the GetHbitmap "lack of
+    // memory" failures. Fixed size (the surface never resizes), so allocated once on first use.
     private Drawing.Bitmap? _backBuffer;
 
-    // True when at least one capture session has a frame the compositor hasn't drawn yet -- drives
-    // the pump's redraw gating so we don't recomposite when nothing changed.
+    // True when a PrintWindow-fallback session has a new frame the compositor hasn't drawn yet.
+    // DWM-backed tiles never appear here -- they composite themselves, independent of Redraw().
     private bool ConsumeAnyFrameDirty()
     {
         var any = false;
@@ -136,7 +142,6 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         MouseMove += OnMouseMove;
         MouseUp += OnMouseUp;
 
-        _captureService = WindowCaptureService.TryCreate(msg => Log?.Invoke(msg));
         _capturePump.Tick += (_, _) =>
         {
             // A zoomed tile can now grow over master's screen area, so a topmost-pinned master (or
@@ -268,25 +273,14 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             return;
         }
 
-        // Prefer real per-frame WGC capture over DWM's thumbnail when available (see _captureService's
-        // doc comment); only fall back to DwmRegisterThumbnail for this tile if capture-item creation
-        // fails for this specific window (rare) or the service itself is unavailable.
-        var session = _captureService?.CreateSession(sourceHwnd, msg => Log?.Invoke(msg));
-        if (session is not null)
-        {
-            _captureSessions[position] = session;
-            _hiddenTiles.Remove(position);
-            Redraw(); // shows the fill backdrop immediately; the pump swaps in real pixels once the first frame arrives
-            return;
-        }
-
+        // DWM thumbnail is THE preview path (same as EVE-O Preview / EVE-APM Preview) -- see the
+        // _captureSessions field comment for why the GPU-capture path was removed entirely.
         if (!RegisterThumbnail(position, sourceHwnd, rect))
         {
-            // Neither WGC nor DWM could produce a live thumbnail for this window -- some RDP/remote-
-            // desktop sessions and certain virtual-display setups fail both. Fall back to periodic
-            // PrintWindow-based screenshot capture rather than leaving the tile blank (matches EVE-O
-            // Preview's "Compatibility Mode"). Genuinely last-resort: only reached when the two
-            // faster paths above have already failed for this specific window.
+            // DWM couldn't thumbnail this window -- some RDP/remote-desktop sessions and certain
+            // virtual-display setups fail. Fall back to periodic PrintWindow-based screenshot capture
+            // rather than leaving the tile blank (matches EVE-O Preview's "Compatibility Mode").
+            // Genuinely last-resort: plain GDI, ~1fps, no GPU device involved.
             _captureSessions[position] = new ScreenshotCaptureSession(sourceHwnd, msg => Log?.Invoke(msg));
             _hiddenTiles.Remove(position);
             Redraw();
@@ -378,10 +372,8 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         zoom.X = Math.Clamp(zoom.X, 0, Math.Max(0, ClientSize.Width - zoom.Width));
         zoom.Y = Math.Clamp(zoom.Y, 0, Math.Max(0, ClientSize.Height - zoom.Height));
 
-        // WGC-backed tiles need no DWM re-registration -- Redraw's capture branch just starts asking
-        // the session for frames resized to _zoomedRect instead of the tile's normal rect, and the
-        // manual GPU resize (see WindowCaptureService.ResizeToBitmap) is exactly what makes the
-        // magnified preview sharp instead of soft.
+        // PrintWindow-fallback tiles have no DWM registration to move -- Redraw just starts asking
+        // the session for frames sized to _zoomedRect instead of the tile's normal rect.
         if (_captureSessions.ContainsKey(position))
         {
             _zoomedPosition = position;
@@ -689,7 +681,6 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         _capturePump.Dispose();
         foreach (var session in _captureSessions.Values) session.Dispose();
         _captureSessions.Clear();
-        _captureService?.Dispose();
         _backBuffer?.Dispose();
         _backBuffer = null;
 
