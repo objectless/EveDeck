@@ -12,6 +12,16 @@ public sealed class ConfigService
     // Guards against the auto-save timer and a manual Save() racing on the same temp file.
     private readonly object _saveLock = new();
 
+    // The exact JSON last written to disk. Save() skips the disk write (and the comparatively
+    // expensive File.Replace) whenever the freshly-serialized settings are byte-for-byte identical.
+    // The refresh loop and several UI paths call Save() far more often than settings actually change
+    // (observed live 2026-07-20: ~2 writes every 5s, ~28k/session, of a 140KB+ file, all on the WPF
+    // UI thread — a real source of switching jank and, when a write stalled the dispatcher long
+    // enough, of the overlay's UpdateLayeredWindow push being starved so previews briefly blanked).
+    // Serializing to compare is far cheaper than the temp-write + File.Replace filesystem
+    // transaction it avoids.
+    private string? _lastWrittenJson;
+
     private readonly bool _isDefaultFolder;
 
     public string AppDataFolder { get; }
@@ -76,14 +86,23 @@ public sealed class ConfigService
         return settings;
     }
 
-    public void Save(AppSettings settings)
+    // Returns true when settings were actually written to disk, false when the write was skipped
+    // because nothing changed since the last write -- lets callers avoid logging a misleading
+    // "saved" line (and doing other post-save work) for a no-op.
+    public bool Save(AppSettings settings)
     {
         lock (_saveLock)
         {
+            var json = JsonSerializer.Serialize(settings, JsonOptions);
+            // Nothing changed since the last write (the common case for the periodic refresh loop) --
+            // skip the disk write entirely. Still re-check the file exists so an externally-deleted
+            // settings.json is recreated even when the in-memory content is unchanged.
+            if (json == _lastWrittenJson && File.Exists(ConfigPath)) return false;
+
             Directory.CreateDirectory(AppDataFolder);
             // Write to a temp file then atomically replace — prevents zero-filled settings.json on crash.
             var tmp = ConfigPath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(settings, JsonOptions));
+            File.WriteAllText(tmp, json);
             // File.Replace requires the destination to already exist (throws FileNotFoundException
             // otherwise) — falls back to a plain move on first-ever launch or right after Load() moves
             // a corrupt settings.json out of the way.
@@ -91,6 +110,8 @@ public sealed class ConfigService
                 File.Replace(tmp, ConfigPath, destinationBackupFileName: null);
             else
                 File.Move(tmp, ConfigPath);
+            _lastWrittenJson = json;
+            return true;
         }
     }
 

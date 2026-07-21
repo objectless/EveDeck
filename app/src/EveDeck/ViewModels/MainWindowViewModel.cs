@@ -2072,9 +2072,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
             foreach (var window in _windowService.FindEveWindows(IncludeNotepadTestWindows, extraProcessNames))
                 Windows.Add(window);
 
-            Monitors.Clear();
-            foreach (var monitor in _windowService.GetMonitors())
-                Monitors.Add(monitor);
+            // Only rebuild the Monitors collection when the monitor set actually changed. Clearing
+            // and re-adding it every refresh (5s) momentarily empties the ItemsSource behind the
+            // "target monitor" ComboBox, whose two-way SelectedValue binding then writes null back to
+            // LayoutTargetMonitorId; Refresh immediately resets it to the primary monitor's id, so the
+            // value oscillated null <-> "\\.\DISPLAY1" twice per refresh. Each toggle called Save()
+            // (the setter persists), producing ~2 disk writes of the whole 140KB+ settings.json every
+            // 5s on the UI thread -- a real source of switching jank, and long enough on some writes
+            // to starve the overlay's UpdateLayeredWindow push so previews briefly blanked. Monitors
+            // change only on a real display topology change, so this rebuild almost never runs now.
+            var freshMonitors = _windowService.GetMonitors();
+            if (!MonitorsMatch(Monitors, freshMonitors))
+            {
+                Monitors.Clear();
+                foreach (var monitor in freshMonitors)
+                    Monitors.Add(monitor);
+            }
 
             if (string.IsNullOrWhiteSpace(LayoutTargetMonitorId) || Monitors.All(m => m.Id != LayoutTargetMonitorId))
                 LayoutTargetMonitorId = Monitors.FirstOrDefault(m => m.IsPrimary)?.Id ?? Monitors.FirstOrDefault()?.Id ?? "";
@@ -2106,6 +2119,29 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    // True when the freshly-enumerated monitors are equivalent to what's already in the Monitors
+    // collection -- so Refresh can skip the Clear()+re-add that would otherwise churn the ComboBox
+    // ItemsSource (see the call site). Compares the fields the UI and layout math actually depend on.
+    private static bool MonitorsMatch(IReadOnlyList<MonitorInfo> current, IReadOnlyList<MonitorInfo> fresh)
+    {
+        if (current.Count != fresh.Count) return false;
+        for (var i = 0; i < current.Count; i++)
+        {
+            var a = current[i];
+            var b = fresh[i];
+            // WindowRect is a mutable class with no value equality, so compare its fields explicitly
+            // rather than relying on Equals (which would be reference equality -- always false for the
+            // freshly-enumerated monitors, defeating the whole point of this check).
+            if (a.Id != b.Id || a.IsPrimary != b.IsPrimary || a.DpiX != b.DpiX || a.DpiY != b.DpiY
+                || !RectsEqual(a.Bounds, b.Bounds) || !RectsEqual(a.WorkArea, b.WorkArea))
+                return false;
+        }
+        return true;
+    }
+
+    private static bool RectsEqual(WindowRect a, WindowRect b)
+        => a.X == b.X && a.Y == b.Y && a.Width == b.Width && a.Height == b.Height;
+
     public void Save()
     {
         try
@@ -2115,9 +2151,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
             // top-level Assignments; without this the set keeps a stale copy that resurfaces on a set
             // switch or reload -- the cause of labels/seats not persisting consistently.
             SnapshotLiveToActiveSet();
-            _configService.Save(_settings);
-            Status = $"Saved settings to {_configService.ConfigPath}.";
-            Log.Info(Status);
+            // ConfigService skips the disk write when nothing changed (the periodic refresh loop calls
+            // Save() far more often than settings actually change); only surface a "saved" line for a
+            // real write, so the log/status isn't spammed with no-op saves.
+            if (_configService.Save(_settings))
+            {
+                Status = $"Saved settings to {_configService.ConfigPath}.";
+                Log.Info(Status);
+            }
         }
         catch (Exception ex)
         {

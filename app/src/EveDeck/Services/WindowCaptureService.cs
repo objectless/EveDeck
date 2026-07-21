@@ -166,6 +166,11 @@ internal sealed class WindowCaptureService : IDisposable
 internal interface ITileCaptureSession : IDisposable
 {
     Bitmap? TryGetResizedFrame(int destWidth, int destHeight);
+
+    // True (and resets) when this session has produced a new frame the compositor hasn't drawn yet.
+    // Lets TileSurfaceWindow's pump skip a full recomposite+GetHbitmap when nothing actually changed
+    // -- the redraw hot path is the expensive, VRAM-touching part (see TileSurfaceWindow pump).
+    bool ConsumeFrameDirty();
 }
 
 // Per-tile capture: one GraphicsCaptureItem/FramePool/Session per live corner-tile source window.
@@ -183,6 +188,7 @@ internal sealed class CaptureSession : ITileCaptureSession
     private ID3D11Texture2D? _latestFrame;
     private TileRenderTarget? _renderTarget;
     private bool _disposed;
+    private volatile bool _frameDirty; // set on the capture thread when a new frame lands; consumed by the pump
 
     internal CaptureSession(WindowCaptureService owner, GraphicsCaptureItem item, Action<string>? log = null)
     {
@@ -246,6 +252,17 @@ internal sealed class CaptureSession : ITileCaptureSession
             _latestFrame?.Dispose();
             _latestFrame = texture;
         }
+        _frameDirty = true;
+    }
+
+    // A new frame has arrived since the last consume -- resets the flag. Racing a concurrent
+    // OnFrameArrived is fine: worst case we return false here just as a frame lands and the flag is
+    // immediately re-set for the next pump tick (66ms later), so no frame is ever dropped for long.
+    public bool ConsumeFrameDirty()
+    {
+        if (!_frameDirty) return false;
+        _frameDirty = false;
+        return true;
     }
 
     // Pulls the latest captured frame resized to destWidth x destHeight. Null if no frame has
@@ -296,8 +313,19 @@ internal sealed class ScreenshotCaptureSession : ITileCaptureSession
     private readonly nint _hwnd;
     private readonly Action<string>? _log;
     private DateTime _lastCaptureUtc = DateTime.MinValue;
+    private DateTime _lastDirtyUtc = DateTime.MinValue;
     private Bitmap? _lastCapture;
     private bool _loggedFailure;
+
+    // This session recaptures (via PrintWindow) only once a second, inside TryGetResizedFrame -- which
+    // now only runs when the pump decides to redraw. So drive the redraw ourselves on the same ~1fps
+    // cadence, otherwise gating the pump on dirtiness would stop it from ever refreshing this tile.
+    public bool ConsumeFrameDirty()
+    {
+        if (DateTime.UtcNow - _lastDirtyUtc < RecaptureInterval) return false;
+        _lastDirtyUtc = DateTime.UtcNow;
+        return true;
+    }
 
     public ScreenshotCaptureSession(nint hwnd, Action<string>? log = null)
     {

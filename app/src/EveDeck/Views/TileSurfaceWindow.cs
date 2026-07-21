@@ -60,6 +60,22 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     private readonly Dictionary<int, ITileCaptureSession> _captureSessions = new();
     private readonly WinForms.Timer _capturePump = new() { Interval = 66 }; // ~15 fps
 
+    // Reused across Redraws instead of allocating a full-surface (~14MB at 2560x1440) bitmap every
+    // frame -- at the pump's ~15fps that was ~220MB/s of large-object-heap churn feeding the GPU/
+    // memory pressure behind the GetHbitmap "lack of memory" failures (see the pump comment above).
+    // Fixed size (the surface never resizes), so allocated once on first use.
+    private Drawing.Bitmap? _backBuffer;
+
+    // True when at least one capture session has a frame the compositor hasn't drawn yet -- drives
+    // the pump's redraw gating so we don't recomposite when nothing changed.
+    private bool ConsumeAnyFrameDirty()
+    {
+        var any = false;
+        foreach (var session in _captureSessions.Values)
+            if (session.ConsumeFrameDirty()) any = true; // consume ALL, don't short-circuit
+        return any;
+    }
+
     // Opacity (0-255), applied to every tile including the master/center one: as DWM_TNP_OPACITY on
     // each live thumbnail (so overlapping tiles blend against each other/the master rect, not just
     // against the desktop) AND as the backplate's own per-pixel alpha (so the backplate stops being
@@ -131,7 +147,16 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             // rather than trying to guarantee we always go last relative to whatever else is
             // repinning topmost. Gated to zoom-active only; SetZ() is a no-op cost otherwise avoided.
             if (_zoomedPosition >= 0) SetZ();
-            if (_captureSessions.Count > 0) Redraw();
+            // Only recomposite when a capture session actually produced a NEW frame this tick.
+            // Previously this redrew unconditionally at ~15fps whenever any capture session existed,
+            // which meant a full-surface (up to 2560x1440x4 = ~14MB) bitmap allocation + GetHbitmap
+            // (a device-dependent-bitmap allocation that touches the graphics driver) every 66ms even
+            // when nothing changed. On a VRAM-constrained setup (e.g. EVE in DX12 with upscaling +
+            // frame generation across several clients) that steady churn was enough to make GetHbitmap
+            // fail with "lack of memory" and, worse, starve the EVE clients of GPU resources -- found
+            // live 2026-07-20, a client went white/needed force-closing while docking (a VRAM spike).
+            // Explicit redraws (opacity, drag, zoom, source change) still call Redraw() directly.
+            if (ConsumeAnyFrameDirty()) Redraw();
         };
         _capturePump.Start();
     }
@@ -447,7 +472,9 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         if (!IsHandleCreated) return;
 
         var fillColor = Drawing.Color.FromArgb(_opacity, TileFill.R, TileFill.G, TileFill.B);
-        using var bitmap = new Drawing.Bitmap(_physWidth, _physHeight, Drawing.Imaging.PixelFormat.Format32bppArgb);
+        // Reuse the back-buffer across frames instead of allocating a fresh ~14MB bitmap each Redraw
+        // (see field comment) -- cleared below so each frame starts fully transparent as before.
+        var bitmap = _backBuffer ??= new Drawing.Bitmap(_physWidth, _physHeight, Drawing.Imaging.PixelFormat.Format32bppArgb);
         using (var g = Drawing.Graphics.FromImage(bitmap))
         {
             g.Clear(Drawing.Color.Transparent);
@@ -663,6 +690,8 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         foreach (var session in _captureSessions.Values) session.Dispose();
         _captureSessions.Clear();
         _captureService?.Dispose();
+        _backBuffer?.Dispose();
+        _backBuffer = null;
 
         base.OnHandleDestroyed(e);
     }
