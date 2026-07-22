@@ -28,9 +28,17 @@
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap uap3 uap5 desktop rescap">
 
+  <!-- Issued by Partner Center for this app. The Publisher is an opaque GUID Microsoft assigns, not
+       a person or company name, and both values are publicly readable from any installed Store app
+       (Get-AppxPackage shows the package family name), so keeping them in this public repo leaks
+       nothing that shipping the app would not.
+
+       The package family name Partner Center expects (EveDeck.EveDeck_12zzkmpkq9e28) is DERIVED
+       from these two, not set here: the suffix is a hash of the Publisher string. Get either value
+       wrong and the family name comes out wrong too. -->
   <Identity
-    Name="REPLACE.WITH.PARTNER.CENTER.PACKAGE.NAME"
-    Publisher="CN=REPLACE-WITH-PARTNER-CENTER-PUBLISHER-ID"
+    Name="EveDeck.EveDeck"
+    Publisher="CN=9778BB67-E2F9-485B-A0BE-DF5AB6BA4C99"
     Version="__VERSION__" />
 
   <Properties>
