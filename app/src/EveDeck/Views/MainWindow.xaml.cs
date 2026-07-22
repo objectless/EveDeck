@@ -722,6 +722,18 @@ public partial class MainWindow : Window
     private void OptionsSearchBox_TextChanged(object sender, TextChangedEventArgs e)
         => ApplyOptionsSearchFilter();
 
+    // Sections whose content is data-driven (Config Profiles, Character Names) change while the app
+    // runs, so a once-only index goes stale -- a profile added mid-session was previously unfindable
+    // until restart. Invalidate whenever focus lands in the search box: you cannot add a profile or
+    // rename a seat without taking focus away from here first, so this catches every realistic edit,
+    // and it costs one rebuild per search session rather than one per keystroke.
+    //
+    // Deliberately NOT done by subscribing to ConfigProfiles/Assignments CollectionChanged:
+    // ConfigProfiles is a pass-through to _settings.ConfigProfiles, and importing settings replaces
+    // that collection wholesale, which would leave the subscription bound to a dead instance.
+    private void OptionsSearchBox_GotFocus(object sender, RoutedEventArgs e)
+        => _optionsSearchIndexBuilt = false;
+
     private void ApplyOptionsSearchFilter()
     {
         EnsureOptionsSearchIndexBuilt();
@@ -772,6 +784,9 @@ public partial class MainWindow : Window
     {
         if (_optionsSearchIndexBuilt) return;
         _optionsSearchIndexBuilt = true;
+        // Rebuild from scratch rather than overwriting in place, so a section whose content shrank
+        // cannot leave harvested text behind and keep matching a query it no longer contains.
+        _optionsSectionSearchText.Clear();
 
         var originalIndex = OptionsMenu.SelectedIndex;
         for (var i = 0; i < OptionsSectionsHost.Children.Count; i++)

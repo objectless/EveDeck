@@ -1188,7 +1188,8 @@ Both AMD and Nvidia let you set a virtual resolution higher than your panel's na
 
                 <Grid Grid.Row="0" Margin="0,0,0,8">
                   <TextBox x:Name="OptionsSearchBox" Padding="7,5" FontSize="12"
-                           TextChanged="OptionsSearchBox_TextChanged"/>
+                           TextChanged="OptionsSearchBox_TextChanged"
+                           GotFocus="OptionsSearchBox_GotFocus"/>
                   <TextBlock Text="Search settings..." IsHitTestVisible="False"
                              Foreground="{StaticResource MutedBrush}" FontSize="12"
                              Margin="10,0,0,0" VerticalAlignment="Center">
