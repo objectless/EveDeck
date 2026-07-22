@@ -1,3 +1,5 @@
+using System.Windows;
+using MessageBox = System.Windows.MessageBox;
 using EveDeck.Models;
 using EveDeck.Services;
 
@@ -140,6 +142,11 @@ public sealed partial class MainWindowViewModel
 
         var slot = Assignments.FirstOrDefault(a => a.EsiCharacters.Contains(character));
         if (slot is null) return;
+
+        var result = MessageBox.Show(
+            $"Remove {character.CharacterName} from seat {slot.SlotNumber}? You'll need to sign in again via EVE SSO to re-add it.",
+            "Remove Character", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes) return;
 
         slot.EsiCharacters.Remove(character);
 

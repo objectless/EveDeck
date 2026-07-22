@@ -573,6 +573,7 @@
                                     AllowDrop="True"
                                     DragEnter="MiniMapSlot_DragEnter"
                                     DragOver="MiniMapSlot_DragOver"
+                                    DragLeave="MiniMapSlot_DragLeave"
                                     Drop="MiniMapSlot_Drop"
                                     ToolTip="Drag a slot card (using its ⠿ grip) here to set its corner. Drop on the center to make it Master."
                                     CornerRadius="2">
@@ -589,6 +590,11 @@
                                     <DataTrigger Binding="{Binding IsMaster}" Value="True">
                                       <Setter Property="Background" Value="#2A1606"/>
                                       <Setter Property="BorderBrush" Value="#F59E0B"/>
+                                      <Setter Property="BorderThickness" Value="2"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsDragOver}" Value="True">
+                                      <Setter Property="Background" Value="#1C3B57"/>
+                                      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
                                       <Setter Property="BorderThickness" Value="2"/>
                                     </DataTrigger>
                                   </Style.Triggers>
@@ -620,7 +626,8 @@
                     </Canvas>
                   </Border>
 
-                  <ListBox Grid.Row="3"
+                  <ListBox x:Name="SlotsListBox" Grid.Row="3"
+                           PreviewKeyDown="SlotsListBox_PreviewKeyDown"
                            ItemsSource="{Binding Assignments}"
                            SelectedItem="{Binding SelectedAssignment}"
                            VirtualizingPanel.ScrollUnit="Pixel"
@@ -642,28 +649,44 @@
                                 <Setter Property="BorderThickness" Value="0,0,0,1"/>
                                 <Setter Property="Background" Value="Transparent"/>
                                 <Style.Triggers>
+                                  <!-- Drop lands via Assignments.Move (insert, not swap), so show an
+                                       insert line on the leading edge rather than boxing the card. -->
                                   <DataTrigger Binding="{Binding IsDragSwapTarget}" Value="True">
                                     <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                                    <Setter Property="BorderThickness" Value="2"/>
-                                    <Setter Property="Background" Value="#18000000"/>
+                                    <Setter Property="BorderThickness" Value="0,2,0,0"/>
                                   </DataTrigger>
                                 </Style.Triggers>
                               </Style>
                             </Border.Style>
                             <Grid>
                               <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="18"/>
+                                <ColumnDefinition Width="28"/>
                                 <ColumnDefinition Width="Auto" MinWidth="34"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                               </Grid.ColumnDefinitions>
 
                               <!-- Drag handle -->
-                              <TextBlock Grid.Column="0" Text="⠿" FontSize="15" Foreground="#3A4A65"
-                                         VerticalAlignment="Center" Cursor="SizeAll"
-                                         ToolTip="Drag to reorder slots"
-                                         PreviewMouseLeftButtonDown="SlotHandle_MouseDown"
-                                         MouseMove="SlotHandle_MouseMove"/>
+                              <!-- Full-height transparent grab strip: the glyph alone was a ~15x18px
+                                   hit target. Background="Transparent" is required for hit-testing. -->
+                              <Border Grid.Column="0" Background="Transparent" Cursor="SizeAll"
+                                      VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+                                      ToolTip="Drag to reorder seats, or drop onto the mini-map to set this seat's corner. Alt+Up / Alt+Down reorders with the keyboard."
+                                      PreviewMouseLeftButtonDown="SlotHandle_MouseDown"
+                                      MouseMove="SlotHandle_MouseMove">
+                                <TextBlock Text="⠿" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                  <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                      <Setter Property="Foreground" Value="#3A4A65"/>
+                                      <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+                                          <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                        </DataTrigger>
+                                      </Style.Triggers>
+                                    </Style>
+                                  </TextBlock.Style>
+                                </TextBlock>
+                              </Border>
 
                               <!-- Position-code pill -->
                               <Border Grid.Column="1" MinWidth="26" Height="26" CornerRadius="13" Padding="7,0"
@@ -820,6 +843,67 @@
                                           <Button Content="Paste Theme" Click="SlotPasteTheme_Click" Padding="6,2" FontSize="10"
                                                   ToolTip="Paste a copied EVE 'Edit Theme' string to set this seat's frame + label colour (Primary -&gt; frame, Accent -&gt; label)"/>
                                         </StackPanel>
+
+                                        <Separator Margin="0,10,0,10"/>
+
+                                        <TextBlock Text="Label position and zoom" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,6"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                          <TextBlock Text="Label" FontSize="10" VerticalAlignment="Center"
+                                                     Foreground="{StaticResource MutedBrush}"/>
+                                          <ComboBox Width="96" FontSize="10" Margin="4,0,0,0"
+                                                    SelectedValue="{Binding LabelAnchor, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag"
+                                                    ToolTip="Where this seat's label sits on its small corner tile. Blank = use the global Label position from Options.">
+                                            <ComboBoxItem Tag="{x:Null}" Content="(inherit)"/>
+                                            <ComboBoxItem Tag="TopLeft" Content="Top left"/>
+                                            <ComboBoxItem Tag="TopCenter" Content="Top center"/>
+                                            <ComboBoxItem Tag="TopRight" Content="Top right"/>
+                                            <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
+                                            <ComboBoxItem Tag="Center" Content="Center"/>
+                                            <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
+                                            <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
+                                            <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
+                                            <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
+                                          </ComboBox>
+                                          <TextBlock Text="as master" FontSize="10" VerticalAlignment="Center"
+                                                     Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0"/>
+                                          <ComboBox Width="96" FontSize="10" Margin="4,0,0,0"
+                                                    SelectedValue="{Binding LabelAnchorMaster, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag"
+                                                    ToolTip="Where this seat's label sits when it is the big center/master client. Blank = use the global master position from Options.">
+                                            <ComboBoxItem Tag="{x:Null}" Content="(inherit)"/>
+                                            <ComboBoxItem Tag="TopLeft" Content="Top left"/>
+                                            <ComboBoxItem Tag="TopCenter" Content="Top center"/>
+                                            <ComboBoxItem Tag="TopRight" Content="Top right"/>
+                                            <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
+                                            <ComboBoxItem Tag="Center" Content="Center"/>
+                                            <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
+                                            <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
+                                            <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
+                                            <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
+                                          </ComboBox>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                          <TextBlock Text="zoom" FontSize="10" VerticalAlignment="Center"
+                                                     Foreground="{StaticResource MutedBrush}"/>
+                                          <TextBox Text="{Binding ZoomFactor, UpdateSourceTrigger=PropertyChanged}"
+                                                   Width="34" Padding="4,2" FontSize="10" Margin="4,0,0,0"
+                                                   ToolTip="How hard this seat's preview magnifies on hover (1.5-8). Blank = use the global setting. Raise it for the one alt whose HUD you actually need to read."/>
+                                          <TextBlock Text="x from" FontSize="10" VerticalAlignment="Center"
+                                                     Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0"/>
+                                          <ComboBox Width="96" FontSize="10" Margin="4,0,0,0"
+                                                    SelectedValue="{Binding ZoomAnchor, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag"
+                                                    ToolTip="Which point this tile grows from on hover zoom. Useful when a tile sits hard against a screen edge and should expand inward. Blank = use the global setting.">
+                                            <ComboBoxItem Tag="{x:Null}" Content="(inherit)"/>
+                                            <ComboBoxItem Tag="TopLeft" Content="Top left"/>
+                                            <ComboBoxItem Tag="TopCenter" Content="Top center"/>
+                                            <ComboBoxItem Tag="TopRight" Content="Top right"/>
+                                            <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
+                                            <ComboBoxItem Tag="Center" Content="Center"/>
+                                            <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
+                                            <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
+                                            <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
+                                            <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
+                                          </ComboBox>
+                                        </StackPanel>
                                       </StackPanel>
                                     </Border>
                                   </Popup>
@@ -944,13 +1028,15 @@
                               </StackPanel>
 
                               <!-- Action buttons — compact vertical stack -->
-                              <StackPanel Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                <Button Content="Assign"
-                                        Command="{Binding DataContext.AssignWindowToSlotCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                        CommandParameter="{Binding}" Padding="7,4" Margin="4,2"/>
-                                <Button Content="Focus"
-                                        Command="{Binding DataContext.FocusSlotCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                        CommandParameter="{Binding}" Padding="7,4" Margin="4,2"/>
+                              <StackPanel Grid.Column="3" Width="240" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                <StackPanel Orientation="Horizontal">
+                                  <Button Content="Assign"
+                                          Command="{Binding DataContext.AssignWindowToSlotCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          CommandParameter="{Binding}" Padding="7,4" Margin="4,2"/>
+                                  <Button Content="Focus"
+                                          Command="{Binding DataContext.FocusSlotCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          CommandParameter="{Binding}" Padding="7,4" Margin="4,2"/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                   <Button Content="Clear"
                                           Command="{Binding DataContext.ClearSlotCommand, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -975,61 +1061,6 @@
                                   <TextBox Text="{Binding LabelAlias, UpdateSourceTrigger=PropertyChanged}"
                                            Width="110" Padding="4,2" FontSize="10" Margin="4,0,0,0"
                                            ToolTip="Show this text on the preview label instead of the character name. Blank = use the real name. Cosmetic only - window matching still uses the real name."/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="4,2">
-                                  <TextBlock Text="Label" FontSize="10" VerticalAlignment="Center"
-                                             Foreground="{StaticResource MutedBrush}"/>
-                                  <ComboBox Width="96" FontSize="10" Margin="4,0,0,0"
-                                            SelectedValue="{Binding LabelAnchor, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag"
-                                            ToolTip="Where this seat's label sits on its small corner tile. Blank = use the global Label position from Options.">
-                                    <ComboBoxItem Tag="{x:Null}" Content="(inherit)"/>
-                                    <ComboBoxItem Tag="TopLeft" Content="Top left"/>
-                                    <ComboBoxItem Tag="TopCenter" Content="Top center"/>
-                                    <ComboBoxItem Tag="TopRight" Content="Top right"/>
-                                    <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
-                                    <ComboBoxItem Tag="Center" Content="Center"/>
-                                    <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
-                                    <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
-                                    <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
-                                    <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
-                                  </ComboBox>
-                                  <TextBlock Text="as master" FontSize="10" VerticalAlignment="Center"
-                                             Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0"/>
-                                  <ComboBox Width="96" FontSize="10" Margin="4,0,0,0"
-                                            SelectedValue="{Binding LabelAnchorMaster, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag"
-                                            ToolTip="Where this seat's label sits when it is the big center/master client. Blank = use the global master position from Options.">
-                                    <ComboBoxItem Tag="{x:Null}" Content="(inherit)"/>
-                                    <ComboBoxItem Tag="TopLeft" Content="Top left"/>
-                                    <ComboBoxItem Tag="TopCenter" Content="Top center"/>
-                                    <ComboBoxItem Tag="TopRight" Content="Top right"/>
-                                    <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
-                                    <ComboBoxItem Tag="Center" Content="Center"/>
-                                    <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
-                                    <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
-                                    <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
-                                    <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
-                                  </ComboBox>
-                                  <TextBlock Text="zoom" FontSize="10" VerticalAlignment="Center"
-                                             Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0"/>
-                                  <TextBox Text="{Binding ZoomFactor, UpdateSourceTrigger=PropertyChanged}"
-                                           Width="34" Padding="4,2" FontSize="10" Margin="4,0,0,0"
-                                           ToolTip="How hard this seat's preview magnifies on hover (1.5-8). Blank = use the global setting. Raise it for the one alt whose HUD you actually need to read."/>
-                                  <TextBlock Text="x from" FontSize="10" VerticalAlignment="Center"
-                                             Foreground="{StaticResource MutedBrush}" Margin="4,0,0,0"/>
-                                  <ComboBox Width="96" FontSize="10" Margin="4,0,0,0"
-                                            SelectedValue="{Binding ZoomAnchor, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag"
-                                            ToolTip="Which point this tile grows from on hover zoom. Useful when a tile sits hard against a screen edge and should expand inward. Blank = use the global setting.">
-                                    <ComboBoxItem Tag="{x:Null}" Content="(inherit)"/>
-                                    <ComboBoxItem Tag="TopLeft" Content="Top left"/>
-                                    <ComboBoxItem Tag="TopCenter" Content="Top center"/>
-                                    <ComboBoxItem Tag="TopRight" Content="Top right"/>
-                                    <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
-                                    <ComboBoxItem Tag="Center" Content="Center"/>
-                                    <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
-                                    <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
-                                    <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
-                                    <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
-                                  </ComboBox>
                                 </StackPanel>
                               </StackPanel>
                             </Grid>
@@ -1483,7 +1514,28 @@ Both AMD and Nvidia let you set a virtual resolution higher than your panel's na
                 </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Group" Binding="{Binding Category}" IsReadOnly="True" Width="130"/>
                 <DataGridTextColumn Header="Action" Binding="{Binding DisplayName}" IsReadOnly="True" Width="2*"/>
-                <DataGridTextColumn Header="Key Combo" Binding="{Binding DisplayGesture}" IsReadOnly="True" Width="160"/>
+                <!-- Template (not Text) column so a capturing row can say so explicitly: the row
+                     highlight alone never told the user the app was waiting for a keypress. -->
+                <DataGridTemplateColumn Header="Key Combo" Width="185">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                      <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                        <TextBlock.Style>
+                          <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="{Binding DisplayGesture}"/>
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding IsCapturing}" Value="True">
+                                <Setter Property="Text" Value="Press a key combo... (Esc cancels)"/>
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="FontStyle" Value="Italic"/>
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </TextBlock.Style>
+                      </TextBlock>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTemplateColumn Header="Character" Width="170">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>

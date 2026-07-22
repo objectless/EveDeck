@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Color = System.Windows.Media.Color;
@@ -448,6 +449,60 @@ public partial class MainWindow : Window
             _currentDragOverSlot.IsDragSwapTarget = false;
             _currentDragOverSlot = null;
         }
+        ClearMiniMapDragIndicator();
+    }
+
+    // Drag auto-scroll (seat list): without this, a long seat list can't be reordered past the
+    // visible viewport because nothing scrolls while the pointer is held down.
+
+    private const double AutoScrollEdgeMargin = 28.0;
+    private ScrollViewer? _slotsListScrollViewer;
+
+    private ScrollViewer? FindSlotsListScrollViewer()
+    {
+        if (_slotsListScrollViewer is not null) return _slotsListScrollViewer;
+        try
+        {
+            _slotsListScrollViewer = FindVisualChild<ScrollViewer>(SlotsListBox);
+        }
+        catch
+        {
+            _slotsListScrollViewer = null;
+        }
+        return _slotsListScrollViewer;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject? root) where T : DependencyObject
+    {
+        if (root is null) return null;
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) return match;
+            var found = FindVisualChild<T>(child);
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    private void TryAutoScrollSlotsList(DragEventArgs e)
+    {
+        try
+        {
+            var scrollViewer = FindSlotsListScrollViewer();
+            if (scrollViewer is null) return;
+
+            var pos = e.GetPosition(scrollViewer);
+            if (pos.Y < AutoScrollEdgeMargin)
+                scrollViewer.LineUp();
+            else if (pos.Y > scrollViewer.ActualHeight - AutoScrollEdgeMargin)
+                scrollViewer.LineDown();
+        }
+        catch
+        {
+            // Never let a drag auto-scroll failure interrupt the drag operation.
+        }
     }
 
     private void SlotCard_DragOver(object sender, DragEventArgs e)
@@ -469,6 +524,9 @@ public partial class MainWindow : Window
         {
             ClearAllDragIndicators();
         }
+
+        if (valid) TryAutoScrollSlotsList(e);
+
         e.Handled = true;
     }
 
@@ -543,25 +601,97 @@ public partial class MainWindow : Window
             DragDropEffects.Move);
     }
 
+    // Keyboard equivalent of the grip drag, so reordering isn't mouse-only.
+    private void SlotsListBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.Alt) return;
+        // Alt-chords route through Key.System with the real key in SystemKey.
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key != Key.Up && key != Key.Down) return;
+        if (_viewModel.SelectedAssignment is not { } selected) return;
+
+        var from = _viewModel.Assignments.IndexOf(selected);
+        if (from < 0) return;
+        var to = key == Key.Up ? from - 1 : from + 1;
+        if (to < 0 || to >= _viewModel.Assignments.Count) return;
+
+        _viewModel.Assignments.Move(from, to);
+        _viewModel.Save();
+        _viewModel.SelectedAssignment = selected;
+        e.Handled = true;
+
+        // Keep keyboard focus on the moved seat's container so repeated Alt+Up/Down keeps walking it.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (SlotsListBox.ItemContainerGenerator.ContainerFromItem(selected) is ListBoxItem container)
+                container.Focus();
+        }), System.Windows.Threading.DispatcherPriority.Input);
+    }
+
     // ── Minimap drag-drop (Clients tab) ──────────────────────────────────────
 
     private static bool MiniMapAccepts(DragEventArgs e)
         => e.Data.GetDataPresent("EveWindowInfo") || e.Data.GetDataPresent("SlotReorder");
 
+    private MiniMapSlot? _currentDragOverCell;
+
+    private void ClearMiniMapDragIndicator()
+    {
+        if (_currentDragOverCell is not null)
+        {
+            _currentDragOverCell.IsDragOver = false;
+            _currentDragOverCell = null;
+        }
+    }
+
     private void MiniMapSlot_DragEnter(object sender, DragEventArgs e)
     {
         e.Effects = MiniMapAccepts(e) ? DragDropEffects.Move : DragDropEffects.None;
+        if (MiniMapAccepts(e) && sender is FrameworkElement { DataContext: MiniMapSlot cell })
+        {
+            if (_currentDragOverCell != cell)
+            {
+                ClearMiniMapDragIndicator();
+                _currentDragOverCell = cell;
+                cell.IsDragOver = true;
+            }
+        }
         e.Handled = true;
     }
 
     private void MiniMapSlot_DragOver(object sender, DragEventArgs e)
     {
         e.Effects = MiniMapAccepts(e) ? DragDropEffects.Move : DragDropEffects.None;
+        if (MiniMapAccepts(e) && sender is FrameworkElement { DataContext: MiniMapSlot cell })
+        {
+            if (_currentDragOverCell != cell)
+            {
+                ClearMiniMapDragIndicator();
+                _currentDragOverCell = cell;
+                cell.IsDragOver = true;
+            }
+        }
+        else
+        {
+            ClearMiniMapDragIndicator();
+        }
         e.Handled = true;
+    }
+
+    private void MiniMapSlot_DragLeave(object sender, DragEventArgs e)
+    {
+        if (sender is not FrameworkElement fe) return;
+        var pos = e.GetPosition(fe);
+        if (pos.X < 0 || pos.Y < 0 || pos.X > fe.ActualWidth || pos.Y > fe.ActualHeight)
+            ClearMiniMapDragIndicator();
     }
 
     private void MiniMapSlot_Drop(object sender, DragEventArgs e)
     {
+        // Clear both indicators: a drag that crossed a seat card on its way to the mini-map can leave
+        // that card's insert line set, and only ClearAllDragIndicators covers both.
+        ClearAllDragIndicators();
+
         if (sender is not FrameworkElement { DataContext: MiniMapSlot miniSlot }) { e.Handled = true; return; }
 
         // Drag a seat card onto a cell → set its home corner (or master, on the center cell).

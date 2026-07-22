@@ -1,6 +1,8 @@
+using EveDeck.Utilities;
+
 namespace EveDeck.Models;
 
-public sealed class MiniMapSlot
+public sealed class MiniMapSlot : ObservableObject
 {
     public int SlotNumber { get; set; }
     public double X { get; set; }
@@ -20,4 +22,12 @@ public sealed class MiniMapSlot
 
     // True when this cell currently shows the master seat (always the center cell in grid mode).
     public bool IsMaster { get; set; }
+
+    // UI-only drag-drop state - not persisted.
+    private bool _isDragOver;
+    public bool IsDragOver
+    {
+        get => _isDragOver;
+        set => SetProperty(ref _isDragOver, value);
+    }
 }

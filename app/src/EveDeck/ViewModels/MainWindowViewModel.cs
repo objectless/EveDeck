@@ -1904,6 +1904,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         if (_settings.CharacterSets.Count <= 1) return;
 
+        var result = MessageBox.Show(
+            $"Delete character set '{set.Name}'?",
+            "Delete Character Set", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes) return;
+
         var wasActive = set.Id == _settings.ActiveCharacterSetId;
         _settings.CharacterSets.Remove(set);
         DeleteCharacterSetCommand.RaiseCanExecuteChanged();

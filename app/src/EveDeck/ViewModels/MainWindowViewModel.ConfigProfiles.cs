@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Windows;
+using MessageBox = System.Windows.MessageBox;
 using EveDeck.Models;
 using EveDeck.Services;
 using EveDeck.Utilities;
@@ -76,6 +78,12 @@ public sealed partial class MainWindowViewModel
     private void RemoveConfigProfile(object? parameter)
     {
         if (parameter is not ConfigProfile profile) return;
+
+        var result = MessageBox.Show(
+            $"Delete config profile '{profile.Name}'?",
+            "Delete Config Profile", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes) return;
+
         _settings.ConfigProfiles.Remove(profile);
         if (_settings.ActiveConfigProfileId == profile.Id) _settings.ActiveConfigProfileId = "";
         Save();
