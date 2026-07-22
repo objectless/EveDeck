@@ -1009,8 +1009,13 @@
                                     <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
                                     <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
                                   </ComboBox>
-                                  <TextBlock Text="zoom from" FontSize="10" VerticalAlignment="Center"
+                                  <TextBlock Text="zoom" FontSize="10" VerticalAlignment="Center"
                                              Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0"/>
+                                  <TextBox Text="{Binding ZoomFactor, UpdateSourceTrigger=PropertyChanged}"
+                                           Width="34" Padding="4,2" FontSize="10" Margin="4,0,0,0"
+                                           ToolTip="How hard this seat's preview magnifies on hover (1.5-8). Blank = use the global setting. Raise it for the one alt whose HUD you actually need to read."/>
+                                  <TextBlock Text="x from" FontSize="10" VerticalAlignment="Center"
+                                             Foreground="{StaticResource MutedBrush}" Margin="4,0,0,0"/>
                                   <ComboBox Width="96" FontSize="10" Margin="4,0,0,0"
                                             SelectedValue="{Binding ZoomAnchor, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag"
                                             ToolTip="Which point this tile grows from on hover zoom. Useful when a tile sits hard against a screen edge and should expand inward. Blank = use the global setting.">
@@ -1802,6 +1807,11 @@ Shows your background clients as live mini-previews in the screen corners while 
               <CheckBox Content="Click a preview to bring that client to the center"
                         IsChecked="{Binding FocusPreviewOnClick}"
                         Margin="0,0,0,2"/>
+              <TextBlock TextWrapping="Wrap" LineHeight="18" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
+Can't read a capacitor or HUD in a preview? A preview shows the whole client shrunk into the tile, so a 2560-wide client in a 320-wide tile is an 8x reduction. Three things actually help, in order of effect: raise UI Scaling inside EVE itself on your alt clients (Esc &gt; Display &amp; Graphics) so the HUD is physically bigger in the source; make that tile larger; and raise the hover zoom for that seat. Preview opacity below 100% also washes detail out.
+
+EveDeck will not crop a preview down to just the HUD -- showing only part of a client is against the EULA, so scaling the whole window is the supported route.
+              </TextBlock>
               <TextBlock Text="Clicking a preview switches focus to that client — the same as the center-seat hotkey. The click only moves windows; it is never sent into the EVE client."
                          TextWrapping="Wrap" FontSize="11" Margin="20,0,0,10"
                          Foreground="{StaticResource MutedBrush}"/>
@@ -1823,7 +1833,7 @@ Shows your background clients as live mini-previews in the screen corners while 
                 <TextBox Width="36"
                          Text="{Binding HoverZoomFactor, UpdateSourceTrigger=PropertyChanged}"
                          HorizontalContentAlignment="Center" FontSize="11"
-                         ToolTip="Preview magnification for the Zoom style (1.5–4)"/>
+                         ToolTip="Preview magnification for the Zoom style (1.5-8). Individual seats can override this on their slot card in the Clients tab."/>
                 <TextBlock Text="x" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="2,0,0,0"/>
               </StackPanel>
               <StackPanel Orientation="Horizontal" Margin="20,0,0,10" VerticalAlignment="Center"

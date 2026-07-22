@@ -45,6 +45,10 @@ EveDeck stays strictly within the surviving "window management + focus switching
 - ❌ No automation / macros that act inside the game.
 - ❌ No memory reading, cache scraping, packet inspection, or client modification.
 - ❌ No injecting input into EVE clients of any kind.
+- ❌ No cropping or slicing a client preview — a preview always shows the WHOLE client window.
+  Displaying only a portion of the client (capacitor, HUD, a chat panel) is against the EULA;
+  enforced in code by `SafetyGuard.ThrowIfSourceCrop`, which rejects `DWM_TNP_RECTSOURCE`.
+  Making a preview bigger (tile size, hover zoom) is the supported way to improve readability.
 
 ## Design guardrails (keep it this way)
 

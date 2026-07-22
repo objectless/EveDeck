@@ -334,13 +334,26 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             fVisible = true,
             opacity = _opacity
         };
-        if (Win32Native.DwmUpdateThumbnailProperties(id, ref props) != 0)
+        if (ApplyThumbnailProperties(id, ref props) != 0)
         {
             Log?.Invoke($"DWM thumbnail properties update failed for tile {position}.");
             UnregisterThumbnail(position);
             return false;
         }
         return true;
+    }
+
+    // THE single choke point for every DWM thumbnail property update in the app. Routed through
+    // SafetyGuard so the whole-window-preview rule is enforced mechanically rather than by review:
+    // rcSource / DWM_TNP_RECTSOURCE would show only PART of the EVE client, which is against the
+    // EULA (see SafetyGuard.ThrowIfSourceCrop). Scaling the whole window via rcDestination -- which
+    // is what tile sizing and hover zoom do -- stays completely fine.
+    //
+    // Any new thumbnail code must call this, never DwmUpdateThumbnailProperties directly.
+    private static int ApplyThumbnailProperties(nint thumbnailId, ref Win32Native.DwmThumbnailProperties props)
+    {
+        Services.SafetyGuard.ThrowIfSourceCrop(props.dwFlags);
+        return ApplyThumbnailProperties(thumbnailId, ref props);
     }
 
     // Cheap live reposition/resize during a drag -- just the dest-rect flag, not a full
@@ -352,7 +365,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
             dwFlags = Win32Native.DwmTnpRectDestination,
             rcDestination = new Win32Native.NativeRect { Left = dest.Left, Top = dest.Top, Right = dest.Right, Bottom = dest.Bottom },
         };
-        Win32Native.DwmUpdateThumbnailProperties(thumbnailId, ref props);
+        ApplyThumbnailProperties(thumbnailId, ref props);
     }
 
     // Preview transparency (0-100%, same convention as the label opacity slider) for every tile,
@@ -363,7 +376,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         foreach (var id in _thumbnails.Values)
         {
             var props = new Win32Native.DwmThumbnailProperties { dwFlags = Win32Native.DwmTnpOpacity, opacity = _opacity };
-            Win32Native.DwmUpdateThumbnailProperties(id, ref props);
+            ApplyThumbnailProperties(id, ref props);
         }
         Redraw();
     }
@@ -454,7 +467,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
                     Bottom = rect.Bottom
                 }
             };
-            Win32Native.DwmUpdateThumbnailProperties(id, ref props);
+            ApplyThumbnailProperties(id, ref props);
         }
         Redraw();
     }

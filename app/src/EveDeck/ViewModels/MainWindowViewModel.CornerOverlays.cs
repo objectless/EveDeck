@@ -377,6 +377,14 @@ public sealed partial class MainWindowViewModel
             CreatePill(position, seat, rect,
                 window is not null ? PillTextForPosition(position) : OfflinePillText(seat), SeatPortrait(seat));
 
+            // Two seats resolving to the SAME window means every tile registers a DWM thumbnail
+            // against one client and the previews all mirror it -- a real bug seen live (see the
+            // substring-match guard in FindWindowByEntry). It can only be a resolution failure, since
+            // a window belongs to exactly one seat, so say so loudly rather than silently drawing
+            // five copies of one client.
+            if (window is not null && _cornerSourceHandles.Any(kv => kv.Value == window.Handle))
+                Log.Warn($"Seat {seat} resolved to a window already used by another tile ({window.Title}) -- previews will mirror until this seat re-resolves.");
+
             _tileSurface.SetSource(position, window?.Handle ?? 0);
             _cornerSourceHandles[position] = window?.Handle ?? 0;
         }
@@ -949,6 +957,21 @@ public sealed partial class MainWindowViewModel
         ExecuteHoverPeek(_pendingHoverPosition);
     }
 
+    // Magnification for a seat's hover zoom: per-seat override -> global default.
+    //
+    // The ceiling is 8x rather than the original 4x. Growing the destination rect is the ONLY legal
+    // way to recover detail from a DWM thumbnail -- the source window is composited live, so a bigger
+    // dest genuinely re-renders at that size rather than upscaling. Cropping to just the HUD would be
+    // sharper still and is forbidden (SafetyGuard.ThrowIfSourceCrop), so this is the lever that's
+    // left. The tile is still clamped to the surface, so a large factor simply stops growing at the
+    // screen edge rather than misbehaving.
+    private double ResolveZoomFactor(int seat)
+    {
+        var perSeat = Seat(seat)?.ZoomFactor;
+        var factor = perSeat is > 0 ? perSeat.Value : _settings.HoverZoomFactor;
+        return Math.Clamp(factor, 1.5, 8.0);
+    }
+
     private void ExecuteHoverPeek(int position)
     {
         if (SelectedProfile is null) return;
@@ -957,8 +980,9 @@ public sealed partial class MainWindowViewModel
         // none of the peek-swap state below applies.
         if (_settings.HoverPreviewStyle.Equals("Zoom", StringComparison.OrdinalIgnoreCase))
         {
-            if (_tileSurface is not null) _tileSurface.ZoomAnchor = ResolveZoomAnchor(OccupantAtPosition(position));
-            _tileSurface?.ZoomTile(position, Math.Clamp(_settings.HoverZoomFactor, 1.5, 4.0));
+            var zoomSeat = OccupantAtPosition(position);
+            if (_tileSurface is not null) _tileSurface.ZoomAnchor = ResolveZoomAnchor(zoomSeat);
+            _tileSurface?.ZoomTile(position, ResolveZoomFactor(zoomSeat));
             // The magnified tile can now grow over master's screen area (no longer geometrically
             // clamped away from it) -- reassert topmost right away so the enlarged DWM thumbnail wins
             // the compositing there instead of relying on whatever z-order state happened to be

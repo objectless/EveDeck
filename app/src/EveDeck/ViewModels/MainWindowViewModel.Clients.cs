@@ -302,13 +302,41 @@ public sealed partial class MainWindowViewModel
                 return sticky;
         }
 
+        // Exact title and PID are strong identity evidence -- they may claim a window even if another
+        // entry currently points at it (that other entry is then simply wrong and will re-resolve).
         var match =
             Windows.FirstOrDefault(w => w.Title.Equals(entry.Title, StringComparison.OrdinalIgnoreCase))
-            ?? (entry.LastProcessId is > 0 ? Windows.FirstOrDefault(w => w.ProcessId == entry.LastProcessId.Value) : null)
-            ?? Windows.FirstOrDefault(w => w.Title.Contains(entry.Title, StringComparison.OrdinalIgnoreCase));
+            ?? (entry.LastProcessId is > 0 ? Windows.FirstOrDefault(w => w.ProcessId == entry.LastProcessId.Value) : null);
+
+        // Substring is the WEAKEST match and must never steal a window another seat already holds.
+        // Without this guard every seat collapses onto one client whenever titles stop being unique --
+        // which is exactly what happens at the login screen, where EVE titles every client plainly
+        // "EVE" (see IsAtLoginScreen). A seat whose stored entry title had degraded to something that
+        // generic would substring-match the FIRST EVE window, and so would every other seat, leaving
+        // all preview tiles registered against a single handle and mirroring one client.
+        if (match is null)
+        {
+            var claimed = HandlesClaimedByOtherEntries(entry);
+            match = Windows.FirstOrDefault(w =>
+                        !claimed.Contains(w.Handle) && w.Title.Contains(entry.Title, StringComparison.OrdinalIgnoreCase));
+        }
 
         entry.ResolvedHandle = match?.Handle ?? 0;
         return match;
+    }
+
+    // Window handles currently pinned by some OTHER seat's entry. Cheap enough to rebuild per call at
+    // this scale (a handful of seats, each with a handful of entries) and always current, which
+    // matters more here than the allocation -- a cached version going stale is the failure mode that
+    // produced the mirroring bug in the first place.
+    private HashSet<nint> HandlesClaimedByOtherEntries(SlotWindowEntry except)
+    {
+        var claimed = new HashSet<nint>();
+        foreach (var assignment in Assignments)
+            foreach (var other in assignment.AssignedWindows)
+                if (!ReferenceEquals(other, except) && other.ResolvedHandle != 0)
+                    claimed.Add(other.ResolvedHandle);
+        return claimed;
     }
 
     private EveWindowInfo? FindWindowByTitle(string title)
@@ -575,7 +603,8 @@ public sealed partial class MainWindowViewModel
         if (e.PropertyName is nameof(SlotAssignment.LabelAnchor)
                            or nameof(SlotAssignment.LabelAnchorMaster)
                            or nameof(SlotAssignment.LabelAlias)
-                           or nameof(SlotAssignment.ZoomAnchor))
+                           or nameof(SlotAssignment.ZoomAnchor)
+                           or nameof(SlotAssignment.ZoomFactor))
         {
             ScheduleAutoSave();
             if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();

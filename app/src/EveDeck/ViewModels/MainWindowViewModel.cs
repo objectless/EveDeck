@@ -1099,7 +1099,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         get => _settings.HoverZoomFactor;
         set
         {
-            var clamped = Math.Clamp(value, 1.5, 4.0);
+            // Ceiling raised from 4x to 8x: scaling the destination rect is the only legal way to
+            // make a small HUD readable (cropping the client is forbidden -- see SafetyGuard), and
+            // DWM re-composites the live window at the larger size rather than upscaling.
+            var clamped = Math.Clamp(value, 1.5, 8.0);
             if (Math.Abs(_settings.HoverZoomFactor - clamped) < 0.01) return;
             _settings.HoverZoomFactor = clamped;
             OnPropertyChanged();

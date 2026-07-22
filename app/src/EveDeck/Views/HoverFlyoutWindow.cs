@@ -53,6 +53,10 @@ internal sealed class HoverFlyoutWindow : Window
                     rcDestination = new Win32Native.NativeRect { Left = 0, Top = 0, Right = cw, Bottom = ch },
                     fVisible = true
                 };
+                // Guarded like every other thumbnail update -- rcSource / DWM_TNP_RECTSOURCE would
+                // show only part of the EVE client, which is against the EULA. See
+                // SafetyGuard.ThrowIfSourceCrop and TileSurfaceWindow.ApplyThumbnailProperties.
+                Services.SafetyGuard.ThrowIfSourceCrop(props.dwFlags);
                 Win32Native.DwmUpdateThumbnailProperties(_thumbnailId, ref props);
             }
         }

@@ -19,6 +19,7 @@ public sealed class SlotAssignment : ObservableObject
     private string? _labelAnchorMaster;
     private string? _labelAlias;
     private string? _zoomAnchor;
+    private double? _zoomFactor;
     private bool? _labelBold;
     private bool? _labelItalic;
     private bool? _labelDropShadow;
@@ -157,6 +158,17 @@ public sealed class SlotAssignment : ObservableObject
     {
         get => _zoomAnchor;
         set => SetProperty(ref _zoomAnchor, value);
+    }
+
+    // Optional per-seat hover-zoom magnification. null = inherit AppSettings.HoverZoomFactor.
+    // Exists because readability is per-seat: the one alt whose capacitor you actually need to watch
+    // can zoom much harder than the rest. Zooming grows the DWM thumbnail's DESTINATION rect, and DWM
+    // re-composites the whole window live at that larger size, so this is real recovered detail --
+    // not an upscale, and not a crop (cropping the client is forbidden; see SafetyGuard).
+    public double? ZoomFactor
+    {
+        get => _zoomFactor;
+        set => SetProperty(ref _zoomFactor, value);
     }
 
     // Display name shown on this seat's preview label INSTEAD of the running character name.
