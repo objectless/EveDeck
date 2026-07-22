@@ -212,6 +212,7 @@ public sealed partial class MainWindowViewModel
         {
             ActiveMasterSeat = Assignments.FirstOrDefault()?.SlotNumber ?? 1;
             OnPropertyChanged(nameof(MasterSlotNumber));
+            OnPropertyChanged(nameof(MasterSeatSummary));
         }
         SyncMasterSlot();
 
@@ -230,8 +231,12 @@ public sealed partial class MainWindowViewModel
         var emptySlots = Assignments.Where(a => a.AssignedWindows.Count == 0).ToList();
         if (emptySlots.Count == 0) { Log.Warn("No empty slots available for auto-assign."); return; }
 
-        var count = 0;
-        foreach (var (window, slot) in unassigned.Zip(emptySlots))
+        // Pair once, then preview and apply from that SAME plan. Recomputing the pairing after the
+        // prompt could apply a different mapping than the one shown, because windows come and go.
+        var plan = unassigned.Zip(emptySlots, (window, slot) => (Window: window, Slot: slot)).ToList();
+        if (!ConfirmAutoAssignPlan(plan, unassigned.Count, emptySlots.Count)) return;
+
+        foreach (var (window, slot) in plan)
         {
             slot.AssignedWindows.Add(new SlotWindowEntry
             {
@@ -240,11 +245,50 @@ public sealed partial class MainWindowViewModel
                 LastHandleHex = window.HandleHex
             });
             TryAutoLabelSlot(slot, window);
-            count++;
         }
 
         Save();
-        Log.Info($"Auto-assigned {count} window(s) to slots.");
+        Log.Info($"Auto-assigned {plan.Count} window(s) to slots.");
+    }
+
+    // Shows the exact mapping AutoAssignAll is about to apply. Auto-assign only ever fills EMPTY
+    // seats -- it never replaces an existing assignment -- so this is a "here is what you'll get"
+    // preview rather than a destructive-action guard. It exists because the old behaviour applied
+    // silently and undoing a wrong mapping meant reassigning every seat by hand.
+    private static bool ConfirmAutoAssignPlan(
+        IReadOnlyList<(EveWindowInfo Window, SlotAssignment Slot)> plan,
+        int windowCount,
+        int slotCount)
+    {
+        const int maxLines = 20;
+        var lines = new List<string>
+        {
+            $"Auto-assign will link {plan.Count} window(s) to empty seats:",
+            ""
+        };
+
+        foreach (var (window, slot) in plan.Take(maxLines))
+            lines.Add($"    Seat {slot.SlotNumber} ({slot.DisplayLabel})  <-  {window.Title}");
+        if (plan.Count > maxLines)
+            lines.Add($"    ...and {plan.Count - maxLines} more.");
+
+        var leftoverWindows = windowCount - plan.Count;
+        var leftoverSlots = slotCount - plan.Count;
+        if (leftoverWindows > 0 || leftoverSlots > 0)
+        {
+            lines.Add("");
+            if (leftoverWindows > 0)
+                lines.Add($"{leftoverWindows} detected window(s) will be left unassigned - no empty seats for them.");
+            if (leftoverSlots > 0)
+                lines.Add($"{leftoverSlots} seat(s) will stay empty - no windows left to fill them.");
+        }
+
+        lines.Add("");
+        lines.Add("Apply this mapping?");
+
+        return MessageBox.Show(
+            string.Join(Environment.NewLine, lines),
+            "Auto-Assign All", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
     }
 
     // 3d — Assign the current foreground EVE window to the next empty slot.
@@ -533,6 +577,7 @@ public sealed partial class MainWindowViewModel
         // where the user put it. Moving it to index 0 here reshuffled the manual seat order every
         // time a master was set or a tile was centered -- the "seat order won't stick" bug.
         OnPropertyChanged(nameof(MasterSlotNumber));
+        OnPropertyChanged(nameof(MasterSeatSummary));
         RaiseIdentityDependents();
         Save();
         ReapplyCornerHomes();   // re-baseline corners + refresh mini-map/overlays for the new master

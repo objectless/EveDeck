@@ -679,9 +679,37 @@ public sealed partial class MainWindowViewModel : ObservableObject
             if (SelectedProfile is not null) SelectedProfile.MasterSeat = value;
             else _settings.MasterSlotNumber = value;
             OnPropertyChanged(nameof(MasterSlotNumber));
+            OnPropertyChanged(nameof(MasterSeatSummary));
             RaiseIdentityDependents();
         }
     }
+
+    // The master seat the user actually CONFIGURED, ignoring any transient promotion. ActiveMasterSeat
+    // deliberately hides that distinction (a stand-in wins for placement/labels), so the readout below
+    // needs this to tell "you chose this" apart from "this is filling in".
+    internal int DesignatedMasterSeat
+        => SelectedProfile is null
+            ? _settings.MasterSlotNumber
+            : SelectedProfile.MasterSeat > 0 ? SelectedProfile.MasterSeat : CenterSlotNumber;
+
+    // One authoritative answer to "which seat is master, and why". Master can change from the mini-map
+    // centre cell, a seat's Master button, or an automatic stand-in when the designated seat's client
+    // isn't running -- and nothing in the UI previously reported which of those was in effect.
+    public string MasterSeatSummary
+    {
+        get
+        {
+            var designated = DesignatedMasterSeat;
+            if (_promotedMasterSeat is not int promoted || promoted == designated)
+                return $"Master seat: {designated} - {SeatLabelFor(designated)}";
+
+            return $"Master seat: {promoted} - {SeatLabelFor(promoted)}   (standing in - seat "
+                 + $"{designated} - {SeatLabelFor(designated)} isn't logged in; not saved)";
+        }
+    }
+
+    private string SeatLabelFor(int slotNumber)
+        => Assignments.FirstOrDefault(a => a.SlotNumber == slotNumber)?.DisplayLabel ?? $"Slot {slotNumber}";
 
     public ObservableCollection<LayoutSlot>? ActiveProfileSlots => SelectedProfile?.Slots;
     public bool SelectedProfileIsBuiltIn => SelectedProfile?.IsBuiltIn == true;

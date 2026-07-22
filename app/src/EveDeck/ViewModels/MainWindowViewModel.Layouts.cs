@@ -199,6 +199,7 @@ public sealed partial class MainWindowViewModel
             SyncMasterSlot();
             UpdatePositionCodes();
             OnPropertyChanged(nameof(MasterSlotNumber));
+            OnPropertyChanged(nameof(MasterSeatSummary));
             return;
         }
 
@@ -217,6 +218,7 @@ public sealed partial class MainWindowViewModel
         SyncMasterSlot();
         UpdatePositionCodes();
         OnPropertyChanged(nameof(MasterSlotNumber));
+        OnPropertyChanged(nameof(MasterSeatSummary));
         RaiseIdentityDependents();
         Log.Info($"Master seat {designated} ({master.Label}) is not logged in; temporarily centring seat {promoted.SlotNumber} ({promoted.Label}) for this session (not saved).");
     }
