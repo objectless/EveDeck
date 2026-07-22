@@ -1615,31 +1615,62 @@ Both AMD and Nvidia let you set a virtual resolution higher than your panel's na
                 <ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
 
-              <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
-                      BorderThickness="1" CornerRadius="6" Padding="6">
-                <ListBox x:Name="OptionsMenu" SelectedIndex="0" BorderThickness="0" Background="Transparent">
-                  <ListBoxItem Content="Character Names"/>
-                  <ListBoxItem Content="Visual Effects"/>
-                  <ListBoxItem Content="Startup"/>
-                  <ListBoxItem Content="Window Behavior"/>
-                  <ListBoxItem Content="System Integration"/>
-                  <ListBoxItem Content="Interface Scale"/>
-                  <ListBoxItem Content="Setup"/>
-                  <ListBoxItem Content="Previews"/>
-                  <ListBoxItem Content="Settings Backup"/>
-                  <ListBoxItem Content="Hotkey Behavior"/>
-                  <ListBoxItem Content="Performance"/>
-                  <ListBoxItem Content="EVE Launcher"/>
-                  <ListBoxItem Content="Game Event Alerts"/>
-                  <ListBoxItem Content="Overlay Allow List"/>
-                  <ListBoxItem Content="Notifications"/>
-                  <ListBoxItem Content="Comms"/>
-                  <ListBoxItem Content="Config Profiles"/>
-                </ListBox>
-              </Border>
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" Margin="0,0,0,8">
+                  <TextBox x:Name="OptionsSearchBox" Padding="7,5" FontSize="12"
+                           TextChanged="OptionsSearchBox_TextChanged"/>
+                  <TextBlock Text="Search settings..." IsHitTestVisible="False"
+                             Foreground="{StaticResource MutedBrush}" FontSize="12"
+                             Margin="10,0,0,0" VerticalAlignment="Center">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding Text, ElementName=OptionsSearchBox}" Value="">
+                            <Setter Property="Visibility" Value="Visible"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
+                </Grid>
+
+                <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="6" Padding="6">
+                  <Grid>
+                    <ListBox x:Name="OptionsMenu" SelectedIndex="0" BorderThickness="0" Background="Transparent">
+                      <ListBoxItem Content="Character Names"/>
+                      <ListBoxItem Content="Visual Effects"/>
+                      <ListBoxItem Content="Startup"/>
+                      <ListBoxItem Content="Window Behavior"/>
+                      <ListBoxItem Content="System Integration"/>
+                      <ListBoxItem Content="Interface Scale"/>
+                      <ListBoxItem Content="Setup"/>
+                      <ListBoxItem Content="Previews"/>
+                      <ListBoxItem Content="Settings Backup"/>
+                      <ListBoxItem Content="Hotkey Behavior"/>
+                      <ListBoxItem Content="Performance"/>
+                      <ListBoxItem Content="EVE Launcher"/>
+                      <ListBoxItem Content="Game Event Alerts"/>
+                      <ListBoxItem Content="Overlay Allow List"/>
+                      <ListBoxItem Content="Notifications"/>
+                      <ListBoxItem Content="Comms"/>
+                      <ListBoxItem Content="Config Profiles"/>
+                    </ListBox>
+                    <TextBlock x:Name="OptionsNoMatchText" Text="No settings match" Visibility="Collapsed"
+                               Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap"
+                               Margin="6,10,6,0" HorizontalAlignment="Center"/>
+                  </Grid>
+                </Border>
+              </Grid>
 
               <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
-                <Grid MaxWidth="700" HorizontalAlignment="Left">
+                <Grid x:Name="OptionsSectionsHost" MaxWidth="700" HorizontalAlignment="Left">
                   <!-- section 0: Character Names -->
                   <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=0}">
                     <TextBlock Text="Character Names" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>

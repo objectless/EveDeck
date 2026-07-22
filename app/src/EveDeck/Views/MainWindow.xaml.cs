@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Controls;
@@ -1025,6 +1026,129 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog(this) == true)
             _viewModel.ImportSettings(dlg.FileName);
+    }
+
+    // Options-tab section search. Keyed by section index (matches the IndexToVisibility
+    // ConverterParameter on each section StackPanel and the ListBoxItem order in OptionsMenu).
+    // Built lazily on first search rather than at window construction, since the whole Options
+    // tab subtree does not exist until the tab is first selected (TabControl's default template
+    // only realizes the SelectedContent -- see App.xaml's TabControl ControlTemplate).
+    private readonly Dictionary<int, string> _optionsSectionSearchText = new();
+    private bool _optionsSearchIndexBuilt;
+
+    private void OptionsSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        => ApplyOptionsSearchFilter();
+
+    private void ApplyOptionsSearchFilter()
+    {
+        EnsureOptionsSearchIndexBuilt();
+
+        var query = OptionsSearchBox.Text?.Trim() ?? string.Empty;
+        if (query.Length == 0)
+        {
+            foreach (var obj in OptionsMenu.Items)
+                if (obj is ListBoxItem item) item.Visibility = Visibility.Visible;
+            OptionsMenu.Visibility = Visibility.Visible;
+            OptionsNoMatchText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        int? firstMatch = null;
+        var matchCount = 0;
+        var selectedStillVisible = false;
+        for (var i = 0; i < OptionsMenu.Items.Count; i++)
+        {
+            if (OptionsMenu.Items[i] is not ListBoxItem item) continue;
+            var isMatch = _optionsSectionSearchText.TryGetValue(i, out var text)
+                && text.Contains(query, StringComparison.OrdinalIgnoreCase);
+            item.Visibility = isMatch ? Visibility.Visible : Visibility.Collapsed;
+            if (!isMatch) continue;
+            matchCount++;
+            firstMatch ??= i;
+            if (i == OptionsMenu.SelectedIndex) selectedStillVisible = true;
+        }
+
+        if (matchCount == 0)
+        {
+            OptionsMenu.Visibility = Visibility.Collapsed;
+            OptionsNoMatchText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        OptionsMenu.Visibility = Visibility.Visible;
+        OptionsNoMatchText.Visibility = Visibility.Collapsed;
+
+        // If the currently displayed section fell out of the filtered set (or exactly one section
+        // survives), jump to the first remaining match so the sidebar selection and the visible
+        // right-hand panel never disagree.
+        if (!selectedStillVisible && firstMatch.HasValue)
+            OptionsMenu.SelectedIndex = firstMatch.Value;
+    }
+
+    private void EnsureOptionsSearchIndexBuilt()
+    {
+        if (_optionsSearchIndexBuilt) return;
+        _optionsSearchIndexBuilt = true;
+
+        var originalIndex = OptionsMenu.SelectedIndex;
+        for (var i = 0; i < OptionsSectionsHost.Children.Count; i++)
+        {
+            // Force each section to Visible (one at a time) and run a layout pass before harvesting
+            // it. A Collapsed element's subtree is never measured in WPF, so an ItemsControl inside a
+            // section that has never been the selected sidebar row (e.g. Config Profiles' row
+            // template, Character Names' slot rows if a different section loads first) never gets its
+            // ItemContainerGenerator to run and its DataTemplate content would be invisible to a plain
+            // VisualTreeHelper walk. This whole loop runs synchronously with no dispatcher yield, so
+            // WPF never composites an intermediate frame -- no visible flicker from the cycling.
+            OptionsMenu.SelectedIndex = i;
+            OptionsSectionsHost.UpdateLayout();
+
+            if (OptionsSectionsHost.Children[i] is not FrameworkElement section) continue;
+            var sb = new StringBuilder();
+            if (i < OptionsMenu.Items.Count && OptionsMenu.Items[i] is ListBoxItem menuItem)
+                sb.Append(menuItem.Content).Append(' ');
+            HarvestOptionsSearchText(section, sb);
+            _optionsSectionSearchText[i] = sb.ToString();
+        }
+
+        OptionsMenu.SelectedIndex = originalIndex;
+        OptionsSectionsHost.UpdateLayout();
+    }
+
+    // Harvests user-visible strings from a section's visual subtree: TextBlock text, the Content of
+    // CheckBox/RadioButton/Button, GroupBox/Expander headers, and ToolTip text. New settings become
+    // searchable automatically as long as their label uses one of these standard controls -- no
+    // hand-maintained keyword list to keep in sync.
+    private static void HarvestOptionsSearchText(DependencyObject node, StringBuilder sb)
+    {
+        switch (node)
+        {
+            case TextBlock tb when !string.IsNullOrWhiteSpace(tb.Text):
+                sb.Append(tb.Text).Append(' ');
+                break;
+            case System.Windows.Controls.CheckBox cb when cb.Content is string cbText:
+                sb.Append(cbText).Append(' ');
+                break;
+            case System.Windows.Controls.RadioButton rb when rb.Content is string rbText:
+                sb.Append(rbText).Append(' ');
+                break;
+            case System.Windows.Controls.Button btn when btn.Content is string btnText:
+                sb.Append(btnText).Append(' ');
+                break;
+            case System.Windows.Controls.GroupBox gb when gb.Header is string gbText:
+                sb.Append(gbText).Append(' ');
+                break;
+            case Expander ex when ex.Header is string exText:
+                sb.Append(exText).Append(' ');
+                break;
+        }
+
+        if (node is FrameworkElement { ToolTip: string tipText })
+            sb.Append(tipText).Append(' ');
+
+        var childCount = VisualTreeHelper.GetChildrenCount(node);
+        for (var i = 0; i < childCount; i++)
+            HarvestOptionsSearchText(VisualTreeHelper.GetChild(node, i), sb);
     }
 
     protected override void OnClosed(EventArgs e)
