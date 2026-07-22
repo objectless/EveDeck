@@ -11,13 +11,13 @@ public sealed class MiniMapSlot
     public string AssignedLabel { get; set; } = "";
     public bool IsAssigned { get; set; }
 
-    // Which seat (SlotAssignment.SlotNumber) occupies this position at rest. For the centre cell this
+    // Which seat (SlotAssignment.SlotNumber) occupies this position at rest. For the center cell this
     // is the master seat; for corners it's the home seat. Used when a window/seat is dropped on the cell.
     public int OccupantSeat { get; set; }
 
-    // The centre cell (largest rect). Dropping a seat here makes it master; corners set the home corner.
+    // The center cell (largest rect). Dropping a seat here makes it master; corners set the home corner.
     public bool IsCenter { get; set; }
 
-    // True when this cell currently shows the master seat (always the centre cell in grid mode).
+    // True when this cell currently shows the master seat (always the center cell in grid mode).
     public bool IsMaster { get; set; }
 }

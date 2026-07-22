@@ -16,6 +16,13 @@ using VerticalAlignment = System.Windows.VerticalAlignment;
 
 namespace EveDeck.Views;
 
+// Where a label sits within its tile. Stored as two independent axes rather than nine cases so the
+// placement maths below stays a pair of one-liners instead of a 9-arm switch.
+internal enum LabelAnchorX { Left, Center, Right }
+internal enum LabelAnchorY { Top, Middle, Bottom }
+
+internal readonly record struct LabelAnchor(LabelAnchorX X, LabelAnchorY Y);
+
 // One transparent, click-through window that draws EVERY character-name label ("pill") for the
 // corner layout. Replaces the old one-PillOverlay-window-per-label design.
 //
@@ -37,6 +44,8 @@ internal sealed class LabelSurfaceWindow : Window
     private readonly double _dpiScale;
     private readonly bool _iconStyle;
     private readonly int _baseHeight;
+    private readonly LabelAnchor _anchor;
+    private readonly double _inset;
     private nint _ownerHwnd;
 
     public LabelSurfaceWindow(int physX, int physY, int physWidth, int physHeight,
@@ -49,6 +58,8 @@ internal sealed class LabelSurfaceWindow : Window
         _dpiScale = dpiScale;
         _iconStyle = string.Equals(settings.CornerOverlayLabelStyle, "IconText", StringComparison.OrdinalIgnoreCase);
         _baseHeight = settings.CornerOverlayLabelHeight;
+        _anchor = ParseAnchor(settings.CornerOverlayLabelAnchor);
+        _inset = Math.Max(0, settings.CornerOverlayLabelInset);
 
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
@@ -89,6 +100,21 @@ internal sealed class LabelSurfaceWindow : Window
             Win32Native.SwpNoActivate | Win32Native.SwpNoZOrder);
     }
 
+    // Anything unrecognised (including empty, from a settings file written before this existed)
+    // lands on Center, which is the default placement.
+    internal static LabelAnchor ParseAnchor(string? value) => (value ?? "").Trim().ToLowerInvariant() switch
+    {
+        "topleft"      => new LabelAnchor(LabelAnchorX.Left,   LabelAnchorY.Top),
+        "topcenter"    => new LabelAnchor(LabelAnchorX.Center, LabelAnchorY.Top),
+        "topright"     => new LabelAnchor(LabelAnchorX.Right,  LabelAnchorY.Top),
+        "middleleft"   => new LabelAnchor(LabelAnchorX.Left,   LabelAnchorY.Middle),
+        "middleright"  => new LabelAnchor(LabelAnchorX.Right,  LabelAnchorY.Middle),
+        "bottomleft"   => new LabelAnchor(LabelAnchorX.Left,   LabelAnchorY.Bottom),
+        "bottomcenter" => new LabelAnchor(LabelAnchorX.Center, LabelAnchorY.Bottom),
+        "bottomright"  => new LabelAnchor(LabelAnchorX.Right,  LabelAnchorY.Bottom),
+        _              => new LabelAnchor(LabelAnchorX.Center, LabelAnchorY.Middle),
+    };
+
     // Owner (the tile surface). Must be set before Show(); the window manager then keeps this
     // window above the owner in the z-order automatically.
     public void SetOwner(nint ownerHwnd) => _ownerHwnd = ownerHwnd;
@@ -106,17 +132,22 @@ internal sealed class LabelSurfaceWindow : Window
     }
 
     // Creates (or re-places) the label for a tile / master rect. Rect is physical screen pixels;
-    // atTop/centered pick the strip placement exactly as the old PillOverlay did.
-    public void SetPill(int key, WindowRect physRect, bool atTop, bool centered,
+    // the label is placed INSIDE that rect at `anchorName` (one of the nine 3x3 names). The anchor is
+    // per-CALL rather than per-surface because a seat's corner tile and the same seat centered as
+    // master legitimately want different placements -- the caller resolves the seat/master/global
+    // override chain (see ResolveLabelAnchor) and hands the winner down.
+    public void SetPill(int key, WindowRect physRect, string? anchorName,
                         string fontFamily, double fontSize, string colorHex,
                         bool bold, bool italic, bool dropShadow, bool outline, int opacity = 100)
     {
+        var anchor = string.IsNullOrWhiteSpace(anchorName) ? _anchor : ParseAnchor(anchorName);
         if (!_pills.TryGetValue(key, out var pill))
         {
-            pill = new PillElement(_iconStyle, _baseHeight, _dpiScale, atTop, centered);
+            pill = new PillElement(_iconStyle, _baseHeight, _dpiScale, anchor, _inset);
             _pills[key] = pill;
             _canvas.Children.Add(pill.Container);
         }
+        pill.ApplyAnchor(anchor, _inset);
         pill.ApplyAppearance(fontFamily, fontSize, colorHex, bold, italic, dropShadow, outline, opacity);
         pill.Place(physRect.X - _physX, physRect.Y - _physY, physRect.Width, physRect.Height);
     }
@@ -179,7 +210,7 @@ internal sealed class LabelSurfaceWindow : Window
         _glows.Remove(key);
     }
 
-    // -- One label: a tile-width strip with a centred chip (or portrait + name) inside -------------
+    // -- One label: a tile-width strip with a centered chip (or portrait + name) inside -------------
 
     private sealed class PillElement
     {
@@ -203,20 +234,20 @@ internal sealed class LabelSurfaceWindow : Window
         private readonly bool _iconStyle;
         private readonly int _baseHeight;
         private readonly double _dpiScale;
-        private readonly bool _atTop;
-        private readonly bool _centered;
+        private LabelAnchor _anchor;
+        private double _inset;
         private double _pillHeightDip;
         private double _portraitDip;
         private CharacterPortrait? _portrait;
         private double _tileXDip, _tileYDip, _tileWDip, _tileHDip;
 
-        public PillElement(bool iconStyle, int baseHeight, double dpiScale, bool atTop, bool centered)
+        public PillElement(bool iconStyle, int baseHeight, double dpiScale, LabelAnchor anchor, double inset)
         {
             _iconStyle = iconStyle;
             _baseHeight = baseHeight;
             _dpiScale = dpiScale;
-            _atTop = atTop;
-            _centered = centered;
+            _anchor = anchor;
+            _inset = inset;
 
             _portraitDot = new Ellipse
             {
@@ -248,8 +279,8 @@ internal sealed class LabelSurfaceWindow : Window
             stack.Children.Add(_portraitDot);
             stack.Children.Add(_textLayer);
             _pill.Child = stack;
-            _pill.HorizontalAlignment = HorizontalAlignment.Center;
             _pill.VerticalAlignment = VerticalAlignment.Center;
+            ApplyAnchor(anchor, inset);
 
             if (_iconStyle)
             {
@@ -261,13 +292,34 @@ internal sealed class LabelSurfaceWindow : Window
             {
                 _pill.Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x0D, 0x11, 0x17));
                 _pill.Padding = new Thickness(12, 4, 12, 4);
-                // Round the edge that faces into the tile; a centred chip is rounded all round.
-                _pill.CornerRadius = centered
-                    ? new CornerRadius(6)
-                    : atTop ? new CornerRadius(0, 0, 6, 6) : new CornerRadius(6, 6, 0, 0);
+                // The chip now sits INSIDE the tile rather than butting against its edge as a
+                // full-width strip, so every corner is rounded regardless of anchor -- there is no
+                // longer an edge "facing into" the tile to leave square.
+                _pill.CornerRadius = new CornerRadius(6);
             }
 
             Container.Children.Add(_pill);
+        }
+
+        // Re-anchors an existing pill. Cheap and idempotent, so SetPill can call it unconditionally
+        // rather than tracking whether the anchor actually changed since the pill was created.
+        public void ApplyAnchor(LabelAnchor anchor, double inset)
+        {
+            _anchor = anchor;
+            _inset = inset;
+            // The container spans the full tile width, so the horizontal half of the anchor is just
+            // an alignment within it; the vertical half is applied in RePlace via Canvas.SetTop.
+            _pill.HorizontalAlignment = anchor.X switch
+            {
+                LabelAnchorX.Left  => HorizontalAlignment.Left,
+                LabelAnchorX.Right => HorizontalAlignment.Right,
+                _                  => HorizontalAlignment.Center,
+            };
+            // Inset the label off the edge(s) it hugs. A centered axis needs no inset, and applying
+            // one there would shift the label off-center.
+            _pill.Margin = new Thickness(
+                anchor.X == LabelAnchorX.Left ? inset : 0, 0,
+                anchor.X == LabelAnchorX.Right ? inset : 0, 0);
         }
 
         // Font family, size, colour and style (bold/italic/drop shadow/outline) for this label;
@@ -333,9 +385,17 @@ internal sealed class LabelSurfaceWindow : Window
             Container.Width = _tileWDip;
             Container.Height = _pillHeightDip;
             Canvas.SetLeft(Container, _tileXDip);
-            Canvas.SetTop(Container, _centered
-                ? _tileYDip + _tileHDip / 2.0 - _pillHeightDip / 2.0
-                : _atTop ? _tileYDip : _tileYDip + _tileHDip - _pillHeightDip);
+            // Vertical half of the anchor. Top/Bottom sit the label fully inside the tile, inset off
+            // the edge; Middle centers it and ignores the inset. Clamped so a label taller than its
+            // tile (a big font on a small corner tile) still starts at the tile's top edge instead of
+            // hanging off above it.
+            var top = _anchor.Y switch
+            {
+                LabelAnchorY.Top    => _tileYDip + _inset,
+                LabelAnchorY.Bottom => _tileYDip + _tileHDip - _pillHeightDip - _inset,
+                _                   => _tileYDip + _tileHDip / 2.0 - _pillHeightDip / 2.0,
+            };
+            Canvas.SetTop(Container, Math.Max(_tileYDip, top));
         }
 
         // Label plus an optional rounded character portrait (empty text hides the whole label). The

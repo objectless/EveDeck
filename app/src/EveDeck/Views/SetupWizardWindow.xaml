@@ -133,7 +133,7 @@
             <TextBlock Text="Link your EVE characters (optional)"
                        FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,0,0,10" LineHeight="19">
-Press "+ Add via ESI" on a slot to sign in with EVE SSO and attach a character. Each slot is one account: a main plus up to 2 alts. The first character you add becomes your MASTER - the account kept centred at rest. You can skip this and link characters later from the Clients tab.
+Press "+ Add via ESI" on a slot to sign in with EVE SSO and attach a character. Each slot is one account: a main plus up to 2 alts. The first character you add becomes your MASTER - the account kept centered at rest. You can skip this and link characters later from the Clients tab.
             </TextBlock>
             <ScrollViewer MaxHeight="310" VerticalScrollBarVisibility="Auto">
               <ItemsControl ItemsSource="{Binding WizardSlots}">

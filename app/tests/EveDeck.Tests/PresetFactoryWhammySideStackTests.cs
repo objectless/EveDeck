@@ -76,7 +76,7 @@ public class PresetFactoryWhammySideStackTests
     [InlineData(10)]
     [InlineData(12)]
     [InlineData(15)]
-    public void Whammy_AllCounts_MasterIsStrictlyLargestAndCentred(int count)
+    public void Whammy_AllCounts_MasterIsStrictlyLargestAndCentered(int count)
     {
         foreach (var (w, h) in new[] { (1920, 1080), (2560, 1440), (3200, 1800), (3840, 2160) })
         {

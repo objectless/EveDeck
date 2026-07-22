@@ -80,7 +80,7 @@ public partial class App : Application
 
         DpiBootstrap.TryEnablePerMonitorV2();
 
-        // Custom splash (the built-in WPF SplashScreen isn't DPI-aware, so it drifts off-centre
+        // Custom splash (the built-in WPF SplashScreen isn't DPI-aware, so it drifts off-center
         // on scaled displays). CenterScreen positioning here respects per-monitor DPI.
         var splash = new Views.SplashWindow();
         splash.Show();

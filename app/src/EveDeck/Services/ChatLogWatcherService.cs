@@ -29,18 +29,9 @@ public sealed class ChatLogWatcherService : IDisposable
     // it up (see project-location-tracking-resync memory).
     private static readonly TimeSpan ResyncInterval = TimeSpan.FromSeconds(45);
 
-    // Raised for each new line matched against an enabled rule: (rule, best-effort character/channel name).
-    public event Action<ChatAlertRule, string>? KeywordMatched;
     // Raised when a character's Local channel reports a solar-system change: (character, system name).
     public event Action<string, string>? SystemChanged;
-    // Raised for EVERY new timestamped chat line, regardless of whether any rule matched it: (channel,
-    // raw line text). KeywordMatched only fires for substring hits against a configured rule, which
-    // can't answer "does this line mention any of ~8000 system names" -- that needs to see every line
-    // and run its own lookup (IntelSystemTokenizer), not a per-rule substring check.
-    public event Action<string, string>? LineReceived;
     public event Action<string>? ErrorOccurred;
-
-    public Func<IEnumerable<ChatAlertRule>>? RulesProvider { get; set; }
 
     public ChatLogWatcherService()
     {
@@ -187,76 +178,6 @@ public sealed class ChatLogWatcherService : IDisposable
             if (!string.IsNullOrEmpty(system) && character.Length > 0)
                 SystemChanged?.Invoke(character, system);
         }
-
-        if (!matchKeywords) return;
-
-        var rules = RulesProvider?.Invoke().Where(r => r.Enabled && !string.IsNullOrWhiteSpace(r.Keyword)).ToList();
-        var channel = ChannelNameFromFile(fileName);
-
-        foreach (var line in lines)
-        {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            // Only timestamped chat entries ("[ 2026.07.10 04:01:23 ] Name > text") are messages;
-            // session-header/MOTD banner text matching a keyword was a false-positive source on relog.
-            if (!line.TrimStart().StartsWith('[')) continue;
-
-            LineReceived?.Invoke(channel, line);
-
-            if (rules is null) continue;
-            foreach (var rule in rules)
-            {
-                if (!string.IsNullOrWhiteSpace(rule.CharacterName)
-                    && fileName.IndexOf(rule.CharacterName, StringComparison.OrdinalIgnoreCase) < 0)
-                    continue;
-
-                if (line.IndexOf(rule.Keyword, StringComparison.OrdinalIgnoreCase) >= 0)
-                    KeywordMatched?.Invoke(rule, channel);
-            }
-        }
-    }
-
-    // Best-effort channel/character prefix from "<channelname>_<id>_<yyyyMMdd>_<HHmmss>.txt".
-    private static string ChannelNameFromFile(string fileName)
-    {
-        var underscore = fileName.IndexOf('_');
-        return underscore > 0 ? fileName[..underscore] : fileName;
-    }
-
-    // Channel-log prefixes that are never worth surfacing as an intel-channel candidate: Local is
-    // per-character system chat (already used differently, for SystemChanged/current-system
-    // tracking above), and Alliance/Corp/Fleet are member-only comms that don't carry regular
-    // intel reports -- offering them just adds noise to the picker the user has to manually skip.
-    private static readonly string[] ExcludedChannelPrefixes = { "Local_", "Alliance_", "Corp_", "Fleet_" };
-
-    // Same exclusion, keyed by resolved channel name rather than log-file prefix -- lets callers
-    // (e.g. DiscoverIntelChannels' stale-entry cleanup) test a name already stripped of its file suffix.
-    public static bool IsExcludedChannelName(string channelName) =>
-        ExcludedChannelPrefixes.Any(p => string.Equals(channelName, p.TrimEnd('_'), StringComparison.OrdinalIgnoreCase));
-
-    // Every distinct channel name found among locally-logged chatlogs, for the Intel Channel Alerts
-    // picker (see MainWindowViewModel.IntelJumpAlert.cs's DiscoverIntelChannels) -- mirrors
-    // JabberPingWatcherService.DiscoverConversations()'s role for the Jabber picker. Excludes
-    // ExcludedChannelPrefixes; everything else (custom intel channels) is surfaced so the user can
-    // pick which ones actually are their intel channels.
-    public IReadOnlyList<string> DiscoverChannels()
-    {
-        var names = new List<string>();
-        if (!Directory.Exists(_chatlogsFolder)) return names;
-
-        try
-        {
-            foreach (var path in Directory.EnumerateFiles(_chatlogsFolder, "*.txt"))
-            {
-                var fileName = Path.GetFileName(path);
-                if (ExcludedChannelPrefixes.Any(p => fileName.StartsWith(p, StringComparison.OrdinalIgnoreCase))) continue;
-                names.Add(ChannelNameFromFile(fileName));
-            }
-        }
-        catch { } // best-effort -- a locked/unreadable folder just yields no candidates
-
-        return names.Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-            .ToList();
     }
 
     public void Dispose() => Stop();

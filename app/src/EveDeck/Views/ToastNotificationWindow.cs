@@ -251,130 +251,10 @@ internal sealed class ToastNotificationWindow : Window
         AddCard(title, body, accentHex, avatar, onClick, VerticalAlignment.Top);
     }
 
-    // Intel-report variant: `title` stays "SYSTEM -- N jumps away" (unchanged from the plain string
-    // overload), but the body leads with an icon row for what the report actually said, when the
-    // intel line had anything past the bare system name to go on. For a Sighting, `primaryDetail`/
-    // `secondaryDetail` are typically a pilot name and the ship they're in (see
-    // IntelSystemTokenizer.ResolvePilotAndShip) -- `secondaryDetail` null means only one of the two
-    // was resolved (or ship-name recognition wasn't available), so `primaryDetail` alone is shown,
-    // identical to this method's original single-detail behavior. `shipIcon`, when given (a resolved
-    // ship whose icon is already cached -- see ShipIconCacheService), replaces the plain accent dot
-    // with the actual ship's icon. NoVisual/Clear ignore both `shipIcon` and the details in favor of
-    // a fixed label. Every detail null/empty renders with no icon row at all -- purely additive over
-    // a bare "system was mentioned" line.
-    public void ShowIntelToast(string title, IntelReportKind kind, string? primaryDetail, string? secondaryDetail, string rawMessage, string accentHex, ImageSource? shipIcon = null, Action? onClick = null)
-    {
-        var accent = BrushFromHex(accentHex, Color.FromRgb(0x8B, 0x5C, 0xF6));
-        var body = new StackPanel();
-
-        var label = kind switch
-        {
-            IntelReportKind.NoVisual => "No visual",
-            IntelReportKind.Clear => "Clear",
-            _ => primaryDetail ?? "",
-        };
-        var secondary = kind == IntelReportKind.Sighting ? secondaryDetail : null;
-        if (label.Length > 0)
-        {
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            FrameworkElement icon = kind switch
-            {
-                IntelReportKind.NoVisual => BuildNoVisualIcon(),
-                IntelReportKind.Clear => BuildClearIcon(),
-                IntelReportKind.Sighting when shipIcon is not null => BuildShipIcon(shipIcon),
-                _ => new Ellipse { Width = 8, Height = 8, Fill = accent, Margin = new Thickness(0, 5, 0, 0) },
-            };
-            Grid.SetColumn(icon, 0);
-
-            // Reuses BuildRow's exact two-tier layout (primary + muted secondary line beneath it) when
-            // a ship AND a pilot both resolved, instead of the single-line label used everywhere else
-            // in this method -- same visual language already established for PI's bundled alert rows.
-            FrameworkElement labelElement = !string.IsNullOrWhiteSpace(secondary)
-                ? BuildRow(new ToastLine(label, secondary), accent, includeDot: false)
-                : new TextBlock
-                {
-                    Text = label,
-                    FontSize = 12.5,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = new SolidColorBrush(kind == IntelReportKind.Clear ? Color.FromRgb(0x4A, 0xDE, 0x80) : TitleFg),
-                    TextWrapping = TextWrapping.Wrap,
-                    VerticalAlignment = VerticalAlignment.Center,
-                };
-            labelElement.Margin = new Thickness(8, 0, 0, 0);
-            Grid.SetColumn(labelElement, 1);
-
-            row.Children.Add(icon);
-            row.Children.Add(labelElement);
-            body.Children.Add(row);
-        }
-
-        body.Children.Add(new TextBlock
-        {
-            Text = rawMessage,
-            FontSize = 12,
-            Foreground = new SolidColorBrush(BodyFg),
-            TextWrapping = TextWrapping.Wrap,
-        });
-
-        AddCard(title, body, accentHex, null, onClick, VerticalAlignment.Top);
-    }
-
-    // Eye outline + pupil, struck through -- "no visual": the system was named but nobody's actually
-    // laid eyes on what's in it (spotted on d-scan/local mention only). Drawn as plain vector shapes
-    // rather than an icon-font glyph so it renders identically regardless of what fonts are installed.
-    private static FrameworkElement BuildNoVisualIcon()
-    {
-        var red = new SolidColorBrush(Color.FromRgb(0xF2, 0x3F, 0x42));
-        var canvas = new Canvas { Width = 16, Height = 16, Margin = new Thickness(0, 2, 0, 0) };
-        canvas.Children.Add(new System.Windows.Shapes.Path
-        {
-            Data = Geometry.Parse("M1,8 C3,3 13,3 15,8 C13,13 3,13 1,8 Z"),
-            Stroke = red,
-            StrokeThickness = 1.4,
-        });
-        var pupil = new Ellipse { Width = 4, Height = 4, Fill = red };
-        Canvas.SetLeft(pupil, 6);
-        Canvas.SetTop(pupil, 6);
-        canvas.Children.Add(pupil);
-        canvas.Children.Add(new Line { X1 = 0, Y1 = 15, X2 = 16, Y2 = 1, Stroke = red, StrokeThickness = 1.6 });
-        return canvas;
-    }
-
-    // A resolved ship's actual icon (ESI images CDN, pre-cached by ShipIconCacheService) in a small
-    // rounded frame -- same visual slot as the plain accent dot/crossed-eye/checkmark above it.
-    private static FrameworkElement BuildShipIcon(ImageSource icon) => new Border
-    {
-        Width = 18,
-        Height = 18,
-        CornerRadius = new CornerRadius(3),
-        ClipToBounds = true,
-        Child = new System.Windows.Controls.Image { Source = icon, Stretch = Stretch.UniformToFill },
-    };
-
-    // Simple checkmark -- a previously-reported system has been called clear.
-    private static FrameworkElement BuildClearIcon()
-    {
-        var green = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
-        var canvas = new Canvas { Width = 16, Height = 16, Margin = new Thickness(0, 2, 0, 0) };
-        canvas.Children.Add(new System.Windows.Shapes.Path
-        {
-            Data = Geometry.Parse("M2,8 L6,12 L14,3"),
-            Stroke = green,
-            StrokeThickness = 2,
-            StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round,
-            StrokeLineJoin = PenLineJoin.Round,
-        });
-        return canvas;
-    }
-
     // One alert row: accent dot + primary (white) over an optional muted secondary line.
     // `includeDot` suppresses the leading accent dot for callers that already draw their own leading
-    // icon in an outer layout (e.g. ShowIntelToast's crossed-eye/checkmark row) -- true everywhere
-    // else, unchanged from this method's original single-purpose behavior.
+    // icon in an outer layout -- true everywhere else, unchanged from this method's original
+    // single-purpose behavior.
     private static FrameworkElement BuildRow(ToastLine line, SolidColorBrush accent, bool includeDot = true)
     {
         var row = new Grid { Margin = new Thickness(0, 5, 0, 0) };
@@ -432,7 +312,7 @@ internal sealed class ToastNotificationWindow : Window
 
         var accent = BrushFromHex(accentHex, Color.FromRgb(0x2B, 0xC0, 0xE4));
 
-        // Avatar column + text column, Discord-style. The avatar centres against a short one-or-two
+        // Avatar column + text column, Discord-style. The avatar centers against a short one-or-two
         // line card, but pins to the top of a tall bundled one (centring a 40px avatar against a
         // 190px scrolling list would float it in the middle of nowhere).
         var grid = new Grid();

@@ -76,6 +76,10 @@ public sealed partial class MainWindowViewModel
             {
                 SwitchCharacterSet(setIndex);
             }
+            else if (actionId.Equals("ForceRefreshPreviews", StringComparison.OrdinalIgnoreCase))
+            {
+                ForceRefreshPreviews();
+            }
         }
         catch (Exception ex)
         {
@@ -92,7 +96,7 @@ public sealed partial class MainWindowViewModel
     // clicking a link or deck button is always an explicit user action.
     //
     //   evedeck://focus/3            — focus seat 3
-    //   evedeck://center/Pilot Name  — centre (or focus) that character wherever it sits
+    //   evedeck://center/Pilot Name  — center (or focus) that character wherever it sits
     //   evedeck://profile/Grid       — select + apply the named layout profile
     //   evedeck://set/2              — switch to character set 2
     //   evedeck://minimizeall        — minimize all EVE clients (skips protected seats)
@@ -273,9 +277,26 @@ public sealed partial class MainWindowViewModel
         Log.Info($"Focused slot {slotNumber}: {next.Title}.");
     }
 
+    // The exact window order the plain Cycle hotkeys walk. Extracted so anything that needs to
+    // PREDICT where cycling will land next -- currently the EcoQoS "keep the next client at full
+    // speed" exemption -- reads the same list rather than reimplementing the ordering and quietly
+    // disagreeing with what actually happens when the key is pressed.
+    internal List<Models.EveWindowInfo> CycleOrderedWindows() =>
+        Assignments.Where(a => !a.ExcludedFromCycle).SelectMany(FindAssignedWindows).ToList();
+
+    // Handle the next Cycle-forward press would focus from `fromHandle`, or 0 when that can't be
+    // determined (fewer than two cyclable windows, or the focus isn't currently on one of them).
+    internal nint NextWindowInCycle(nint fromHandle)
+    {
+        var windows = CycleOrderedWindows();
+        if (windows.Count < 2) return 0;
+        var current = windows.FindIndex(w => w.Handle == fromHandle);
+        return current < 0 ? 0 : windows[(current + 1) % windows.Count].Handle;
+    }
+
     private void Cycle(int direction)
     {
-        var assignedWindows = Assignments.Where(a => !a.ExcludedFromCycle).SelectMany(FindAssignedWindows).ToList();
+        var assignedWindows = CycleOrderedWindows();
         if (assignedWindows.Count == 0) { Log.Warn("No assigned windows are available to cycle."); return; }
 
         var activeHandle = _windowService.GetForegroundWindowHandle();
@@ -322,7 +343,7 @@ public sealed partial class MainWindowViewModel
         catch { /* best-effort focus; the window may have closed */ }
     }
 
-    // Resolve the slot at the given grid-direction and bring it to the centre (overlay mode) or
+    // Resolve the slot at the given grid-direction and bring it to the center (overlay mode) or
     // foreground (flat mode). Works for any profile: 5-client uses TL/TR/BL/BR/C; 6+ fills more.
     private void FocusDirection(string dir)
     {
@@ -344,9 +365,9 @@ public sealed partial class MainWindowViewModel
         };
         if (targetRow == "?") return;
 
-        // "C" (dead centre) searches the full slot set -- a symmetric Center-Master layout's master
+        // "C" (dead center) searches the full slot set -- a symmetric Center-Master layout's master
         // sits in the middle of the *whole* bounding box, not the ring's. Every other direction
-        // searches the ring only (every slot minus each group's own centre): including the centre
+        // searches the ring only (every slot minus each group's own center): including the center
         // slot(s) there would skew the bounding box for layouts where the master is a very different
         // size/monitor than its ring (e.g. a full-monitor master + a same-monitor 2x2 alt grid),
         // collapsing distinct ring corners onto the same bucket.
@@ -383,6 +404,17 @@ public sealed partial class MainWindowViewModel
         }
 
         CenterSeat(seat);
+    }
+
+    // Manual, user-triggered kick for a stale/stuck corner preview: forces every registered DWM
+    // thumbnail to unregister and re-register (TileSurfaceWindow.ForceRefreshAllSources). That
+    // re-registration is visibly a brief blink, which is exactly why this must stay an on-demand
+    // action reachable only from a hotkey/menu, never something run on a timer.
+    private void ForceRefreshPreviews()
+    {
+        if (_tileSurface is null) { Log.Warn("Corner overlays are not running; nothing to refresh."); return; }
+        _tileSurface.ForceRefreshAllSources();
+        Log.Info("Force-refreshed all corner preview sources.");
     }
 
     // ── Borderless / style ─────────────────────────────────────────────────────

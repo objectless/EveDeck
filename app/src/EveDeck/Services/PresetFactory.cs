@@ -86,13 +86,13 @@ public static class PresetFactory
         list.Add(CreateGridTemplate());
         list.Add(Overlap());
 
-        // Center Master family: a square ring of corner/edge tiles + one larger master floating centred
+        // Center Master family: a square ring of corner/edge tiles + one larger master floating centered
         // on top. n=5 is the classic 2×2 corners + master; higher counts add perimeter tiles and grow the
-        // master to fill the hollow centre (e.g. 9 = eight tiles in a 3×3 ring with the 9th centred).
+        // master to fill the hollow center (e.g. 9 = eight tiles in a 3×3 ring with the 9th centered).
         list.Add(CreateCenterMasterTemplate());
 
         // Whammy Board family: like Center Master but with NO side columns - alt tiles split into a top
-        // row and a bottom row (Press Your Luck style) with the master floating centred between them.
+        // row and a bottom row (Press Your Luck style) with the master floating centered between them.
         list.Add(CreateWhammyTemplate());
 
         // Side Stack family: a vertical stack of small tiles down one edge (Left/Right dropdown) with
@@ -286,7 +286,7 @@ public static class PresetFactory
         }
     }
 
-    // A square ring of tiles surrounding one larger master floating centred on top. Generalises the
+    // A square ring of tiles surrounding one larger master floating centered on top. Generalises the
     // original 5-Char design (2×2 corners + a 1.5-cell master) to any count: the ring is split into four
     // sides (top/bottom/left/right) whose tile counts sum to n-1, and each side's tiles evenly partition
     // that side's *entire* pixel length — so every perimeter side is fully covered with no dead cells,
@@ -366,7 +366,7 @@ public static class PresetFactory
             profile.Slots.Add(Slot(slotNum++, offset, bottomY, size, bottomH, label));
         }
 
-        // Master spans the hollow centre plus overlap into the surrounding ring tiles. The 2x2 ring
+        // Master spans the hollow center plus overlap into the surrounding ring tiles. The 2x2 ring
         // (s==2) has no interior cell at all, so this is the only thing standing between "no master"
         // and "master covers everything". 2026-07-08: sized down from 1.5 cells (75% of each dimension,
         // matching the legacy 5-Char master exactly) to 1.2 cells (60%) so it covers less of each corner
@@ -384,7 +384,7 @@ public static class PresetFactory
 
     // Press Your Luck board: a full-width row of tiles across the top and bottom (extra tile goes top
     // when odd) with the master filling the ENTIRE band between them, edge to edge - like the show's
-    // big centre screen filling the hole in the tile ring. Rows always span the whole width via
+    // big center screen filling the hole in the tile ring. Rows always span the whole width via
     // EvenSplit. rowH = sh/(rowN+2) makes the fuller row's tiles EXACTLY the master's aspect ratio
     // (tile (sw/rowN) x rowH vs master sw x (rowN*rowH)), so live previews fill their tiles with no
     // black bars (odd counts leave the sparser row slightly wider than the master aspect). Master is
@@ -591,7 +591,7 @@ public static class PresetFactory
     {
         if (clientCount <= 1) return null;
 
-        // 4–15 : the Center Master family (big centred master + ring of tiles, fast hotkey swapping).
+        // 4–15 : the Center Master family (big centered master + ring of tiles, fast hotkey swapping).
         if (clientCount >= 4 && clientCount <= 15)
         {
             var (w, h) = NearestResolution(CenterMasterResolutions, monitorWidth);

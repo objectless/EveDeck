@@ -30,7 +30,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly ClientLaunchService _clientLaunchService = new();
     private readonly ChatLogWatcherService _chatLogWatcherService = new();
     private readonly GameLogWatcherService _gameLogWatcherService = new();
-    private readonly JabberPingWatcherService _jabberPingWatcherService = new();
     private CancellationTokenSource? _launchGroupCts;
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly DispatcherTimer _autoSaveTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -96,6 +95,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Log = new LogService(_configService.LogsFolder);
         // Surface overlay diagnostics (failed thumbnail registrations etc.) in the Logs tab.
         Views.TileSurfaceWindow.Log = msg => Log.Warn(msg);
+        Win32WindowService.LogWarn = msg => Log.Warn(msg);
         Assignments = _settings.Assignments;
         Profiles = _settings.Profiles;
         Hotkeys = _settings.Hotkeys;
@@ -200,8 +200,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }, _ => _settings.CharacterSets.Count > 1);
 
         LaunchGroupCommand = new RelayCommand(LaunchGroup, parameter => parameter is Models.CharacterSet);
-        AddChatAlertRuleCommand = new RelayCommand(AddChatAlertRule);
-        RemoveChatAlertRuleCommand = new RelayCommand(RemoveChatAlertRule, parameter => parameter is ChatAlertRule);
         AddGameEventRuleCommand = new RelayCommand(AddGameEventRule);
         RemoveGameEventRuleCommand = new RelayCommand(RemoveGameEventRule, parameter => parameter is GameEventRule);
         AddOverlayAllowedAppCommand = new RelayCommand(AddOverlayAllowedApp);
@@ -277,9 +275,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         InitLaunchGroups();
         InitChatAlerts();
+        InitConfigProfiles();
         InitPi();
-        InitIntelJumpAlert();
-        InitJabberPing();
+
+        // After InitConfigProfiles (which wires the commands) and after the startup LAYOUT profile
+        // above: a config profile can select a different layout, so it must get the last word.
+        ApplyStartupConfigProfile();
 
         Log.Info("EveDeck started.");
         _ = CheckForUpdateAsync();
@@ -437,8 +438,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public RelayCommand DeleteCharacterSetCommand { get; }
     public RelayCommand SwitchCharacterSetCommand { get; }
     public RelayCommand LaunchGroupCommand { get; }
-    public RelayCommand AddChatAlertRuleCommand { get; }
-    public RelayCommand RemoveChatAlertRuleCommand { get; }
     public RelayCommand AddGameEventRuleCommand { get; }
     public RelayCommand RemoveGameEventRuleCommand { get; }
     public RelayCommand AddOverlayAllowedAppCommand { get; }
@@ -650,8 +649,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     // snaps back automatically on the next apply once the real master's client is running again.
     private int? _promotedMasterSeat;
 
-    // The master seat of the ACTIVE profile (per-profile so each activity can centre a different main).
-    // Falls back to the geometric centre slot when the profile hasn't designated one (new/migrated).
+    // The master seat of the ACTIVE profile (per-profile so each activity can center a different main).
+    // Falls back to the geometric center slot when the profile hasn't designated one (new/migrated).
     // A live transient promotion (partial session) wins over the persisted value for placement/labels.
     internal int ActiveMasterSeat
     {
@@ -1536,6 +1535,154 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    // EVE-O Preview's HideThumbnailsOnLostFocus. Takes effect on the next overlay tick, so no
+    // rebuild is needed -- see UpdateFocusLossHiding.
+    // Compliant substitute for EVE-O Plus's DirectX frame limiting -- see AppSettings for why frame
+    // limiting itself is off the table. Applied on the next foreground change; turning it OFF must
+    // clear throttling immediately or clients stay parked on efficiency cores.
+    public bool EcoQosBackgroundClients
+    {
+        get => _settings.EcoQosBackgroundClients;
+        set
+        {
+            if (_settings.EcoQosBackgroundClients == value) return;
+            _settings.EcoQosBackgroundClients = value;
+            OnPropertyChanged();
+            if (!value) RestoreAllProcessPriorities();
+            else ApplyProcessPriorities(_windowService.GetForegroundWindowHandle());
+            Save();
+        }
+    }
+
+    public bool EcoQosExemptNextInCycle
+    {
+        get => _settings.EcoQosExemptNextInCycle;
+        set
+        {
+            if (_settings.EcoQosExemptNextInCycle == value) return;
+            _settings.EcoQosExemptNextInCycle = value;
+            OnPropertyChanged();
+            // Re-evaluate now: the previously-exempt client should get throttled (or un-throttled)
+            // without waiting for the next foreground change.
+            if (_settings.EcoQosBackgroundClients) ApplyProcessPriorities(_windowService.GetForegroundWindowHandle());
+            Save();
+        }
+    }
+
+    public bool HidePreviewsAtLoginScreen
+    {
+        get => _settings.HidePreviewsAtLoginScreen;
+        set
+        {
+            if (_settings.HidePreviewsAtLoginScreen == value) return;
+            _settings.HidePreviewsAtLoginScreen = value;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
+    // Which point a hover-zoomed tile grows from. Baked into the surface, so changing it rebuilds.
+    public string HoverZoomAnchor
+    {
+        get => _settings.HoverZoomAnchor;
+        set
+        {
+            var chosen = string.IsNullOrWhiteSpace(value) ? "Center" : value;
+            if (_settings.HoverZoomAnchor == chosen) return;
+            _settings.HoverZoomAnchor = chosen;
+            OnPropertyChanged();
+            Save();
+            if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
+        }
+    }
+
+    public bool HidePreviewsOnFocusLoss
+    {
+        get => _settings.HidePreviewsOnFocusLoss;
+        set
+        {
+            if (_settings.HidePreviewsOnFocusLoss == value) return;
+            _settings.HidePreviewsOnFocusLoss = value;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
+    public double HidePreviewsOnFocusLossDelaySeconds
+    {
+        get => _settings.HidePreviewsOnFocusLossDelaySeconds;
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 60);
+            if (Math.Abs(_settings.HidePreviewsOnFocusLossDelaySeconds - clamped) < 0.001) return;
+            _settings.HidePreviewsOnFocusLossDelaySeconds = clamped;
+            OnPropertyChanged();
+            Save();
+        }
+    }
+
+    // Label placement within the tile (3x3 anchor) and its inset off the edge it hugs. Both are baked
+    // into LabelSurfaceWindow at construction, so changing either rebuilds the overlay.
+    public string CornerOverlayLabelAnchor
+    {
+        get => _settings.CornerOverlayLabelAnchor;
+        set
+        {
+            var chosen = string.IsNullOrWhiteSpace(value) ? "Center" : value;
+            if (_settings.CornerOverlayLabelAnchor == chosen) return;
+            _settings.CornerOverlayLabelAnchor = chosen;
+            OnPropertyChanged();
+            Save();
+            if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
+        }
+    }
+
+    // Master-pill override for the label anchor. Empty falls back to CornerOverlayLabelAnchor; the
+    // shipped default is TopCenter so the big center client's name stays clear of its ship/HUD.
+    public string CornerOverlayLabelAnchorMaster
+    {
+        get => _settings.CornerOverlayLabelAnchorMaster;
+        set
+        {
+            var chosen = value ?? "";
+            if (_settings.CornerOverlayLabelAnchorMaster == chosen) return;
+            _settings.CornerOverlayLabelAnchorMaster = chosen;
+            OnPropertyChanged();
+            Save();
+            if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
+        }
+    }
+
+    public int CornerOverlayLabelInset
+    {
+        get => _settings.CornerOverlayLabelInset;
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 200);
+            if (_settings.CornerOverlayLabelInset == clamped) return;
+            _settings.CornerOverlayLabelInset = clamped;
+            OnPropertyChanged();
+            Save();
+            if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
+        }
+    }
+
+    // EVE-O Preview's EnableThumbnailSnap, as a grid size rather than a bool. Pushed straight at the
+    // live surface -- no rebuild, so the next drag snaps immediately.
+    public int CornerOverlaySnapGridPx
+    {
+        get => _settings.CornerOverlaySnapGridPx;
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 500);
+            if (_settings.CornerOverlaySnapGridPx == clamped) return;
+            _settings.CornerOverlaySnapGridPx = clamped;
+            OnPropertyChanged();
+            Save();
+            if (_tileSurface is not null) _tileSurface.SnapGridPx = clamped;
+        }
+    }
+
     public int OfflineOverlayTimeoutSeconds
     {
         get => _settings.OfflineOverlayTimeoutSeconds;
@@ -1564,16 +1711,40 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     internal void ApplyProcessPriorities(nint focusedHandle)
     {
-        if (!_settings.ThrottleBackgroundProcesses) return;
-        foreach (var w in Windows)
-            _windowService.SetProcessPriority((uint)w.ProcessId, w.Handle != focusedHandle);
+        if (_settings.ThrottleBackgroundProcesses)
+        {
+            foreach (var w in Windows)
+                _windowService.SetProcessPriority((uint)w.ProcessId, w.Handle != focusedHandle);
+        }
+
+        if (_settings.EcoQosBackgroundClients)
+        {
+            // Optional: also spare the client the user is about to switch to, so it's already at full
+            // speed when they land on it. 0 when the toggle is off, there are fewer than two cyclable
+            // windows, or focus isn't currently on one of them -- see NextWindowInCycle, which reads
+            // the SAME ordering the Cycle hotkeys walk so the prediction can't disagree with reality.
+            var exemptHandle = _settings.EcoQosExemptNextInCycle ? NextWindowInCycle(focusedHandle) : 0;
+            foreach (var w in Windows)
+            {
+                var keepFullSpeed = w.Handle == focusedHandle || (exemptHandle != 0 && w.Handle == exemptHandle);
+                _windowService.SetProcessEcoQos((uint)w.ProcessId, !keepFullSpeed);
+            }
+        }
     }
 
     private void RestoreAllProcessPriorities()
     {
         foreach (var w in Windows)
+        {
             _windowService.SetProcessPriority((uint)w.ProcessId, false);
+            // Unconditional (not gated on EcoQosBackgroundClients): this is the teardown path for both
+            // the setting being switched off and app exit, so it must clear EcoQoS regardless of the
+            // toggle's current value -- otherwise a client throttled while the setting was on stays
+            // parked on efficiency cores after EveDeck stops managing it.
+            _windowService.SetProcessEcoQos((uint)w.ProcessId, false);
+        }
     }
+
 
     // Tracks the last EVE-foreground state so repeated foreground changes (e.g. tabbing between two EVE
     // clients) don't re-issue redundant SetWindowPos calls; only real EVE<->non-EVE transitions apply.
@@ -1825,7 +1996,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 codes[slotNum] = code;
 
         // In corner-overlay mode with live occupancy, each seat card shows WHERE THAT SEAT'S
-        // WINDOW CURRENTLY IS on screen: "Master" if centred, or the corner's geometric arrow.
+        // WINDOW CURRENTLY IS on screen: "Master" if centered, or the corner's geometric arrow.
         // This is correct even after swaps (e.g. Seat 1 sent to BL still shows ↙, not ↖).
         if (_settings.CornerOverlaysEnabled && _cornerSeatByGroup.Count > 0)
         {
@@ -1835,7 +2006,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 foreach (var (pos, seat) in corners)
                     seatToPosition[seat] = pos;
 
-            // Determine which seats are centred in their respective group.
+            // Determine which seats are centered in their respective group.
             var centeredSeats = new HashSet<int>(_centeredSeatByGroup.Values);
 
             foreach (var a in Assignments)
@@ -1856,7 +2027,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             a.PositionCode = codes.TryGetValue(a.SlotNumber, out var code) ? code : CircledNumeral(a.SlotNumber);
     }
 
-    // Map a slot to a directional arrow symbol from its centre within the layout bounds.
+    // Map a slot to a directional arrow symbol from its center within the layout bounds.
     private static string GridCode(LayoutSlot slot, int minX, int minY, int totalW, int totalH)
     {
         var normX = (slot.X + slot.Width / 2.0 - minX) / totalW;
@@ -1866,7 +2037,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var row = normY < 1.0 / 3 ? "T" : normY < 2.0 / 3 ? "M" : "B";
 
         // Corners get bracket glyphs that echo the physical screen corner; edges get heavy arrows
-        // pointing at the window; the geometric centre gets the Master star. Kept as single glyphs so
+        // pointing at the window; the geometric center gets the Master star. Kept as single glyphs so
         // they render crisp in the 26px pills / slot cards without a custom font.
         return (row, col) switch
         {
@@ -1883,7 +2054,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         };
     }
 
-    // Returns the 3x3 zone bucket (row: T/M/B, col: L/C/R) for a slot's centre within the layout bounds.
+    // Returns the 3x3 zone bucket (row: T/M/B, col: L/C/R) for a slot's center within the layout bounds.
     // Used by FocusDirection to resolve which slot occupies a given screen direction at runtime.
     private static (string row, string col) GridBucket(LayoutSlot slot, int minX, int minY, int totalW, int totalH)
     {
@@ -1922,7 +2093,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         if (clientCount == 5)
         {
-            // Flagship corner-master layout: full-screen, master = centre slot 5, overlays on.
+            // Flagship corner-master layout: full-screen, master = center slot 5, overlays on.
             UseMonitorWorkArea = false;
             FocusPreviewOnClick = focusPreviewOnClick;
             ActiveMasterSeat = 5;
@@ -2181,7 +2352,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _autoApplyTimer.Stop();
         _launchGroupCts?.Cancel();
         StopChatAlerts();
-        _jabberPingWatcherService.Stop();
         StopPi();
         StopCornerOverlays();
         StopTalkerOverlay();
@@ -2190,6 +2360,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             _frameOverlay.Close();
             _frameOverlay = null;
         }
+        // Exiting must not leave any client parked on efficiency cores / below-normal priority.
+        RestoreAllProcessPriorities();
     }
 
     // ── Settings backup ────────────────────────────────────────────────────────

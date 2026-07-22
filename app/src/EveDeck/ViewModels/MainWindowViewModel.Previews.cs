@@ -55,7 +55,7 @@ public sealed partial class MainWindowViewModel
         var maxY = SelectedProfile.Slots.Max(s => s.Y + s.Height);
         var scale = Math.Min(320.0 / Math.Max(1, maxX - minX), 196.0 / Math.Max(1, maxY - minY));
 
-        // Grid profiles show the at-rest seat arrangement: master in the centre, each corner showing its
+        // Grid profiles show the at-rest seat arrangement: master in the center, each corner showing its
         // home seat. Non-grid (single/stacked) layouts keep the simple seat-number == position mapping.
         var grid = SelectedProfile.SupportsCornerGrid;
         var center = grid ? CenterSlotNumber : -1;

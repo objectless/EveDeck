@@ -9,6 +9,10 @@ namespace EveDeck.Services;
 
 public sealed class Win32WindowService
 {
+    // Wired up by MainWindowViewModel (same pattern as Views.TileSurfaceWindow.Log) since this
+    // service has no LogService reference of its own.
+    public static Action<string>? LogWarn;
+
     private const int GwlStyle = -16;
     private const int GwlExStyle = -20;
     private const long WsCaption = 0x00C00000L;
@@ -219,6 +223,49 @@ public sealed class Win32WindowService
         {
             return Utilities.Win32Native.SetPriorityClass(handle,
                 background ? Utilities.Win32Native.PriorityBelowNormal : Utilities.Win32Native.PriorityNormal);
+        }
+        finally { Utilities.Win32Native.CloseHandle(handle); }
+    }
+
+    // Ask Windows to power-throttle (EcoQoS) a background EVE client, or clear it back to normal
+    // scheduling. Same open-minimum-rights/operate/close pattern as SetProcessPriority above, and
+    // reuses the ProcessPowerThrottlingState plumbing Win32Native already declares for EveDeck's own
+    // opt-out (DisableOwnProcessPowerThrottling) -- no new P/Invoke surface needed.
+    //
+    // enabled=true sets StateMask=ExecutionSpeed (throttle ON); enabled=false sets StateMask=0 with
+    // ControlMask still set to ExecutionSpeed (explicitly OFF), rather than zeroing ControlMask too.
+    // That mirrors the documented "clear" pattern used by DisableOwnProcessPowerThrottling and keeps
+    // this call unambiguous about which mechanism it is opining on, in case a future caller ORs in
+    // another PROCESS_POWER_THROTTLING_* bit (e.g. IGNORE_TIMER_RESOLUTION) on the same struct.
+    //
+    // SetProcessInformation(ProcessPowerThrottling) is Windows 10 1809+ / Windows 11 only. On older
+    // builds the call fails (returns false) -- that must degrade to a one-time warning, never a crash
+    // or a retry storm, since ApplyProcessPriorities calls this on every foreground-window change.
+    private bool _ecoQosUnsupportedWarned;
+    public unsafe bool SetProcessEcoQos(uint pid, bool enabled)
+    {
+        var handle = Utilities.Win32Native.OpenProcess(Utilities.Win32Native.ProcessSetInformation, false, pid);
+        if (handle == 0) return false;
+        try
+        {
+            var state = new Utilities.Win32Native.ProcessPowerThrottlingState
+            {
+                Version = Utilities.Win32Native.ProcessPowerThrottlingCurrentVersion,
+                ControlMask = Utilities.Win32Native.ProcessPowerThrottlingExecutionSpeed,
+                StateMask = enabled ? Utilities.Win32Native.ProcessPowerThrottlingExecutionSpeed : 0u,
+            };
+            var ok = Utilities.Win32Native.SetProcessInformation(
+                handle,
+                Utilities.Win32Native.ProcessInformationClassProcessPowerThrottling,
+                &state,
+                (uint)sizeof(Utilities.Win32Native.ProcessPowerThrottlingState));
+            if (!ok && !_ecoQosUnsupportedWarned)
+            {
+                _ecoQosUnsupportedWarned = true;
+                var err = Marshal.GetLastWin32Error();
+                LogWarn?.Invoke($"EcoQoS unavailable (SetProcessInformation failed, Win32 error {err}) -- likely pre-Windows-10-1809. Background-client power throttling will stay off.");
+            }
+            return ok;
         }
         finally { Utilities.Win32Native.CloseHandle(handle); }
     }

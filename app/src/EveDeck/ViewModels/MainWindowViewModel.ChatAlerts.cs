@@ -8,7 +8,6 @@ namespace EveDeck.ViewModels;
 
 public sealed partial class MainWindowViewModel
 {
-    public ObservableCollection<ChatAlertRule> ChatAlertRules => _settings.ChatAlertRules;
     public ObservableCollection<GameEventRule> GameEventRules => _settings.GameEventRules;
 
     public bool AbyssModeEnabled
@@ -41,14 +40,7 @@ public sealed partial class MainWindowViewModel
 
     private void InitChatAlerts()
     {
-        AddChatAlertRuleCommand.RaiseCanExecuteChanged();
-
-        _chatLogWatcherService.RulesProvider = () => _settings.ChatAlertRules;
         _chatLogWatcherService.ErrorOccurred += msg => Log.Warn(msg);
-        _chatLogWatcherService.KeywordMatched += (rule, channel) =>
-        {
-            Application.Current?.Dispatcher.BeginInvoke(() => OnChatKeywordMatched(rule, channel));
-        };
         _chatLogWatcherService.SystemChanged += (character, system) =>
         {
             Application.Current?.Dispatcher.BeginInvoke(() => OnCharacterSystemChanged(character, system));
@@ -62,17 +54,6 @@ public sealed partial class MainWindowViewModel
             Application.Current?.Dispatcher.BeginInvoke(() => OnGameEventMatched(rule, character, line));
         };
         _gameLogWatcherService.Start();
-    }
-
-    private void OnChatKeywordMatched(ChatAlertRule rule, string channel)
-    {
-        Log.Info($"Chat alert: '{rule.Keyword}' matched in {channel} (rule character: {(string.IsNullOrWhiteSpace(rule.CharacterName) ? "any" : rule.CharacterName)}).");
-        SystemSounds.Exclamation.Play();
-
-        var subtitle = string.IsNullOrWhiteSpace(rule.CharacterName) ? channel : $"{channel} · {rule.CharacterName}";
-        // A rule scoped to a character can carry that seat's face and click-to-focus; an "any
-        // character" rule has no single seat to attribute it to, so it stays a plain card.
-        ShowToast($"\"{rule.Keyword}\"", subtitle, "#2BC0E4", FindSeatByCharacter(rule.CharacterName));
     }
 
     private void OnGameEventMatched(GameEventRule rule, string character, string line)
@@ -184,19 +165,6 @@ public sealed partial class MainWindowViewModel
         };
         _combatAlertBundleTimer = timer;
         timer.Start();
-    }
-
-    private void AddChatAlertRule()
-    {
-        _settings.ChatAlertRules.Add(new ChatAlertRule { Keyword = "" });
-        Save();
-    }
-
-    private void RemoveChatAlertRule(object? parameter)
-    {
-        if (parameter is not ChatAlertRule rule) return;
-        _settings.ChatAlertRules.Remove(rule);
-        Save();
     }
 
     private void AddGameEventRule()

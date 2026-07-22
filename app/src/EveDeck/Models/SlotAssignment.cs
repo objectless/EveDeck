@@ -15,6 +15,10 @@ public sealed class SlotAssignment : ObservableObject
     private string? _labelFontFamilyMaster;
     private double? _labelFontSizeMaster;
     private string? _labelColorMaster;
+    private string? _labelAnchor;
+    private string? _labelAnchorMaster;
+    private string? _labelAlias;
+    private string? _zoomAnchor;
     private bool? _labelBold;
     private bool? _labelItalic;
     private bool? _labelDropShadow;
@@ -126,6 +130,43 @@ public sealed class SlotAssignment : ObservableObject
     {
         get => _labelColor;
         set => SetProperty(ref _labelColor, value);
+    }
+
+    // Optional per-seat label ANCHOR overrides -- where this seat's label sits within its tile, as
+    // one of the nine 3x3 names (TopLeft ... BottomRight; see AppSettings.CornerOverlayLabelAnchor).
+    // null/empty = inherit. Two separate values because a seat looks different in the two roles it
+    // occupies: its small corner tile usually wants the name centered over the thumbnail, while the
+    // same seat centered as MASTER wants it out of the way at the top. Same seat-override ->
+    // global-master -> global-default chain as the font overrides below.
+    public string? LabelAnchor
+    {
+        get => _labelAnchor;
+        set => SetProperty(ref _labelAnchor, value);
+    }
+
+    public string? LabelAnchorMaster
+    {
+        get => _labelAnchorMaster;
+        set => SetProperty(ref _labelAnchorMaster, value);
+    }
+
+    // Optional per-seat hover-zoom anchor (one of the nine 3x3 names). null/empty = inherit
+    // AppSettings.HoverZoomAnchor. Useful when one tile sits hard against a screen edge and needs to
+    // grow inward while the rest grow from their center.
+    public string? ZoomAnchor
+    {
+        get => _zoomAnchor;
+        set => SetProperty(ref _zoomAnchor, value);
+    }
+
+    // Display name shown on this seat's preview label INSTEAD of the running character name.
+    // Null/blank = show the real character name as before. Mirrors EVE-O Preview's label aliases --
+    // purely cosmetic, and deliberately does not affect matching, assignment, or anything the app
+    // does with the real name.
+    public string? LabelAlias
+    {
+        get => _labelAlias;
+        set { if (SetProperty(ref _labelAlias, value)) OnPropertyChanged(nameof(DisplayLabel)); }
     }
 
     // 3c — Optional per-seat MASTER-pill font overrides (null = inherit the global Master default,
@@ -241,7 +282,7 @@ public sealed class SlotAssignment : ObservableObject
     }
 
     // When set, activating this seat (tile click, hotkey, protocol) just brings its window to the
-    // foreground in place instead of swapping it into the master/centre region. Also suppresses the
+    // foreground in place instead of swapping it into the master/center region. Also suppresses the
     // hover-peek master swap for this seat. Mirrors ISBoxer's per-slot "swap to main: Never".
     private bool _focusOnlyNoSwap;
     public bool FocusOnlyNoSwap
@@ -352,7 +393,13 @@ public sealed class SlotAssignment : ObservableObject
     // Read-only display name for read-only surfaces (minimap, corner-overlay pills): shows the
     // character actually running in the seat when known, else falls back to the seat's stable Label.
     [System.Text.Json.Serialization.JsonIgnore]
-    public string DisplayLabel => string.IsNullOrEmpty(RunningCharacterName) ? Label : RunningCharacterName;
+    // Name shown on this seat's preview label and in the layout preview. A LabelAlias wins over both
+    // the running character and the configured main -- it is purely cosmetic, and deliberately does
+    // NOT feed window matching, assignment or profile sync, all of which use the real names (see
+    // project-charset-title-corruption for why conflating a display name with a match key is a bug).
+    public string DisplayLabel => !string.IsNullOrWhiteSpace(LabelAlias)
+        ? LabelAlias!
+        : string.IsNullOrEmpty(RunningCharacterName) ? Label : RunningCharacterName;
 
     public string Display => $"{(string.IsNullOrEmpty(PositionCode) ? SlotNumber.ToString() : PositionCode)}. {Label}";
 }

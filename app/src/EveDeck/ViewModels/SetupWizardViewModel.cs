@@ -205,7 +205,7 @@ public sealed class SetupWizardViewModel : ObservableObject
 
             var masterSlot = WizardSlots.FirstOrDefault(s => s.SlotNumber == MasterSeatNumber);
             if (masterSlot is not null)
-                lines.Add($"• Master account (centred at rest): {masterSlot.Label}");
+                lines.Add($"• Master account (centered at rest): {masterSlot.Label}");
 
             lines.Add("");
             lines.Add("After finishing, assign your running EVE clients to seats in the Clients tab, then Apply (Ctrl+Alt+A).");

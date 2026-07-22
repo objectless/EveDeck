@@ -194,7 +194,7 @@ public sealed partial class MainWindowViewModel
                 slot.SlotNumber--;
 
             // Keep the per-profile master + each slot's home-seat reference aligned with the renumbering.
-            if (profile.MasterSeat == removedSlotNumber) profile.MasterSeat = 0;        // 0 = fall back to centre
+            if (profile.MasterSeat == removedSlotNumber) profile.MasterSeat = 0;        // 0 = fall back to center
             else if (profile.MasterSeat > removedSlotNumber) profile.MasterSeat--;
 
             foreach (var slot in profile.Slots)
@@ -503,7 +503,7 @@ public sealed partial class MainWindowViewModel
         SyncMasterSlot();
         // Master is identified by SlotNumber / IsMaster, never by list position, so leave the seat
         // where the user put it. Moving it to index 0 here reshuffled the manual seat order every
-        // time a master was set or a tile was centred -- the "seat order won't stick" bug.
+        // time a master was set or a tile was centered -- the "seat order won't stick" bug.
         OnPropertyChanged(nameof(MasterSlotNumber));
         RaiseIdentityDependents();
         Save();
@@ -566,6 +566,19 @@ public sealed partial class MainWindowViewModel
             ScheduleAutoSave();
             RaiseIdentityDependents();
             RebuildMiniMap();
+            return;
+        }
+
+        // Per-seat label placement/alias and zoom anchor are all baked into the overlay surfaces when
+        // they are built, so changing one has no visible effect until the overlay is rebuilt. Cheap
+        // enough to do on edit (these are hand-edited in the Clients tab, not changed in a loop).
+        if (e.PropertyName is nameof(SlotAssignment.LabelAnchor)
+                           or nameof(SlotAssignment.LabelAnchorMaster)
+                           or nameof(SlotAssignment.LabelAlias)
+                           or nameof(SlotAssignment.ZoomAnchor))
+        {
+            ScheduleAutoSave();
+            if (_settings.CornerOverlaysEnabled && CornerOverlaysLive) StartCornerOverlays();
         }
     }
 

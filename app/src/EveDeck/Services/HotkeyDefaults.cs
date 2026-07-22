@@ -51,7 +51,7 @@ public static class HotkeyDefaults
             bindings.Add(new HotkeyBinding { ActionId = $"SwapSlotWithMaster{i}", DisplayName = $"Swap slot {i} into master slot", Modifiers = 0, VirtualKey = 0, GestureText = "" });
 
         // Direction-based focus hotkeys: each maps to the slot at that screen position in the active
-        // profile, then brings it to the centre (overlay mode) or foreground (flat mode). Ship unbound
+        // profile, then brings it to the center (overlay mode) or foreground (flat mode). Ship unbound
         // so the user can assign them to Tartarus F-keys or any macro device.
         var directions = new (string id, string label)[]
         {
@@ -102,6 +102,12 @@ public static class HotkeyDefaults
         // Panic pause: suspend/resume every EveDeck hotkey at once (this toggle keeps working while
         // suspended). Ships unbound.
         bindings.Add(new HotkeyBinding { ActionId = "ToggleHotkeysSuspended", DisplayName = "Suspend / resume all hotkeys", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+
+        // Manual kick for a stale/stuck preview: force every corner tile to unregister and
+        // re-register its DWM thumbnail (TileSurfaceWindow.RefreshAllSources). That re-registration is
+        // a brief visible blink, so this stays a deliberate, user-triggered action -- never something
+        // fired automatically on a timer. Ships unbound.
+        bindings.Add(new HotkeyBinding { ActionId = "ForceRefreshPreviews", DisplayName = "Force refresh previews", Modifiers = 0, VirtualKey = 0, GestureText = "" });
 
         return bindings;
     }

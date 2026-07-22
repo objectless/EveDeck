@@ -13,7 +13,7 @@ public sealed class LayoutSlot
 
     // The seat (SlotAssignment.SlotNumber) that occupies THIS position at rest in corner/grid mode.
     // null = auto-derive (legacy: position number == seat number, with leftover fallback). Set by the
-    // user dragging a seat card onto a mini-map corner; ignored for the centre slot (master sits there).
+    // user dragging a seat card onto a mini-map corner; ignored for the center slot (master sits there).
     public int? HomeSeat { get; set; }
 
     public WindowRect ToRect() => new() { X = X, Y = Y, Width = Width, Height = Height };

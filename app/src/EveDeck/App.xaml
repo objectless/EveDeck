@@ -19,7 +19,7 @@
     <SolidColorBrush x:Key="WarningBrush" Color="#F0A93B"/>
 
     <!-- Semantic accents (promoted from scattered literals) ───────────────────── -->
-    <!-- Master seat (the centred account): warm amber on a deep ember chip. -->
+    <!-- Master seat (the centered account): warm amber on a deep ember chip. -->
     <SolidColorBrush x:Key="MasterAccentBrush" Color="#F59E0B"/>
     <SolidColorBrush x:Key="MasterChipBrush"   Color="#6B2F08"/>
     <!-- ESI-verified identity: cyan badge on a deep ocean chip. -->

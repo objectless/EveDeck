@@ -3,8 +3,8 @@ using EveDeck.Utilities;
 namespace EveDeck.Models;
 
 // One structured game-event alert: a substring matched against new lines in EVE's own
-// Gamelogs files (Documents\EVE\logs\Gamelogs). Same passive log-tailing model as
-// ChatAlertRule -- plain file I/O over logs EVE writes itself, never game input.
+// Gamelogs files (Documents\EVE\logs\Gamelogs). Passive log-tailing model -- plain file I/O
+// over logs EVE writes itself, never game input.
 public sealed class GameEventRule : ObservableObject
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");

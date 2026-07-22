@@ -73,6 +73,15 @@ internal static class Win32Native
     [DllImport("user32.dll")]
     internal static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
+    // SW_HIDE / SW_SHOWNOACTIVATE. Used to park the overlay surfaces out of sight without tearing
+    // them down, so DWM thumbnail registrations survive and coming back is instant (see
+    // UpdateFocusLossHiding). SW_SHOWNOACTIVATE, never SW_SHOW: the overlay must never steal focus.
+    internal const int SwHide = 0;
+    internal const int SwShowNoActivate = 4;
+
+    [DllImport("user32.dll")]
+    internal static extern bool ShowWindow(nint hWnd, int nCmdShow);
+
     [DllImport("user32.dll")]
     internal static extern bool GetClientRect(nint hWnd, out NativeRect lpRect);
 

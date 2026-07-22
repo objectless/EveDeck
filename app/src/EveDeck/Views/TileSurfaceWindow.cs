@@ -29,7 +29,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     public static Action<string>? Log;
 
     // Raised with the tile's position id on a left-click anywhere on that tile. The view-model
-    // centres the tile's current occupant (a focus switch -- never input forwarded into the EVE
+    // centers the tile's current occupant (a focus switch -- never input forwarded into the EVE
     // client). See COMPLIANCE.md.
     public Action<int>? TileClicked;
 
@@ -90,10 +90,18 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     private byte _opacity = 255;
 
     // Zoom-on-hover state: at most one tile is magnified at a time; its thumbnail dest rect is
-    // scaled around the tile centre (clamped to the surface) and the thumbnail is re-registered so
+    // scaled around the tile center (clamped to the surface) and the thumbnail is re-registered so
     // it composites ABOVE its neighbours (DWM stacks thumbnails in registration order).
     private int _zoomedPosition = -1;
     private Drawing.Rectangle _zoomedRect;
+
+    // Which edge/corner of the tile the hover-zoom magnification pins in place while it grows -- e.g.
+    // BottomRight grows up-and-left instead of always expanding evenly outward. Resolved (per-seat
+    // SlotAssignment.ZoomAnchor override -> AppSettings.HoverZoomAnchor) and pushed down by the
+    // view-model wherever HoverZoomFactor is read (MainWindowViewModel.CornerOverlays.cs). Defaults to
+    // Center/Middle, which reproduces the original always-grow-from-center behavior exactly (see
+    // ComputeZoomRect). A field, not a property -- see SnapGridPx below for why.
+    public LabelAnchor ZoomAnchor = new(LabelAnchorX.Center, LabelAnchorY.Middle);
 
     // Ad-hoc live drag/resize directly on the overlay (right-drag = move, both buttons + drag =
     // resize), mirroring EVE-O Preview/EVE-APM Preview's tile manipulation -- deliberately NOT
@@ -216,6 +224,13 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         foreach (var (position, hwnd) in _sources.ToArray())
             SetSource(position, hwnd);
     }
+
+    // Public entry point for the ForceRefreshPreviews hotkey action -- the same unregister+reregister
+    // pass as the WndProc-driven RefreshAllSources above, just triggered by the user instead of a DWM
+    // composition-changed broadcast. Deliberately NOT wired to any timer: re-registration is visibly a
+    // brief blink (see the RefreshAllSources comment), so a stale preview must be kicked manually, not
+    // polled away automatically.
+    public void ForceRefreshAllSources() => RefreshAllSources();
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -353,9 +368,30 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         Redraw();
     }
 
-    // Magnify one tile's PREVIEW around its centre (clamped to the surface). Purely a DWM dest-rect
-    // change — the real EVE window is never touched, unlike hover-peek. Re-registers the thumbnail
-    // so the enlarged preview draws above its neighbours.
+    // Pure geometry for ZoomTile's magnified dest rect, pulled out so it's unit-testable without
+    // constructing a WinForms.Form. anchor.X pins Left/Right in place while width grows the other
+    // direction (Center grows evenly both ways -- the original, pre-anchor behavior); anchor.Y does
+    // the same for Top/Bottom/Middle. NOT clamped to the surface -- ZoomTile still does that after.
+    internal static Drawing.Rectangle ComputeZoomRect(Drawing.Rectangle tile, int zoomWidth, int zoomHeight, LabelAnchor anchor)
+    {
+        var x = anchor.X switch
+        {
+            LabelAnchorX.Left => tile.Left,
+            LabelAnchorX.Right => tile.Left + tile.Width - zoomWidth,
+            _ => tile.Left + tile.Width / 2 - zoomWidth / 2,
+        };
+        var y = anchor.Y switch
+        {
+            LabelAnchorY.Top => tile.Top,
+            LabelAnchorY.Bottom => tile.Top + tile.Height - zoomHeight,
+            _ => tile.Top + tile.Height / 2 - zoomHeight / 2,
+        };
+        return new Drawing.Rectangle(x, y, zoomWidth, zoomHeight);
+    }
+
+    // Magnify one tile's PREVIEW, pinned at ZoomAnchor and clamped to the surface. Purely a DWM
+    // dest-rect change — the real EVE window is never touched, unlike hover-peek. Re-registers the
+    // thumbnail so the enlarged preview draws above its neighbours.
     public void ZoomTile(int position, double factor)
     {
         if (_zoomedPosition == position) return;
@@ -366,9 +402,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
 
         var w = (int)Math.Round(rect.Width * factor);
         var h = (int)Math.Round(rect.Height * factor);
-        var zoom = new Drawing.Rectangle(
-            rect.Left + rect.Width / 2 - w / 2,
-            rect.Top + rect.Height / 2 - h / 2, w, h);
+        var zoom = ComputeZoomRect(rect, w, h, ZoomAnchor);
         zoom.X = Math.Clamp(zoom.X, 0, Math.Max(0, ClientSize.Width - zoom.Width));
         zoom.Y = Math.Clamp(zoom.Y, 0, Math.Max(0, ClientSize.Height - zoom.Height));
 
@@ -609,6 +643,16 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         try { TileDragStarted?.Invoke(position); } catch { } // subscriber exceptions must not kill the input loop
     }
 
+    // Grid size (physical px) that on-overlay tile drags/resizes snap to. 0 = free positioning, which
+    // is the default and the historical behaviour. Set from AppSettings.CornerOverlaySnapGridPx.
+    // A field, not a property: WFO1000 requires DesignerSerializationVisibility on public settable
+    // properties of a Form, and the other public members here (TileClicked, TileDragging) are fields
+    // for the same reason.
+    public int SnapGridPx;
+
+    private int Snap(int value) => SnapGridPx <= 1 ? value
+        : (int)Math.Round(value / (double)SnapGridPx, MidpointRounding.AwayFromZero) * SnapGridPx;
+
     private void OnMouseMove(object? sender, WinForms.MouseEventArgs e)
     {
         if (_dragMode == TileDragMode.None || _dragPosition < 0) return;
@@ -618,13 +662,16 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         var newRect = _dragStartRect;
         if (_dragMode == TileDragMode.Reposition)
         {
-            newRect.X = Math.Clamp(_dragStartRect.X + dx, 0, Math.Max(0, ClientSize.Width - newRect.Width));
-            newRect.Y = Math.Clamp(_dragStartRect.Y + dy, 0, Math.Max(0, ClientSize.Height - newRect.Height));
+            // Snap the resulting EDGE, not the mouse delta, so a tile lands on grid multiples
+            // regardless of where within it the drag started. Clamp after snapping: snapping a
+            // clamped value can push it back off-surface, but clamping a snapped one cannot.
+            newRect.X = Math.Clamp(Snap(_dragStartRect.X + dx), 0, Math.Max(0, ClientSize.Width - newRect.Width));
+            newRect.Y = Math.Clamp(Snap(_dragStartRect.Y + dy), 0, Math.Max(0, ClientSize.Height - newRect.Height));
         }
         else // Resize
         {
-            newRect.Width = Math.Max(MinTileSize, Math.Min(_dragStartRect.Width + dx, ClientSize.Width - newRect.X));
-            newRect.Height = Math.Max(MinTileSize, Math.Min(_dragStartRect.Height + dy, ClientSize.Height - newRect.Y));
+            newRect.Width = Math.Max(MinTileSize, Math.Min(Snap(_dragStartRect.Width + dx), ClientSize.Width - newRect.X));
+            newRect.Height = Math.Max(MinTileSize, Math.Min(Snap(_dragStartRect.Height + dy), ClientSize.Height - newRect.Y));
         }
 
         _tiles[_dragPosition] = newRect;

@@ -36,18 +36,10 @@ public partial class MainWindow : Window
     internal void HandleProtocolUrl(string url) => _viewModel.HandleProtocolUrl(url);
 
     // A native (Windows Action Center) notification was clicked -- see NativeNotificationService.
-    // A mumble:// payload (the Jabber ping bridge's "join comms" link) opens Mumble directly, same as
-    // clicking EveDeck's own in-app toast copy; anything else just brings EveDeck to the front.
-    internal void HandleNativeNotificationActivated(string? payload)
-    {
-        if (!string.IsNullOrEmpty(payload) && payload.StartsWith("mumble://", StringComparison.OrdinalIgnoreCase))
-        {
-            try { Process.Start(new ProcessStartInfo(payload) { UseShellExecute = true }); }
-            catch { /* best-effort -- Mumble may not be installed/registered for the mumble:// scheme */ }
-            return;
-        }
-        ShowFromTray();
-    }
+    // Every alert EveDeck still mirrors there (game events, PI) is informational, so clicking one
+    // just brings EveDeck to the front. NativeNotificationService keeps its generic `argument`
+    // channel for a future alert that needs to route somewhere specific.
+    internal void HandleNativeNotificationActivated(string? payload) => ShowFromTray();
 
     public MainWindow()
     {
@@ -270,11 +262,45 @@ public partial class MainWindow : Window
         var contextMenu = new System.Windows.Forms.ContextMenuStrip();
         contextMenu.Items.Add("Open EveDeck", null, (_, _) => ShowFromTray());
         contextMenu.Items.Add("Reload active profile", null, (_, _) => ReloadActiveProfileFromTray());
+        _configProfilesMenu = new System.Windows.Forms.ToolStripMenuItem("Config profile");
+        contextMenu.Items.Add(_configProfilesMenu);
         contextMenu.Items.Add("Check for Updates", null, (_, _) => _viewModel.CheckForUpdateCommand.Execute(null));
         contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         contextMenu.Items.Add("Exit", null, (_, _) => ExitFromTray());
         _notifyIcon.ContextMenuStrip = contextMenu;
         _notifyIcon.DoubleClick += (_, _) => ShowFromTray();
+
+        RebuildConfigProfilesMenu();
+        _viewModel.ConfigProfilesChanged += (_, _) => Dispatcher.BeginInvoke(RebuildConfigProfilesMenu);
+    }
+
+    private System.Windows.Forms.ToolStripMenuItem? _configProfilesMenu;
+
+    // The tray is the ONLY switcher for config profiles (the Options panel creates and edits them,
+    // which is a different job). Rebuilt from scratch on every change rather than diffed -- the list
+    // is a handful of items and a stale checkmark here is worse than the rebuild cost.
+    private void RebuildConfigProfilesMenu()
+    {
+        if (_configProfilesMenu is null) return;
+        _configProfilesMenu.DropDownItems.Clear();
+
+        if (_viewModel.ConfigProfiles.Count == 0)
+        {
+            var empty = new System.Windows.Forms.ToolStripMenuItem("(none set up yet)") { Enabled = false };
+            _configProfilesMenu.DropDownItems.Add(empty);
+            return;
+        }
+
+        foreach (var profile in _viewModel.ConfigProfiles)
+        {
+            var captured = profile; // don't close over the loop variable's final value
+            var item = new System.Windows.Forms.ToolStripMenuItem(captured.Name)
+            {
+                Checked = captured.Id == _viewModel.ActiveConfigProfileId,
+            };
+            item.Click += (_, _) => _viewModel.ApplyConfigProfileCommand.Execute(captured);
+            _configProfilesMenu.DropDownItems.Add(item);
+        }
     }
 
     // Load the bundled app icon (Assets\evedeck.ico, embedded as a WPF resource) for the tray, so the
@@ -538,7 +564,7 @@ public partial class MainWindow : Window
     {
         if (sender is not FrameworkElement { DataContext: MiniMapSlot miniSlot }) { e.Handled = true; return; }
 
-        // Drag a seat card onto a cell → set its home corner (or master, on the centre cell).
+        // Drag a seat card onto a cell → set its home corner (or master, on the center cell).
         if (e.Data.GetData("SlotReorder") is SlotAssignment seat)
         {
             _viewModel.SetSeatHomeCorner(seat.SlotNumber, miniSlot.SlotNumber);

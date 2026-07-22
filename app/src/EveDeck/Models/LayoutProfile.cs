@@ -21,20 +21,20 @@ public sealed class LayoutProfile
     // Empty for families without a side option; PresetFactory defaults/clamps it when regenerating slots.
     public string TemplateSide { get; set; } = "";
 
-    // The master SEAT (SlotAssignment.SlotNumber) centred at rest for THIS profile — different activities
-    // (mining vs. PvP) can centre different mains. 0 = unset; the view-model falls back to the centre slot.
+    // The master SEAT (SlotAssignment.SlotNumber) centered at rest for THIS profile — different activities
+    // (mining vs. PvP) can center different mains. 0 = unset; the view-model falls back to the center slot.
     public int MasterSeat { get; set; }
 
     // Swap groups partition profile slots into independent swap rings. Empty = single legacy group (all slots).
     public ObservableCollection<SwapGroup> SwapGroups { get; set; } = new();
 
     // When true, this profile fits itself into the monitor WORK AREA (excluding the taskbar) instead of
-    // the full monitor bounds at apply time — useful for centre-master grids so the bottom row clears the
+    // the full monitor bounds at apply time — useful for center-master grids so the bottom row clears the
     // taskbar. Per-profile so full-screen and taskbar-aware variants can coexist. See ResolveLayoutAnchor.
     public bool AvoidTaskbar { get; set; }
 
     // When non-zero, EveDeck places the master EVE window at exactly this size instead of whatever
-    // ResolvePlacementRect computes for the centre slot. Set this to match EVE's Fixed Window
+    // ResolvePlacementRect computes for the center slot. Set this to match EVE's Fixed Window
     // resolution when using VSR/DSR supersampling or a custom master size.
     // 0/0 = auto (scale to fill the target monitor as usual).
     public int MasterResolutionWidth { get; set; }
@@ -61,7 +61,7 @@ public sealed class LayoutProfile
         _               => 99
     };
 
-    // Corner-overlay (grid) mode needs distinct slot positions to surround a centre rect. Single-client
+    // Corner-overlay (grid) mode needs distinct slot positions to surround a center rect. Single-client
     // and stacked layouts place every client at the same spot, so they "won't grid" — for those we fall
     // back to plain window placement even when corner overlays are globally enabled.
     [System.Text.Json.Serialization.JsonIgnore]

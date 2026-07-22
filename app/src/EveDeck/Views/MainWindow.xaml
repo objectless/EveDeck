@@ -64,11 +64,11 @@
         <DockPanel>
           <!-- Chrome buttons – must be hit-test visible inside caption area -->
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-            <!-- App master brand: the centred account's portrait + name -->
+            <!-- App master brand: the centered account's portrait + name -->
             <Border Background="{StaticResource BrandChipBrush}" CornerRadius="13" Padding="3,2,11,2" Margin="0,0,14,0"
                     VerticalAlignment="Center"
                     Visibility="{Binding HasMasterCharacter, Converter={StaticResource BoolToVis}}"
-                    ToolTip="App master - the account centred at rest"
+                    ToolTip="App master - the account centered at rest"
                     WindowChrome.IsHitTestVisibleInChrome="True">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <Ellipse Width="22" Height="22" Margin="0,0,7,0" Style="{StaticResource PortraitDot}"
@@ -534,7 +534,7 @@
                     </StackPanel>
                     <StackPanel VerticalAlignment="Center">
                       <TextBlock Text="Slots" FontSize="15" FontWeight="SemiBold"/>
-                      <TextBlock Text="Each slot is one seat. Assign a window, then drag a slot's ⠿ grip onto the mini-map to set its corner — or drop on the centre to make it Master."
+                      <TextBlock Text="Each slot is one seat. Assign a window, then drag a slot's ⠿ grip onto the mini-map to set its corner — or drop on the center to make it Master."
                                  Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"/>
                       <TextBlock Text="Position codes:  ⌜⌝⌞⌟ = screen corners   ▲▼◀▶ = edges   ★ = Master (home seat)"
                                  Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap"/>
@@ -542,7 +542,7 @@
                   </DockPanel>
 
                   <!-- Layout minimap: drag an EVE window onto a cell to assign it, or drag a slot card's grip
-                       onto a corner to set that seat's home corner (centre cell = Master). -->
+                       onto a corner to set that seat's home corner (center cell = Master). -->
                   <Border Grid.Row="2" Margin="0,0,0,8" HorizontalAlignment="Center" Padding="4"
                           Background="#080D14" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4">
                     <Border.Style>
@@ -574,7 +574,7 @@
                                     DragEnter="MiniMapSlot_DragEnter"
                                     DragOver="MiniMapSlot_DragOver"
                                     Drop="MiniMapSlot_Drop"
-                                    ToolTip="Drag a slot card (using its ⠿ grip) here to set its corner. Drop on the centre to make it Master."
+                                    ToolTip="Drag a slot card (using its ⠿ grip) here to set its corner. Drop on the center to make it Master."
                                     CornerRadius="2">
                               <Border.Style>
                                 <Style TargetType="Border">
@@ -795,7 +795,7 @@
                                         <TextBlock Text="Master label" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource MasterAccentBrush}" Margin="0,0,0,6"/>
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                           <Button Content="Font..." Click="SlotMasterLabelFontPick_Click" Padding="6,2" FontSize="10"
-                                                  ToolTip="Set this seat's label font/size/colour for when it's the centred MASTER seat (falls back to its normal label font when unset)"/>
+                                                  ToolTip="Set this seat's label font/size/colour for when it's the centered MASTER seat (falls back to its normal label font when unset)"/>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
                                           <CheckBox Content="Bold" Tag="BoldMaster" Loaded="SlotStyleToggle_Loaded" Click="SlotStyleToggle_Click" Margin="0,0,10,0" FontSize="11" VerticalAlignment="Center"/>
@@ -965,10 +965,67 @@
                                           ToolTip="Protect this seat from the Minimize-all hotkey and auto-minimize (e.g. a scout you always keep visible)"/>
                                 <CheckBox Content="Focus only (no master swap)" FontSize="10" Margin="4,2"
                                           IsChecked="{Binding FocusOnlyNoSwap, UpdateSourceTrigger=PropertyChanged}"
-                                          ToolTip="Activating this seat (click/hotkey) just brings its window to the front in place, instead of swapping it into the master/centre slot. Also disables hover-peek for this seat."/>
+                                          ToolTip="Activating this seat (click/hotkey) just brings its window to the front in place, instead of swapping it into the master/center slot. Also disables hover-peek for this seat."/>
                                 <CheckBox Content="Hide preview" FontSize="10" Margin="4,2"
                                           IsChecked="{Binding PreventPreview, UpdateSourceTrigger=PropertyChanged}"
                                           ToolTip="Show this seat's corner tile as a plain colour instead of a live preview -- e.g. for a cloaky alt you don't want visible even as a thumbnail."/>
+                                <StackPanel Orientation="Horizontal" Margin="4,4,4,2">
+                                  <TextBlock Text="Alias" FontSize="10" VerticalAlignment="Center"
+                                             Foreground="{StaticResource MutedBrush}"/>
+                                  <TextBox Text="{Binding LabelAlias, UpdateSourceTrigger=PropertyChanged}"
+                                           Width="110" Padding="4,2" FontSize="10" Margin="4,0,0,0"
+                                           ToolTip="Show this text on the preview label instead of the character name. Blank = use the real name. Cosmetic only - window matching still uses the real name."/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="4,2">
+                                  <TextBlock Text="Label" FontSize="10" VerticalAlignment="Center"
+                                             Foreground="{StaticResource MutedBrush}"/>
+                                  <ComboBox Width="96" FontSize="10" Margin="4,0,0,0"
+                                            SelectedValue="{Binding LabelAnchor, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag"
+                                            ToolTip="Where this seat's label sits on its small corner tile. Blank = use the global Label position from Options.">
+                                    <ComboBoxItem Tag="{x:Null}" Content="(inherit)"/>
+                                    <ComboBoxItem Tag="TopLeft" Content="Top left"/>
+                                    <ComboBoxItem Tag="TopCenter" Content="Top center"/>
+                                    <ComboBoxItem Tag="TopRight" Content="Top right"/>
+                                    <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
+                                    <ComboBoxItem Tag="Center" Content="Center"/>
+                                    <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
+                                    <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
+                                    <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
+                                    <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
+                                  </ComboBox>
+                                  <TextBlock Text="as master" FontSize="10" VerticalAlignment="Center"
+                                             Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0"/>
+                                  <ComboBox Width="96" FontSize="10" Margin="4,0,0,0"
+                                            SelectedValue="{Binding LabelAnchorMaster, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag"
+                                            ToolTip="Where this seat's label sits when it is the big center/master client. Blank = use the global master position from Options.">
+                                    <ComboBoxItem Tag="{x:Null}" Content="(inherit)"/>
+                                    <ComboBoxItem Tag="TopLeft" Content="Top left"/>
+                                    <ComboBoxItem Tag="TopCenter" Content="Top center"/>
+                                    <ComboBoxItem Tag="TopRight" Content="Top right"/>
+                                    <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
+                                    <ComboBoxItem Tag="Center" Content="Center"/>
+                                    <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
+                                    <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
+                                    <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
+                                    <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
+                                  </ComboBox>
+                                  <TextBlock Text="zoom from" FontSize="10" VerticalAlignment="Center"
+                                             Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0"/>
+                                  <ComboBox Width="96" FontSize="10" Margin="4,0,0,0"
+                                            SelectedValue="{Binding ZoomAnchor, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag"
+                                            ToolTip="Which point this tile grows from on hover zoom. Useful when a tile sits hard against a screen edge and should expand inward. Blank = use the global setting.">
+                                    <ComboBoxItem Tag="{x:Null}" Content="(inherit)"/>
+                                    <ComboBoxItem Tag="TopLeft" Content="Top left"/>
+                                    <ComboBoxItem Tag="TopCenter" Content="Top center"/>
+                                    <ComboBoxItem Tag="TopRight" Content="Top right"/>
+                                    <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
+                                    <ComboBoxItem Tag="Center" Content="Center"/>
+                                    <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
+                                    <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
+                                    <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
+                                    <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
+                                  </ComboBox>
+                                </StackPanel>
                               </StackPanel>
                             </Grid>
                           </Border>
@@ -1511,10 +1568,11 @@ Both AMD and Nvidia let you set a virtual resolution higher than your panel's na
                   <ListBoxItem Content="Hotkey Behavior"/>
                   <ListBoxItem Content="Performance"/>
                   <ListBoxItem Content="EVE Launcher"/>
-                  <ListBoxItem Content="Chat Alerts"/>
                   <ListBoxItem Content="Game Event Alerts"/>
                   <ListBoxItem Content="Overlay Allow List"/>
                   <ListBoxItem Content="Notifications"/>
+                  <ListBoxItem Content="Comms"/>
+                  <ListBoxItem Content="Config Profiles"/>
                 </ListBox>
               </Border>
 
@@ -1789,7 +1847,90 @@ Shows your background clients as live mini-previews in the screen corners while 
               <CheckBox Content="Hide a preview tile while that client is the active window"
                         IsChecked="{Binding HideActiveSeatTile}"
                         ToolTip="The active client is already on screen full-size; hiding its own tile reduces clutter"
-                        Margin="0,0,0,10"/>
+                        Margin="0,0,0,6"/>
+              <TextBlock Text="Tip: to hide one seat's preview permanently, use its &quot;Hide preview&quot; box on the Clients tab."
+                         Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+              <CheckBox Content="Hide a preview tile while that client is still on the login screen"
+                        IsChecked="{Binding HidePreviewsAtLoginScreen}"
+                        ToolTip="A client that hasn't picked a character yet shows nothing useful in its thumbnail. Detected from the window title only."
+                        Margin="0,0,0,6"/>
+
+              <CheckBox Content="Hide all previews while EVE isn't the active app"
+                        IsChecked="{Binding HidePreviewsOnFocusLoss}"
+                        ToolTip="Alt-tab to a browser, Discord or a spreadsheet and the previews get out of the way; switch back to EVE and they return. Nothing is torn down, so coming back is instant."
+                        Margin="0,0,0,6"/>
+              <StackPanel Orientation="Horizontal" Margin="16,0,0,10" VerticalAlignment="Center">
+                <TextBlock Text="after" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <TextBox Width="48" Margin="6,0,0,0"
+                         Text="{Binding HidePreviewsOnFocusLossDelaySeconds, UpdateSourceTrigger=PropertyChanged}"
+                         HorizontalContentAlignment="Center" FontSize="11"/>
+                <TextBlock Text="sec (0 = instantly; a short delay stops seat swaps flickering the overlay)"
+                           VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="6,0,0,0"/>
+              </StackPanel>
+
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,6" VerticalAlignment="Center">
+                <TextBlock Text="Label position" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <ComboBox Width="150" FontSize="11"
+                          SelectedValue="{Binding CornerOverlayLabelAnchor}" SelectedValuePath="Tag"
+                          ToolTip="Where the character name sits inside its preview tile.">
+                  <ComboBoxItem Tag="TopLeft" Content="Top left"/>
+                  <ComboBoxItem Tag="TopCenter" Content="Top center"/>
+                  <ComboBoxItem Tag="TopRight" Content="Top right"/>
+                  <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
+                  <ComboBoxItem Tag="Center" Content="Center"/>
+                  <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
+                  <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
+                  <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
+                  <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
+                </ComboBox>
+                <TextBlock Text="master" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="12,0,0,0"/>
+                <ComboBox Width="130" FontSize="11" Margin="6,0,0,0"
+                          SelectedValue="{Binding CornerOverlayLabelAnchorMaster}" SelectedValuePath="Tag"
+                          ToolTip="Where the label sits on the big center/master rect. That is the client you are actually looking at, so a label parked in the middle of it covers your ship - top usually reads better there while the small tiles stay centered.">
+                  <ComboBoxItem Tag="TopLeft" Content="Top left"/>
+                  <ComboBoxItem Tag="TopCenter" Content="Top center"/>
+                  <ComboBoxItem Tag="TopRight" Content="Top right"/>
+                  <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
+                  <ComboBoxItem Tag="Center" Content="Center"/>
+                  <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
+                  <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
+                  <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
+                  <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
+                </ComboBox>
+                <TextBlock Text="edge inset" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="12,0,0,0"/>
+                <TextBox Width="40" Margin="6,0,0,0"
+                         Text="{Binding CornerOverlayLabelInset, UpdateSourceTrigger=PropertyChanged}"
+                         HorizontalContentAlignment="Center" FontSize="11"
+                         ToolTip="Gap in pixels between the label and the tile edge it hugs. Ignored on a centered axis."/>
+                <TextBlock Text="px" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="4,0,0,0"/>
+              </StackPanel>
+
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                <TextBlock Text="Zoom grows from" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <ComboBox Width="130" FontSize="11"
+                          SelectedValue="{Binding HoverZoomAnchor}" SelectedValuePath="Tag"
+                          ToolTip="Which point a hover-zoomed tile expands from. Center grows evenly; an edge or corner pins that side so a tile against a screen edge grows inward instead of being clamped. Per-seat overrides live on each slot card in the Clients tab.">
+                  <ComboBoxItem Tag="TopLeft" Content="Top left"/>
+                  <ComboBoxItem Tag="TopCenter" Content="Top center"/>
+                  <ComboBoxItem Tag="TopRight" Content="Top right"/>
+                  <ComboBoxItem Tag="MiddleLeft" Content="Middle left"/>
+                  <ComboBoxItem Tag="Center" Content="Center"/>
+                  <ComboBoxItem Tag="MiddleRight" Content="Middle right"/>
+                  <ComboBoxItem Tag="BottomLeft" Content="Bottom left"/>
+                  <ComboBoxItem Tag="BottomCenter" Content="Bottom center"/>
+                  <ComboBoxItem Tag="BottomRight" Content="Bottom right"/>
+                </ComboBox>
+              </StackPanel>
+
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                <TextBlock Text="Snap tiles to grid" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                <TextBox Width="48"
+                         Text="{Binding CornerOverlaySnapGridPx, UpdateSourceTrigger=PropertyChanged}"
+                         HorizontalContentAlignment="Center" FontSize="11"/>
+                <TextBlock Text="px when dragging/resizing previews on the overlay (0 = free)"
+                           VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="6,0,0,0"/>
+              </StackPanel>
               <StackPanel Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
                 <TextBlock Text="Auto-close overlay after" VerticalAlignment="Center" Width="120" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
                 <TextBox Width="48"
@@ -1879,6 +2020,18 @@ When on, swap/cycle/apply-layout hotkeys only work while an EVE client is the ac
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
 EveDeck lowers the OS scheduling priority of inactive EVE clients whenever another client is in the foreground, so the active one gets more CPU and GPU headroom. Tip: also set Options &gt; Display &amp; Graphics &gt; Limit background framerate to 1-5 FPS inside EVE itself for the biggest gain -- EVE handles its own render loop; EveDeck handles OS scheduling.
               </TextBlock>
+              <CheckBox Content="Power-throttle background EVE clients (EcoQoS)"
+                        IsChecked="{Binding EcoQosBackgroundClients}"
+                        Margin="0,0,0,4"/>
+              <CheckBox Content="Keep the next client in the cycle at full speed"
+                        IsChecked="{Binding EcoQosExemptNextInCycle}"
+                        IsEnabled="{Binding EcoQosBackgroundClients}"
+                        Margin="16,0,0,4"/>
+              <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
+Asks Windows to park inactive clients on efficiency cores and clock them down -- a deeper cut than the priority drop above, and the two stack. The second box spares whichever client you would land on next when cycling, so it is already back at full speed by the time you get there.
+
+EveDeck deliberately does NOT cap another client's frame rate: doing that means injecting a DLL into the EVE client to hook its render loop, which EveDeck will never do. EcoQoS is pure OS scheduling -- nothing is injected into, read from, or written to EVE. Requires Windows 10 1809 or newer; on older builds it logs once and stays off.
+              </TextBlock>
               <CheckBox Content="Auto-minimize EVE clients that are not the active window"
                         IsChecked="{Binding AutoMinimizeInactiveClients}"
                         Margin="0,0,0,4"/>
@@ -1896,35 +2049,8 @@ Used by each character set's "Launch" button. EveDeck checks the common install 
                        Padding="6,4" FontSize="12"
                        ToolTip="Custom path to eveLauncher.exe, e.g. D:\Games\EVE Online\eveLauncher.exe"/>
                   </StackPanel>
-                  <!-- section 12: Chat Alerts -->
+                  <!-- section 12: Game Event Alerts -->
                   <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=12}">
-                    <TextBlock Text="Chat Alerts" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
-              <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
-Watches EVE's chatlog files (Documents\EVE\logs\Chatlogs) for a keyword and plays a sound + flashes the matching seat. Passive log reading only -- never sends anything into an EVE client. Leave Character blank to match any character's logs.
-              </TextBlock>
-              <ItemsControl ItemsSource="{Binding ChatAlertRules}" Margin="0,0,0,6">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <DockPanel Margin="0,3">
-                      <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
-                                VerticalAlignment="Center" Margin="0,0,8,0"/>
-                      <Button DockPanel.Dock="Right" Content="Remove" Padding="7,3" FontSize="11" Margin="6,0,0,0"
-                              Command="{Binding DataContext.RemoveChatAlertRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                              CommandParameter="{Binding}"/>
-                      <TextBox Text="{Binding Keyword, UpdateSourceTrigger=PropertyChanged}"
-                               Width="180" Padding="6,4" FontSize="12" Margin="0,0,8,0"
-                               ToolTip="Keyword to match (case-insensitive)"/>
-                      <TextBox Text="{Binding CharacterName, UpdateSourceTrigger=PropertyChanged}"
-                               Width="140" Padding="6,4" FontSize="12"
-                               ToolTip="Optional: only match this character's chatlogs (blank = any)"/>
-                    </DockPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <Button Content="+ Add Rule" Command="{Binding AddChatAlertRuleCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
-                  </StackPanel>
-                  <!-- section 13: Game Event Alerts -->
-                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=13}">
                     <TextBlock Text="Game Event Alerts" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
 Watches EVE's gamelog files (Documents\EVE\logs\Gamelogs) for events on your OTHER clients -- combat, mining crystal breaks, fleet invites. By default a match shows a toast notification (plus an optional sound) over the game. "Glow" events instead pulse that seat's tile/master rect on the overlay -- for "this character is under attack right now" alerts where a toast per line would be constant spam (Combat is Glow by default). Passive log reading only -- never sends anything into an EVE client. Pattern is a case-insensitive text match against new log lines; "Focused" skips the alert when that character's window is already active.
@@ -1964,8 +2090,8 @@ Watches EVE's gamelog files (Documents\EVE\logs\Gamelogs) for events on your OTH
                         IsChecked="{Binding ToastsAboveOverlays, UpdateSourceTrigger=PropertyChanged}"
                         ToolTip="Keeps toast notifications above the corner-overlay previews and any Overlay Allow List app (Discord, Mumble, ...) for the few seconds they're on screen. Turn off to let those apps sit over your alerts instead."/>
                   </StackPanel>
-                  <!-- section 14: Overlay Allow List -->
-                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=14}">
+                  <!-- section 13: Overlay Allow List -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=13}">
                     <TextBlock Text="Overlay Allow List" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
 Apps listed here stay visually above EveDeck's corner-overlay tiles/labels even while an EVE client has focus -- useful if you keep a voice chat, intel, or fitting tool window positioned over the game. Matched by process name (case-insensitive, partial match, no ".exe") -- e.g. "discord" matches Discord.exe.
@@ -1989,8 +2115,8 @@ Apps listed here stay visually above EveDeck's corner-overlay tiles/labels even 
               <Button Content="+ Add App" Command="{Binding AddOverlayAllowedAppCommand}" Padding="8,4" FontSize="12" HorizontalAlignment="Left"/>
                   </StackPanel>
 
-                  <!-- section 15: Notifications (Intel Alerts moved to the Comms tab) -->
-                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=15}">
+                  <!-- section 14: Notifications -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=14}">
                     <TextBlock Text="Notifications" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
                     <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,14" MaxWidth="640">
 Controls where EveDeck's own toast popups appear on screen, and whether they're also mirrored into
@@ -2020,6 +2146,84 @@ the only visible one), so your alert history is still there from the system cloc
 after the popup has disappeared. Depends on Windows notifications being allowed for EveDeck in
 Settings &gt; System &gt; Notifications.
                     </TextBlock>
+                  </StackPanel>
+
+                  <!-- section 15: Comms -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=15}">
+                    <TextBlock Text="Comms" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
+EveDeck's own who-is-talking panel for Mumble, fed by a small companion plugin that runs inside your Mumble client. Drag it anywhere on screen and use the lock icon to stop accidental drags.
+                    </TextBlock>
+
+                    <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="6" Padding="14" MaxWidth="480">
+                      <StackPanel>
+                        <DockPanel>
+                          <CheckBox DockPanel.Dock="Right" Content="Enabled" IsChecked="{Binding TalkerOverlayEnabled}"/>
+                          <TextBlock Text="Talker Overlay (Mumble plugin)" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0">
+EveDeck's own who-is-talking panel, styled to match the app -- no Mumble window wrangling. Needs the EveDeck plugin installed once and enabled inside Mumble (Configure &gt; Plugins &gt; "EveDeck Talker Bridge"). Read-only: the plugin only reports names and talking state, never audio or messages.
+                        </TextBlock>
+                        <TextBlock Text="{Binding TalkerOverlayStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center">
+                          <TextBlock Text="Opacity" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}"/>
+                          <Slider Minimum="20" Maximum="100"
+                                  Value="{Binding TalkerOverlayOpacity}"
+                                  Width="180"
+                                  VerticalAlignment="Center"
+                                  IsSnapToTickEnabled="True"
+                                  TickFrequency="5"/>
+                          <TextBlock Text="{Binding TalkerOverlayOpacity, StringFormat={}{0}%}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                          <Button Content="Install plugin into Mumble" Command="{Binding InstallMumblePluginCommand}" Padding="10,4"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding MumblePluginInstallStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                      </StackPanel>
+                    </Border>
+                  </StackPanel>
+
+                  <!-- section 16: Config Profiles -->
+                  <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=16}">
+                    <TextBlock Text="Config Profiles" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,10">
+One named switch for your whole setup - "Mining" vs "PvP". A config profile remembers which layout and which character set to use, plus every overlay appearance setting (labels, colors, zoom, hide rules). Switch between them from the EveDeck tray icon.
+
+Add captures whatever you have set up right now. Save re-captures the current setup into an existing profile. The layout and character set are remembered by reference, so editing a layout updates every config profile that uses it.
+                    </TextBlock>
+
+                    <ItemsControl ItemsSource="{Binding ConfigProfiles}" Margin="0,0,0,8">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                  BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,6">
+                            <DockPanel>
+                              <Button DockPanel.Dock="Right" Content="Remove" Padding="7,3" FontSize="11" Margin="6,0,0,0"
+                                      Command="{Binding DataContext.RemoveConfigProfileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      CommandParameter="{Binding}"/>
+                              <Button DockPanel.Dock="Right" Content="Save current" Padding="7,3" FontSize="11" Margin="6,0,0,0"
+                                      ToolTip="Re-capture the current layout, character set and overlay appearance into this profile."
+                                      Command="{Binding DataContext.SaveCurrentToConfigProfileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      CommandParameter="{Binding}"/>
+                              <Button DockPanel.Dock="Right" Content="Apply" Padding="7,3" FontSize="11" Margin="6,0,0,0"
+                                      Command="{Binding DataContext.ApplyConfigProfileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      CommandParameter="{Binding}"/>
+                              <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                       Padding="6,4" FontSize="12" VerticalAlignment="Center"/>
+                            </DockPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Button Content="+ Add config profile from current setup" Command="{Binding AddConfigProfileCommand}"
+                            Padding="8,4" FontSize="12" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+
+                    <CheckBox Content="Re-apply the last used config profile on startup"
+                              IsChecked="{Binding ApplyConfigProfileOnStartup}"
+                              ToolTip="Applies after the startup layout profile, so a config profile always gets the last word."
+                              Margin="0,0,0,10"/>
                   </StackPanel>
                 </Grid>
               </ScrollViewer>
@@ -2111,166 +2315,6 @@ Settings &gt; System &gt; Notifications.
         </TabItem>
 
         <!-- ──────────────────── COMMS TAB ──────────────────── -->
-        <TabItem>
-          <TabItem.Header>
-            <StackPanel Orientation="Horizontal">
-              <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13" Margin="0,0,7,0" VerticalAlignment="Center"/>
-              <TextBlock Text="Comms" VerticalAlignment="Center"/>
-            </StackPanel>
-          </TabItem.Header>
-          <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <StackPanel Margin="12">
-            <TextBlock Text="Comms Overlay" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,4"/>
-            <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,16" MaxWidth="640">
-              EveDeck's own who-is-talking panel for Mumble, fed by a small companion plugin that
-              runs inside your Mumble client. Drag it anywhere on screen and use the lock icon to
-              stop accidental drags. Requires installing the plugin once (below) and enabling it
-              inside Mumble.
-            </TextBlock>
-
-            <!-- Native talker overlay: EveDeck's own panel fed by the bundled Mumble plugin. -->
-            <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1" CornerRadius="6" Padding="14" MaxWidth="480">
-              <StackPanel>
-                <DockPanel>
-                  <CheckBox DockPanel.Dock="Right" Content="Enabled" IsChecked="{Binding TalkerOverlayEnabled}"/>
-                  <TextBlock Text="Talker Overlay (Mumble plugin)" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
-                </DockPanel>
-                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0">
-                  EveDeck's own who-is-talking panel, styled to match the app — no Mumble window
-                  wrangling. Needs the EveDeck plugin installed once and enabled inside Mumble
-                  (Configure &gt; Plugins &gt; "EveDeck Talker Bridge"). Read-only: the plugin only
-                  reports names and talking state, never audio or messages.
-                </TextBlock>
-                <TextBlock Text="{Binding TalkerOverlayStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                <StackPanel Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center">
-                  <TextBlock Text="Opacity" VerticalAlignment="Center" Width="80" Foreground="{StaticResource MutedBrush}"/>
-                  <Slider Minimum="20" Maximum="100"
-                          Value="{Binding TalkerOverlayOpacity}"
-                          Width="180"
-                          VerticalAlignment="Center"
-                          IsSnapToTickEnabled="True"
-                          TickFrequency="5"/>
-                  <TextBlock Text="{Binding TalkerOverlayOpacity, StringFormat={}{0}%}" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                  <Button Content="Install plugin into Mumble" Command="{Binding InstallMumblePluginCommand}" Padding="10,4"/>
-                </StackPanel>
-                <TextBlock Text="{Binding MumblePluginInstallStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
-              </StackPanel>
-            </Border>
-
-            <!-- Jabber ping bridge: reads Pidgin's own HTML conversation logs, no login of its own. -->
-            <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1" CornerRadius="6" Padding="14" MaxWidth="480" Margin="0,12,0,0">
-              <StackPanel>
-                <DockPanel>
-                  <CheckBox DockPanel.Dock="Right" Content="Enabled" IsChecked="{Binding JabberPingEnabled, UpdateSourceTrigger=PropertyChanged}"/>
-                  <TextBlock Text="Jabber Ping Bridge" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
-                </DockPanel>
-                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0">
-                  Turns new messages in a Pidgin conversation into a toast + sound -- reads Pidgin's own
-                  saved log files, the same way EveDeck already reads EVE's chat/game logs. No separate
-                  login and EveDeck never joins any conversation as its own participant. Requires logging
-                  enabled in Pidgin itself (Tools &gt; Preferences &gt; Logging) for whichever conversations
-                  you enable below. Enable whichever conversations below are actually your ping
-                  bots/rooms; newly discovered ones start disabled until you opt in, and each gets its
-                  own optional "must contain" filter.
-                </TextBlock>
-                <DockPanel Margin="0,12,0,4">
-                  <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshJabberConversationsCommand}"
-                          Padding="8,4" FontSize="11"
-                          ToolTip="Re-scan Pidgin's log folder for conversations -- run this after opening a new conversation window in Pidgin"/>
-                  <TextBlock Text="Conversations" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                </DockPanel>
-                <ItemsControl ItemsSource="{Binding JabberConversationRules}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <DockPanel Margin="0,3">
-                        <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
-                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Button DockPanel.Dock="Right" Content="Remove" Padding="7,3" FontSize="11" Margin="6,0,0,0"
-                                Command="{Binding DataContext.RemoveJabberConversationRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                CommandParameter="{Binding}"/>
-                        <TextBox DockPanel.Dock="Right" Width="110" FontSize="11" Margin="6,0,0,0" Padding="4,2"
-                                 Text="{Binding RequiredPhrase, UpdateSourceTrigger=PropertyChanged}"
-                                 ToolTip="Optional. Only alert when the message contains this text -- leave blank to alert on every message in this conversation."/>
-                        <TextBlock Text="{Binding ConversationName}" VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                      </DockPanel>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap">
-                  Leave a conversation's "must contain" blank to alert on every message in it. If the
-                  same bot also sends non-ping status updates, a phrase unique to real pings (e.g. part
-                  of your ping tool's own broadcast signature) filters those out. When a ping's body
-                  includes a link (e.g. a shortened "gnf.lt" URL), the toast becomes clickable and opens
-                  it directly -- a bare channel name with no link isn't clickable, EveDeck doesn't ask
-                  for a Mumble server address to guess a join link from anymore.
-                </TextBlock>
-                <TextBlock Text="{Binding JabberBridgeStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-              </StackPanel>
-            </Border>
-
-            <!-- Intel Channel Alerts: moved here from Options, see MainWindowViewModel.IntelJumpAlert.cs -->
-            <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1" CornerRadius="6" Padding="14" MaxWidth="480" Margin="0,12,0,0">
-              <StackPanel>
-                <DockPanel>
-                  <CheckBox DockPanel.Dock="Right" Content="Enabled" IsChecked="{Binding IntelJumpAlertEnabled, UpdateSourceTrigger=PropertyChanged}"/>
-                  <TextBlock Text="Intel Channel Alerts" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
-                </DockPanel>
-                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0">
-                  Watches your local EVE chatlog channels for solar system names, and raises a toast +
-                  sound when a mentioned system is within range of any tracked character -- also
-                  recognizes ship names/faction abbreviations alongside a pilot name (click to look them
-                  up on zKillboard), and "no visual"/"clear" callouts. Enable whichever channels below
-                  are actually your intel channels; newly discovered ones start disabled until you opt
-                  in, and each gets its own alert sound.
-                </TextBlock>
-                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                  <TextBlock Text="Alert within" VerticalAlignment="Center" Width="90" Foreground="{StaticResource MutedBrush}"/>
-                  <TextBox Text="{Binding IntelJumpAlertMaxJumps, UpdateSourceTrigger=PropertyChanged}"
-                           Width="50" Padding="6,4" FontSize="12"/>
-                  <TextBlock Text="jumps" VerticalAlignment="Center" Margin="6,0,0,0" Foreground="{StaticResource MutedBrush}"/>
-                </StackPanel>
-                <DockPanel Margin="0,12,0,4">
-                  <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshIntelChannelsCommand}"
-                          Padding="8,4" FontSize="11"
-                          ToolTip="Re-scan your local chatlog folder for channels -- run this after opening a new channel window in EVE"/>
-                  <TextBlock Text="Channels" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                </DockPanel>
-                <ItemsControl ItemsSource="{Binding IntelChannelRules}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <DockPanel Margin="0,3">
-                        <CheckBox DockPanel.Dock="Left" IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
-                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Button DockPanel.Dock="Right" Content="Remove" Padding="7,3" FontSize="11" Margin="6,0,0,0"
-                                Command="{Binding DataContext.RemoveIntelChannelRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                CommandParameter="{Binding}"/>
-                        <ComboBox DockPanel.Dock="Right" Width="100" FontSize="11" Margin="6,0,0,0"
-                                  ItemsSource="{Binding DataContext.IntelAlertSoundOptions, RelativeSource={RelativeSource AncestorType=Window}}"
-                                  SelectedItem="{Binding Sound, UpdateSourceTrigger=PropertyChanged}"/>
-                        <TextBlock Text="{Binding ChannelName}" VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                      </DockPanel>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <Button Content="Build system map" Command="{Binding BuildIntelMapCommand}" Padding="10,4" Margin="0,12,0,0" HorizontalAlignment="Left"
-                        ToolTip="Re-crawls ESI for the current system map and ship dictionary. Not required for normal use -- EveDeck ships with a recent snapshot already built in."/>
-                <TextBlock Text="{Binding IntelMapStatus}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap">
-                  For a better intel/situational-awareness app,
-                  <Hyperlink Command="{Binding OpenVoidSonarCommand}" Foreground="{StaticResource AccentBrush}">Void Sonar</Hyperlink>
-                  - voidsonar.space
-                </TextBlock>
-              </StackPanel>
-            </Border>
-          </StackPanel>
-          </ScrollViewer>
-        </TabItem>
-
         <!-- ──────────────────── PLANETS TAB ──────────────────── -->
         <TabItem>
           <TabItem.Header>

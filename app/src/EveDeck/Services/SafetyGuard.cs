@@ -24,7 +24,8 @@ public static class SafetyGuard
         "FocusDirection",
         "ToggleTopmost",
         "SwitchCharacterSet",
-        "MinimizeAllClients"
+        "MinimizeAllClients",
+        "ForceRefreshPreviews"
     };
 
     public static bool AllowsHotkeyAction(string actionId)

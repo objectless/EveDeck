@@ -21,7 +21,7 @@
         </RadialGradientBrush>
       </Rectangle.Fill>
     </Rectangle>
-    <!-- Logo centred on top -->
+    <!-- Logo centered on top -->
     <Image Source="/Assets/evedeck-logo.png" Width="320" Height="320"
            HorizontalAlignment="Center" VerticalAlignment="Center"
            RenderOptions.BitmapScalingMode="HighQuality"/>

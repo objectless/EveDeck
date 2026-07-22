@@ -78,7 +78,7 @@ public class PresetFactoryTwinStackTests
             Assert.Equal(h, left.Sum(t => t.Height));
             Assert.Equal(h, right.Sum(t => t.Height));
 
-            // Master sits centred between the two columns, full height, on the monitor.
+            // Master sits centered between the two columns, full height, on the monitor.
             Assert.Equal(0, master.Y);
             Assert.Equal(h, master.Height);
             Assert.InRange(master.X, 0, w - master.Width);

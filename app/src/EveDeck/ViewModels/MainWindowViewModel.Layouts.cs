@@ -39,7 +39,7 @@ public sealed partial class MainWindowViewModel
         _undoRects = Windows.GroupBy(w => w.Title).ToDictionary(g => g.Key, g => g.First().Rect.Clone());
 
         // Resolve which POSITION slot each seat occupies at rest. For grid profiles this honours the
-        // master (→ centre) and the per-seat home corners, so flat-tiled mode lays out the same way the
+        // master (→ center) and the per-seat home corners, so flat-tiled mode lays out the same way the
         // corner-overlay mode does — and the master↔character swap is coherent in both. Non-grid layouts
         // keep the simple identity mapping (seat number == slot number).
         EnsureValidMasterSeat();
@@ -106,7 +106,7 @@ public sealed partial class MainWindowViewModel
         UndoLastApplyCommand.RaiseCanExecuteChanged();
         Refresh();
 
-        // Re-baseline swap bookkeeping so a flat-grid layout starts at rest (master centred).
+        // Re-baseline swap bookkeeping so a flat-grid layout starts at rest (master centered).
         if (SelectedProfile.SupportsCornerGrid)
         {
             ResetCornerOccupancy();
@@ -117,7 +117,7 @@ public sealed partial class MainWindowViewModel
     }
 
     // Maps each seat (SlotAssignment.SlotNumber) to the profile POSITION slot it occupies at rest. Grid
-    // profiles place the master in the centre and every other seat in its home corner; non-grid layouts
+    // profiles place the master in the center and every other seat in its home corner; non-grid layouts
     // use the identity mapping (seat number == slot number).
     private Dictionary<int, LayoutSlot> ResolveSeatPositionSlots()
     {
@@ -160,12 +160,12 @@ public sealed partial class MainWindowViewModel
     }
 
     // The MASTER is a SEAT (character/account), not a position: whichever seat the user designated as
-    // master is centred at rest and is the F-key "home". Independent of geometry, so setting a corner
-    // seat (e.g. a corner seat in slot 1) as master simply centres that account — it never demotes
-    // the real centre rect into an overlapping thumbnail.
+    // master is centered at rest and is the F-key "home". Independent of geometry, so setting a corner
+    // seat (e.g. a corner seat in slot 1) as master simply centers that account — it never demotes
+    // the real center rect into an overlapping thumbnail.
     //
     // Two distinct cases:
-    //  * The designated master seat was DELETED (slot removed): permanently fall back to the centre
+    //  * The designated master seat was DELETED (slot removed): permanently fall back to the center
     //    slot and PERSIST it — the old seat is gone for good.
     //  * The designated master seat exists but its client isn't running (partial session): TRANSIENTLY
     //    promote the highest-priority (lowest-numbered) seat that IS running via _promotedMasterSeat,
@@ -189,7 +189,7 @@ public sealed partial class MainWindowViewModel
         var designated = ActiveMasterSeat;
         var master = Assignments.FirstOrDefault(a => a.SlotNumber == designated);
 
-        // Deleted master seat -> permanent, persisted fallback to the geometric centre.
+        // Deleted master seat -> permanent, persisted fallback to the geometric center.
         if (master is null)
         {
             var fallback = CenterSlotNumber;
@@ -205,7 +205,7 @@ public sealed partial class MainWindowViewModel
         // Designated master's client is running -> use it as-is.
         if (FindAssignedWindows(master).Any()) return;
 
-        // Partial session: transiently centre the highest-priority running seat. No change if the
+        // Partial session: transiently center the highest-priority running seat. No change if the
         // designated master is the only one that would qualify or nobody else is running.
         var promoted = Assignments
             .Where(a => a.SlotNumber != designated)
@@ -222,16 +222,16 @@ public sealed partial class MainWindowViewModel
     }
 
     // Corner overlay apply: resize ALL clients to master resolution, park non-master off-screen left,
-    // place the master SEAT in the centre rect, then start corner thumbnail overlays.
+    // place the master SEAT in the center rect, then start corner thumbnail overlays.
     private async System.Threading.Tasks.Task ApplyCornerOverlayLayout()
     {
         EnsureValidMasterSeat();
 
-        // Centre geometry comes from the largest slot; the centred CHARACTER is the master seat.
+        // Center geometry comes from the largest slot; the centered CHARACTER is the master seat.
         var centerSlot = SelectedProfile!.Slots.FirstOrDefault(s => s.SlotNumber == CenterSlotNumber);
         if (centerSlot is null)
         {
-            Log.Warn("Preview mode requires a layout with a centre slot.");
+            Log.Warn("Preview mode requires a layout with a center slot.");
             return;
         }
 
@@ -324,7 +324,7 @@ public sealed partial class MainWindowViewModel
         UndoLastApplyCommand.RaiseCanExecuteChanged();
         Refresh();
 
-        // Baseline occupancy: centre = master seat, each corner shows its own seat.
+        // Baseline occupancy: center = master seat, each corner shows its own seat.
         ResetCornerOccupancy();
 
         // Start corner overlays on the UI thread after windows are in place.
@@ -581,7 +581,7 @@ public sealed partial class MainWindowViewModel
         target.Slots.Clear();
         foreach (var s in edited.OrderBy(x => x.SlotNumber))
         {
-            // Tag each slot with the monitor its centre landed on (editor spans all monitors).
+            // Tag each slot with the monitor its center landed on (editor spans all monitors).
             var cx = s.X + s.Width / 2;
             var cy = s.Y + s.Height / 2;
             var slotMonitor = Monitors.FirstOrDefault(m =>
@@ -691,12 +691,12 @@ public sealed partial class MainWindowViewModel
         Log.Info($"Swapped slot {activeAssignment.SlotNumber} with slot {slotNumber}.");
     }
 
-    // Bring the foreground EVE window's seat to the centre.
+    // Bring the foreground EVE window's seat to the center.
     private void SwapFocusedWithMaster()
     {
         Refresh();
         var active = FindActiveManagedWindow();
-        if (active is null) { Log.Warn("No active EVE window found to centre."); return; }
+        if (active is null) { Log.Warn("No active EVE window found to center."); return; }
 
         var seat = Assignments.FirstOrDefault(a =>
             a.AssignedWindows.Any(e => e.Title.Equals(active.Title, StringComparison.OrdinalIgnoreCase)));
@@ -705,9 +705,9 @@ public sealed partial class MainWindowViewModel
         CenterSeat(seat.SlotNumber);
     }
 
-    // Seat-targeting switch: bring an account's CLIENT to the centre, identified by the seat's
+    // Seat-targeting switch: bring an account's CLIENT to the center, identified by the seat's
     // main character (Label). Model A — seats/accounts are fixed, so this works even when a
-    // non-main character is logged into that account (we centre whatever client the seat holds).
+    // non-main character is logged into that account (we center whatever client the seat holds).
     private void SwitchToCharacter(string? mainCharacter)
     {
         if (string.IsNullOrWhiteSpace(mainCharacter))
@@ -745,14 +745,14 @@ public sealed partial class MainWindowViewModel
             || title.Contains(characterName, StringComparison.OrdinalIgnoreCase);
     }
 
-    // Hotkey entry point (SwapSlotWithMasterN / Ctrl+Shift+N) — centre the seat. Kept under the old
+    // Hotkey entry point (SwapSlotWithMasterN / Ctrl+Shift+N) — center the seat. Kept under the old
     // name for hotkey routing + SafetyGuard compatibility.
     private void SwapSlotWithMaster(int slotNumber) => CenterSeat(slotNumber);
 
-    // Whether the profile's centre slot is meaningfully larger (>= 1.5x area) than every other slot
+    // Whether the profile's center slot is meaningfully larger (>= 1.5x area) than every other slot
     // in the group -- true for Center Master/Whammy/Side Stack/Twin Stack, which are built with one
     // deliberately oversized master cell. Grid-family and custom equal-cell layouts have no such
-    // cell -- every slot is roughly the same size, so the "centre" is just one arbitrary cell among
+    // cell -- every slot is roughly the same size, so the "center" is just one arbitrary cell among
     // equals.
     private bool HasDominantMasterSlot(LayoutSlot centerSlot)
     {

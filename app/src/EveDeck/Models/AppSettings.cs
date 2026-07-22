@@ -15,6 +15,13 @@ public sealed class AppSettings
     public ObservableCollection<HotkeyBinding> Hotkeys { get; set; } = new();
     public ObservableCollection<CharacterSet> CharacterSets { get; set; } = new();
     public string ActiveCharacterSetId { get; set; } = "";
+
+    // Config profiles bundle a layout profile + a character set + the overlay appearance settings
+    // into one named switch ("Mining" / "PvP"). See ConfigProfile for why the first two are stored
+    // as references rather than copies. Switched from the tray menu and, optionally, on startup.
+    public ObservableCollection<ConfigProfile> ConfigProfiles { get; set; } = new();
+    public string ActiveConfigProfileId { get; set; } = "";
+    public bool ApplyConfigProfileOnStartup { get; set; } = false;
     public Dictionary<string, StyleSnapshot> StyleSnapshotsByTitle { get; set; } = new();
 
     public bool ActiveFrameEnabled { get; set; } = true;
@@ -52,6 +59,65 @@ public sealed class AppSettings
     public string CornerOverlayLabelColor { get; set; } = "#E5E7EB"; // global default label text color
     public int CornerOverlayLabelHeight { get; set; } = 28; // WPF DIPs
 
+    // Where the label sits WITHIN its tile, as a 3x3 anchor. One of:
+    //   TopLeft    TopCenter    TopRight
+    //   MiddleLeft Center       MiddleRight
+    //   BottomLeft BottomCenter BottomRight
+    // Labels are drawn inside the tile bounds rather than as a full-width strip above/below it,
+    // matching how EVE-O Preview overlays its label on the thumbnail itself. Center is the default.
+    // Unrecognised values fall back to Center -- see LabelSurfaceWindow.ParseAnchor.
+    public string CornerOverlayLabelAnchor { get; set; } = "Center";
+
+    // Inset in WPF DIPs between the label and the tile edge it is anchored to. Ignored on whichever
+    // axis the anchor is centered. EVE-O Preview uses a fixed 8px inset; this is the same idea, made
+    // adjustable because EveDeck's labels can be far larger than its 8.25pt one.
+    public int CornerOverlayLabelInset { get; set; } = 8;
+
+    // MASTER-pill override for the anchor above. Empty = inherit CornerOverlayLabelAnchor. Defaults
+    // to TopCenter because the master rect is the client you are actually looking at: a label parked
+    // in the middle of it sits over the ship/HUD, whereas the small corner tiles read better with the
+    // name centered on the thumbnail. Per-seat SlotAssignment.LabelAnchorMaster beats this.
+    public string CornerOverlayLabelAnchorMaster { get; set; } = "TopCenter";
+
+    // Hide every preview tile while no EVE client (and not EveDeck itself) is the foreground app,
+    // so alt-tabbing to a browser, Discord or a spreadsheet leaves the previews out of the way
+    // instead of floating over them. Mirrors EVE-O Preview's HideThumbnailsOnLostFocus. The delay
+    // stops a quick alt-tab, or the brief foreground gap during a seat swap, from flickering the
+    // whole overlay off and straight back on.
+    public bool HidePreviewsOnFocusLoss { get; set; } = false;
+    public double HidePreviewsOnFocusLossDelaySeconds { get; set; } = 1.0;
+
+    // Snap on-overlay tile drags/resizes to a pixel grid. 0 disables snapping. Mirrors EVE-O
+    // Preview's EnableThumbnailSnap, but as a size rather than a bool so the grid can be tuned.
+    public int CornerOverlaySnapGridPx { get; set; } = 0;
+
+    // Which point a hover-zoomed tile grows FROM, as one of the same nine 3x3 names used by
+    // CornerOverlayLabelAnchor. "Center" grows evenly in all directions (the original behavior);
+    // an edge/corner anchor pins that edge so a tile near a screen edge expands inward instead of
+    // being clamped. Per-seat SlotAssignment.ZoomAnchor overrides this.
+    public string HoverZoomAnchor { get; set; } = "Center";
+
+    // Ask Windows to power-throttle (EcoQoS) EVE clients that are not the foreground window, on top
+    // of the existing ThrottleBackgroundProcesses priority drop. EcoQoS parks those processes on
+    // efficiency cores and lets the scheduler clock them down, which is the EULA-compliant way to
+    // stop background clients burning CPU/GPU.
+    //
+    // Deliberately NOT a frame-rate limiter: capping another process's FPS means hooking its D3D
+    // present chain via DLL injection, which AGENTS.md forbids outright. EcoQoS is pure OS-level
+    // scheduling -- nothing is injected, read, or written in the EVE client. See COMPLIANCE.md.
+    public bool EcoQosBackgroundClients { get; set; } = false;
+
+    // Keep the next seat in the cycle order OUT of EcoQoS, so the client you are about to switch to
+    // is already running at full speed when you get there. EVE-O Plus's "predictive" limiting idea,
+    // done with scheduling instead of frame caps.
+    public bool EcoQosExemptNextInCycle { get; set; } = true;
+
+    // Hide a preview tile while its client is still sitting on the EVE login/character-select screen,
+    // where the thumbnail shows nothing useful. Mirrors EVE-O Preview's HidePreviewAtLoginScreen.
+    // Detection is by window title only (EVE titles the window "EVE" with no character name until a
+    // character is selected) -- no memory reading, no injection.
+    public bool HidePreviewsAtLoginScreen { get; set; } = false;
+
     // Global default label font/size/color for the MASTER (centered, near-full-size) seat's pill.
     // Empty/null = inherit the normal CornerOverlayLabelFontFamily/FontSize/LabelColor above, so
     // this is a no-op until explicitly customized. Per-seat overrides on SlotAssignment
@@ -88,9 +154,9 @@ public sealed class AppSettings
     // global slider applied uniformly -- no per-seat/master split like the label opacity above.
     public int CornerOverlayPreviewOpacity { get; set; } = 100;
 
-    // Click a corner preview tile to bring that client to the centre (focus switch). Pure window
+    // Click a corner preview tile to bring that client to the center (focus switch). Pure window
     // management — the click is NOT forwarded into the EVE client, so it stays EULA-compliant (no
-    // input injection). A convenient alternative to the centre-seat hotkeys for users who haven't
+    // input injection). A convenient alternative to the center-seat hotkeys for users who haven't
     // set hotkeys up. See COMPLIANCE.md.
     public bool FocusPreviewOnClick { get; set; } = true;
 
@@ -141,48 +207,10 @@ public sealed class AppSettings
     // either of the common install locations ClientLaunchService checks first.
     public string? EveLauncherPathOverride { get; set; }
 
-    // Chat/event keyword alert rules watched by ChatLogWatcherService.
-    public ObservableCollection<ChatAlertRule> ChatAlertRules { get; set; } = new();
-
     // Structured game-event alert rules watched by GameLogWatcherService (Gamelogs, not Chatlogs).
     // Seeded with defaults for fresh installs / pre-feature saves; JSON round-trip replaces the
     // collection, so user edits (including deleting every rule) persist as-is.
     public ObservableCollection<GameEventRule> GameEventRules { get; set; } = new(GameEventRule.Defaults());
-
-    // ── Intel jump-distance alert (Comms tab) ─────────────────────────────────
-    // Off until the user opts in -- enabling it triggers a one-time ESI crawl to build the solar
-    // system/stargate graph (SystemJumpGraphService), which takes real wall-clock time on first run.
-    public bool IntelJumpAlertEnabled { get; set; }
-    // Superseded by IntelChannelRules below -- kept ONLY so MainWindowViewModel.IntelJumpAlert.cs's
-    // one-time startup migration can read an existing single-channel value out of an older
-    // settings.json and turn it into the first entry of the new per-channel list. Never written to
-    // or read from after that migration runs; do not add new usages.
-    public string IntelChannelName { get; set; } = "";
-    // Every locally-discovered chatlog channel the user has reviewed, each independently
-    // enabled/disabled with its own alert sound -- see ChatLogWatcherService.DiscoverChannels() and
-    // MainWindowViewModel.IntelJumpAlert.cs's DiscoverIntelChannels.
-    public ObservableCollection<IntelChannelRule> IntelChannelRules { get; set; } = new();
-    // Alert when a system named in an enabled intel channel is within this many jumps of ANY
-    // currently tracked character's current system (the minimum across all of them).
-    public int IntelJumpAlertMaxJumps { get; set; } = 5;
-
-    // ── Jabber ping bridge (Comms tab) ────────────────────────────────────────
-    // Reads Pidgin's own HTML conversation logs (the user must enable logging in Pidgin itself) --
-    // no XMPP login of its own, no second identity in the room. See JabberPingWatcherService.
-    public bool JabberPingEnabled { get; set; }
-    // Superseded by JabberConversationRules below -- kept ONLY so MainWindowViewModel.JabberPing.cs's
-    // one-time startup migration can read an existing single-conversation value out of an older
-    // settings.json and turn it into the first entry of the new per-conversation list. Never written
-    // to or read from after that migration runs; do not add new usages.
-    public string JabberPingConversationName { get; set; } = "";
-    // Superseded by JabberConversationRule.RequiredPhrase -- same migration-only role as
-    // JabberPingConversationName above.
-    public string JabberPingRequiredPhrase { get; set; } = "";
-    // Every locally-discovered Pidgin conversation folder the user has reviewed, each independently
-    // enabled/disabled with its own required-phrase filter -- see
-    // JabberPingWatcherService.DiscoverConversations() and MainWindowViewModel.JabberPing.cs's
-    // DiscoverJabberConversations.
-    public ObservableCollection<JabberConversationRule> JabberConversationRules { get; set; } = new();
 
     // ── Toast notification placement + native OS mirror ───────────────────────
     // Corner/edge the toast stack anchors to. One of: TopLeft, TopCenter, TopRight, BottomLeft,

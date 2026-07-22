@@ -8,18 +8,18 @@ public sealed partial class MainWindowViewModel
 {
     // -- Model A occupancy --------------------------------------------------------
     // Seats (SlotAssignment.SlotNumber) are FIXED accounts -- their Label (main character),
-    // AssignedWindows, etc. never move. What changes is which seat occupies the centre rect and
+    // AssignedWindows, etc. never move. What changes is which seat occupies the center rect and
     // which seat shows at each corner POSITION. A "position id" is the non-master profile slot
     // number whose rect defines that corner; positions are fixed for the session, occupants rotate.
     //
-    // With multiple swap groups each group is an independent swap ring with its own centre slot and
+    // With multiple swap groups each group is an independent swap ring with its own center slot and
     // master seat. All per-group occupancy is keyed by groupId (SwapGroup.GroupId or "__single__").
     // EffectiveGroups() synthesises a single all-slots group when no groups are defined so legacy
     // behaviour is preserved automatically.
 
     // ONE window hosts every tile thumbnail and ONE (owned by it, so the OS keeps it above) hosts
-    // every label. Tiles + pills are keyed by POSITION id; centre pills are stored under the group's
-    // centre slot number. With a single HWND per surface there is no per-tile z-order to maintain.
+    // every label. Tiles + pills are keyed by POSITION id; center pills are stored under the group's
+    // center slot number. With a single HWND per surface there is no per-tile z-order to maintain.
     private TileSurfaceWindow? _tileSurface;
     private LabelSurfaceWindow? _labelSurface;
     private readonly Dictionary<int, nint> _cornerSourceHandles = new();
@@ -68,6 +68,11 @@ public sealed partial class MainWindowViewModel
     // for OfflineOverlayTimeoutSeconds, instead of leaving a wall of stale "Name · offline" pills
     // on screen after the whole session has ended.
     private DateTime? _allSeatsOfflineSince;
+
+    // HidePreviewsOnFocusLoss state: when the foreground last left EVE/EveDeck, and whether the
+    // surfaces are currently parked out of sight because of it. See UpdateFocusLossHiding.
+    private DateTime? _focusLostSince;
+    private bool _previewsHiddenByFocusLoss;
 
     // First-observed-offline timestamp per seat (SlotAssignment.SlotNumber), used by
     // OfflinePillTimeoutSeconds to hide an individual seat's offline pill after it's been
@@ -222,7 +227,7 @@ public sealed partial class MainWindowViewModel
 
         if (seat == ActiveMasterSeat)
         {
-            Log.Warn("The master always sits in the centre. Drop it on the centre cell, or set a different master first.");
+            Log.Warn("The master always sits in the center. Drop it on the center cell, or set a different master first.");
             return;
         }
 
@@ -284,6 +289,14 @@ public sealed partial class MainWindowViewModel
     }
     private string SeatLabel(int seat) => Seat(seat)?.DisplayLabel ?? "";
 
+    // True when an EVE client's window title indicates it hasn't selected a character yet -- EVE
+    // titles that window plainly "EVE" (no " - Character Name" suffix) until past the login/
+    // character-select screen. Backs AppSettings.HidePreviewsAtLoginScreen. Title-only, same
+    // CharacterNameFromTitle convention used everywhere else in this file (MainWindowViewModel.Clients.cs)
+    // -- a title with no "EVE - " prefix to strip comes back unchanged, i.e. still literally "EVE".
+    private static bool IsAtLoginScreen(string title) =>
+        CharacterNameFromTitle(title).Equals("EVE", StringComparison.OrdinalIgnoreCase);
+
     // -- Create / show -----------------------------------------------------------
 
     internal void StartCornerOverlays()
@@ -333,11 +346,8 @@ public sealed partial class MainWindowViewModel
         var groupCenterSlots = EffectiveGroups()
             .ToDictionary(g => g.GroupId, g => CenterSlotForGroup(g));
 
-        var primaryCenter = groupCenterSlots.Values.FirstOrDefault(CenterSlotNumber);
-        var primaryMasterRect = slotRects.GetValueOrDefault(primaryCenter) ?? new WindowRect();
-        var primaryMasterCenterY = primaryMasterRect.Y + primaryMasterRect.Height / 2.0;
-
         _tileSurface = new TileSurfaceWindow(surfX, surfY, surfW, surfH);
+        _tileSurface.SnapGridPx = Math.Max(0, _settings.CornerOverlaySnapGridPx);
         _tileSurface.TileClicked = OnCornerTileClicked;
         _tileSurface.TileShiftClicked = OnCornerTileShiftClicked;
         _tileSurface.TileRectChanged = OnCornerTileRectChanged;
@@ -364,8 +374,7 @@ public sealed partial class MainWindowViewModel
 
             var seat = OccupantAtPosition(position);
             var window = FindSeatWindow(seat);
-            var pillAtTop = (rect.Y + rect.Height / 2.0) < primaryMasterCenterY;
-            CreatePill(position, seat, rect, pillAtTop, centered: true,
+            CreatePill(position, seat, rect,
                 window is not null ? PillTextForPosition(position) : OfflinePillText(seat), SeatPortrait(seat));
 
             _tileSurface.SetSource(position, window?.Handle ?? 0);
@@ -378,14 +387,14 @@ public sealed partial class MainWindowViewModel
             if (!slotRects.TryGetValue(groupCenter, out var masterRect)) continue;
             var centeredSeat = _centeredSeatByGroup.GetValueOrDefault(group.GroupId, 0);
             var centerPillText = FindSeatWindow(centeredSeat) is not null ? CenterPillTextForGroup(group.GroupId) : OfflinePillText(centeredSeat);
-            CreatePill(groupCenter, centeredSeat, masterRect, atTop: true, centered: false, centerPillText, SeatPortrait(centeredSeat), isMaster: true);
+            CreatePill(groupCenter, centeredSeat, masterRect, centerPillText, SeatPortrait(centeredSeat), isMaster: true);
 
             var groupCenterSlot = SelectedProfile.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
             if (groupCenterSlot is not null && !HasDominantMasterSlot(groupCenterSlot))
             {
                 // No dominant master area for this group (e.g. Grid family) -- the real master window
                 // now runs at full resolution (see ResolveMasterRect) rather than being shrunk to this
-                // cell, so the centre needs its own live preview tile just like every corner.
+                // cell, so the center needs its own live preview tile just like every corner.
                 var centerWindow = FindSeatWindow(centeredSeat);
                 _tileSurface.AddTile(groupCenter, masterRect.X, masterRect.Y, masterRect.Width, masterRect.Height);
                 _cornerRects[groupCenter] = masterRect;
@@ -440,6 +449,34 @@ public sealed partial class MainWindowViewModel
         return (family ?? "", size, color ?? "");
     }
 
+    // Where this seat's label sits within its tile: per-seat override -> global master override ->
+    // global default. Same chain as ResolveLabelFont, but with the two roles kept separate -- a seat
+    // in a small corner tile and the SAME seat centered as master resolve independently, which is the
+    // whole point (name centered on a thumbnail, out of the way at the top of the master rect).
+    private string ResolveLabelAnchor(int seat, bool isMaster)
+    {
+        var s = Seat(seat);
+        if (isMaster)
+        {
+            if (!string.IsNullOrWhiteSpace(s?.LabelAnchorMaster)) return s!.LabelAnchorMaster!;
+            if (!string.IsNullOrWhiteSpace(_settings.CornerOverlayLabelAnchorMaster)) return _settings.CornerOverlayLabelAnchorMaster;
+            return _settings.CornerOverlayLabelAnchor;
+        }
+        if (!string.IsNullOrWhiteSpace(s?.LabelAnchor)) return s!.LabelAnchor!;
+        return _settings.CornerOverlayLabelAnchor;
+    }
+
+    // Which edge/corner the hover-zoom magnification pins in place for this seat: per-seat
+    // SlotAssignment.ZoomAnchor override -> AppSettings.HoverZoomAnchor global default. Reuses
+    // LabelSurfaceWindow.ParseAnchor for the nine 3x3 name -> LabelAnchor resolution (same parser the
+    // label-placement code already uses) rather than writing a second one.
+    private LabelAnchor ResolveZoomAnchor(int seat)
+    {
+        var s = Seat(seat);
+        var name = !string.IsNullOrWhiteSpace(s?.ZoomAnchor) ? s!.ZoomAnchor! : _settings.HoverZoomAnchor;
+        return LabelSurfaceWindow.ParseAnchor(name);
+    }
+
     // Effective label style flags (bold, italic, drop shadow, outline) for a seat. Mirrors
     // EffectiveSeatLabelFont's seat-override -> global-master -> global-default fallback chain,
     // kept as a separate method/tuple so the existing font (family/size/color) API is untouched.
@@ -474,19 +511,22 @@ public sealed partial class MainWindowViewModel
         return (bold, italic, shadow, outline, opacity);
     }
 
-    // True when `position` is any swap group's centre/master slot. Needed because for layouts with
-    // no dominant master area (the Grid family), the centre slot is ALSO registered as a plain
+    // True when `position` is any swap group's center/master slot. Needed because for layouts with
+    // no dominant master area (the Grid family), the center slot is ALSO registered as a plain
     // corner tile and can be refreshed by the generic per-tick corner loop — without this check
     // that refresh would use the alt font instead of the master font it was created with.
     private bool IsGroupCenterPosition(int position) =>
         EffectiveGroups().Any(g => CenterSlotForGroup(g) == position);
 
-    private void CreatePill(int key, int seat, WindowRect rect, bool atTop, bool centered, string text, CharacterPortrait? portrait, bool isMaster = false)
+    // Placement within the tile comes from the surface's own configured anchor
+    // (AppSettings.CornerOverlayLabelAnchor), not from per-position geometry the way it used to --
+    // every label now uses the same user-chosen 3x3 position, defaulting to center-center.
+    private void CreatePill(int key, int seat, WindowRect rect, string text, CharacterPortrait? portrait, bool isMaster = false)
     {
         if (_labelSurface is null) return;
         var (family, size, color) = ResolveLabelFont(seat, isMaster);
         var (bold, italic, dropShadow, outline, opacity) = ResolveLabelStyle(seat, isMaster);
-        _labelSurface.SetPill(key, rect, atTop, centered, family, size, color, bold, italic, dropShadow, outline, opacity);
+        _labelSurface.SetPill(key, rect, ResolveLabelAnchor(seat, isMaster), family, size, color, bold, italic, dropShadow, outline, opacity);
         _labelSurface.SetPillContent(key, text, portrait);
     }
 
@@ -545,7 +585,7 @@ public sealed partial class MainWindowViewModel
     }
 
     // Directional arrow for a live-overlay pill, scoped to the seat's own swap group and excluding
-    // that group's centre/master slot from the bounding box. A group's master can sit on a totally
+    // that group's center/master slot from the bounding box. A group's master can sit on a totally
     // different monitor/scale than its own ring (e.g. a full-monitor master + a same-monitor 2x2 alt
     // grid) -- including it would skew the ring's L/R/T/B math and collapse distinct corners onto the
     // same bucket. GroupGridCodes is shared with UpdatePositionCodes so their arrow math can never
@@ -570,7 +610,7 @@ public sealed partial class MainWindowViewModel
         => n is >= 1 and <= 20 ? ((char)('①' + n - 1)).ToString() : n.ToString();
 
     // Directional-arrow code for every ring slot (i.e. every slot in the group except its own
-    // centre/master slot), computed from a bounding box scoped to just that ring, with any bucket
+    // center/master slot), computed from a bounding box scoped to just that ring, with any bucket
     // collision degraded to plain slot numbers rather than showing a misleading duplicate arrow.
     private Dictionary<int, string> GroupGridCodes(LayoutProfile profile, SwapGroup group)
     {
@@ -608,6 +648,12 @@ public sealed partial class MainWindowViewModel
         RevertPeekSwap();
         _cursorOverPosition = -1;
 
+        // The surfaces are about to be destroyed, so any "hidden by focus loss" state refers to
+        // windows that no longer exist -- clear it or a freshly rebuilt overlay starts out believing
+        // it is already hidden and never shows itself.
+        _focusLostSince = null;
+        _previewsHiddenByFocusLoss = false;
+
         try { _labelSurface?.Close(); } catch { } // window may already be closed
         _labelSurface = null;
         try { _tileSurface?.Close(); } catch { } // window may already be closed
@@ -619,7 +665,7 @@ public sealed partial class MainWindowViewModel
         if (!_settings.ActiveFrameEnabled) _frameTimer.Stop();
     }
 
-    // -- Centre a seat -----------------------------------------------------------
+    // -- Center a seat -----------------------------------------------------------
 
     internal void CenterSeat(int seat)
     {
@@ -657,7 +703,7 @@ public sealed partial class MainWindowViewModel
         var groupId = group.GroupId;
         var groupCenter = CenterSlotForGroup(group);
         var masterSlot = SelectedProfile!.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
-        if (masterSlot is null) { Log.Warn("Corner mode requires a layout with a centre slot."); return; }
+        if (masterSlot is null) { Log.Warn("Corner mode requires a layout with a center slot."); return; }
 
         if (_centeredSeatByGroup.Count == 0) ResetCornerOccupancy();
 
@@ -666,7 +712,7 @@ public sealed partial class MainWindowViewModel
         {
             var already = FindSeatWindow(seat);
             if (already is not null) { try { _windowService.FocusWindow(already.Handle); } catch { /* best-effort focus */ } }
-            Log.Info($"Seat {seat} ({SeatLabel(seat)}) is already centred.");
+            Log.Info($"Seat {seat} ({SeatLabel(seat)}) is already centered.");
             return;
         }
 
@@ -691,12 +737,12 @@ public sealed partial class MainWindowViewModel
                     incoming.Handle, masterRect.X, masterRect.Y,
                     outgoing.Handle, parkRect.X, parkRect.Y);
             }
-            catch (Exception ex) { Log.Error($"Centre move failed: {ex.Message}"); return; }
+            catch (Exception ex) { Log.Error($"Center move failed: {ex.Message}"); return; }
         }
         else
         {
             try { if (incoming is not null) _windowService.MoveResizeWindow(incoming.Handle, masterRect); }
-            catch (Exception ex) { Log.Error($"Could not centre seat {seat}: {ex.Message}"); }
+            catch (Exception ex) { Log.Error($"Could not center seat {seat}: {ex.Message}"); }
             try { if (outgoing is not null) _windowService.MoveResizeWindow(outgoing.Handle, parkRect); }
             catch (Exception ex) { Log.Error($"Could not park seat {currentCenteredSeat}: {ex.Message}"); }
         }
@@ -719,7 +765,7 @@ public sealed partial class MainWindowViewModel
         RefreshGroupCenterPill(group);
 
         // Focus BEFORE the z-order reassert, not after: SetForegroundWindow (inside FocusWindow) on
-        // the newly-centred real EVE window can itself disturb z-order -- sometimes even when the OS
+        // the newly-centered real EVE window can itself disturb z-order -- sometimes even when the OS
         // silently restricts the foreground grant, it still nudges the window up a band, which would
         // otherwise be the LAST z-order-affecting call and could leave the master window sitting
         // above the always-topmost overlay surfaces. Reasserting last guarantees the overlay wins.
@@ -727,7 +773,7 @@ public sealed partial class MainWindowViewModel
         RefreshCornerOverlayZOrder();
 
         ScheduleAutoSave();
-        Log.Info($"Centred seat {seat} ({SeatLabel(seat)}) in group '{group.Name}'; seat {outgoingSeat} ({SeatLabel(outgoingSeat)}) returned to its home corner.");
+        Log.Info($"Centered seat {seat} ({SeatLabel(seat)}) in group '{group.Name}'; seat {outgoingSeat} ({SeatLabel(outgoingSeat)}) returned to its home corner.");
     }
 
     private void CenterSeatFlatInGroup(SwapGroup group, int seat)
@@ -735,7 +781,7 @@ public sealed partial class MainWindowViewModel
         var groupId = group.GroupId;
         var groupCenter = CenterSlotForGroup(group);
         var centerSlot = SelectedProfile!.Slots.FirstOrDefault(s => s.SlotNumber == groupCenter);
-        if (centerSlot is null) { Log.Warn("Grid swap requires a layout with a centre slot."); return; }
+        if (centerSlot is null) { Log.Warn("Grid swap requires a layout with a center slot."); return; }
 
         if (_centeredSeatByGroup.Count == 0) ResetCornerOccupancy();
 
@@ -780,13 +826,13 @@ public sealed partial class MainWindowViewModel
         var incoming = FindSeatWindow(seat);
         if (incoming is not null) { try { _windowService.FocusWindow(incoming.Handle); } catch { /* best-effort focus */ } }
         // Same ordering reasoning as CenterSeatInGroup: reassert AFTER focus so the overlay surfaces
-        // (this path still registers a centre tile when !HasDominantMasterSlot, see StartCornerOverlays)
+        // (this path still registers a center tile when !HasDominantMasterSlot, see StartCornerOverlays)
         // are guaranteed to end up above the just-focused real window, not the other way around.
         RefreshCornerOverlayZOrder();
 
         UpdatePositionCodes();
         ScheduleAutoSave();
-        Log.Info($"Centred seat {seat} ({SeatLabel(seat)}) in group '{group.Name}'; seat {outgoingSeat} ({SeatLabel(outgoingSeat)}) returned to its home corner.");
+        Log.Info($"Centered seat {seat} ({SeatLabel(seat)}) in group '{group.Name}'; seat {outgoingSeat} ({SeatLabel(outgoingSeat)}) returned to its home corner.");
     }
 
     private void OnCornerTileClicked(int position)
@@ -911,6 +957,7 @@ public sealed partial class MainWindowViewModel
         // none of the peek-swap state below applies.
         if (_settings.HoverPreviewStyle.Equals("Zoom", StringComparison.OrdinalIgnoreCase))
         {
+            if (_tileSurface is not null) _tileSurface.ZoomAnchor = ResolveZoomAnchor(OccupantAtPosition(position));
             _tileSurface?.ZoomTile(position, Math.Clamp(_settings.HoverZoomFactor, 1.5, 4.0));
             // The magnified tile can now grow over master's screen area (no longer geometrically
             // clamped away from it) -- reassert topmost right away so the enlarged DWM thumbnail wins
@@ -974,7 +1021,7 @@ public sealed partial class MainWindowViewModel
         // real window (even with SWP_NOZORDER/SWP_NOACTIVATE) can still nudge it up a band, which
         // used to leave the master window sitting above the always-topmost overlay surfaces after
         // every hover-peek. This was the missing half of that fix -- CenterSeatInGroup reasserts,
-        // ExecuteHoverPeek never did, and hover-peek fires far more often than click-to-centre.
+        // ExecuteHoverPeek never did, and hover-peek fires far more often than click-to-center.
         // Use the cheap reassert, not RefreshCornerOverlayZOrder's full allow-list EnumWindows pass --
         // this fires on every tile transition during fast mouse movement, see ReassertOwnOverlaySurfaces.
         ReassertOwnOverlaySurfaces();
@@ -1129,6 +1176,10 @@ public sealed partial class MainWindowViewModel
     // above tiles at all times -- there is nothing to re-assert per tick for THAT relationship.
     // This method itself is only called from event-driven triggers (surface creation, layout/swap
     // changes, the foreground WinEvent hook), never an unconditional per-tick timer.
+    //
+    // NOTE: EveDeck deliberately does NOT reorder the real EVE game windows, matching how EVE-O
+    // Preview and EVE-APM behave. An attempt to raise the master client above the preview surface
+    // (2026-07-21) made z-order visibly worse and was reverted -- do not reintroduce it.
     private void ApplySurfaceZOrder()
     {
         _tileSurface?.SetZ();
@@ -1162,27 +1213,13 @@ public sealed partial class MainWindowViewModel
     // watching runs regardless of whether corner overlays are enabled.
     //
     // `seat`, when known, gives the card the seat's character portrait as its avatar and makes it
-    // clickable: clicking centres that seat, exactly like clicking its preview tile.
+    // clickable: clicking centers that seat, exactly like clicking its preview tile.
     internal void ShowToast(string title, string message, string accentHex, SlotAssignment? seat = null)
     {
         if (EnsureToastWindow() is not { } window) return;
         window.ShowToast(title, message, accentHex, SeatAvatar(seat), SeatClickAction(seat));
         AssertToastZOrder();
         MirrorToNativeNotificationCenter(title, message);
-    }
-
-    // Seatless variant with a caller-supplied click action instead of a seat's centre-seat action --
-    // e.g. the Jabber ping bridge's "open the Mumble join link" click, which has no seat/avatar to
-    // attach to. Distinct arity from the seat overload above so both can keep defaulting their last
-    // parameter without becoming ambiguous at call sites. `nativeArgument`, when given, is handed to
-    // the native Notification Center mirror too, so clicking EITHER copy does the same thing (e.g.
-    // both open the same mumble:// link).
-    internal void ShowToast(string title, string message, string accentHex, Action? onClick, string? nativeArgument = null)
-    {
-        if (EnsureToastWindow() is not { } window) return;
-        window.ShowToast(title, message, accentHex, null, onClick);
-        AssertToastZOrder();
-        MirrorToNativeNotificationCenter(title, message, nativeArgument);
     }
 
     // Multi-line variant: each alert becomes its own readable row instead of a newline-joined blob.
@@ -1203,20 +1240,6 @@ public sealed partial class MainWindowViewModel
         window.ShowToast(title, groups, accentHex, SeatAvatar(seat), SeatClickAction(seat));
         AssertToastZOrder();
         MirrorToNativeNotificationCenter(title, string.Join(" | ", groups.SelectMany(g => g.Lines.Select(l => $"{g.Header}: {l.Primary}"))));
-    }
-
-    // Intel-report variant -- see IntelSystemTokenizer.ClassifyTrailingText/ResolvePilotAndShip for
-    // what kind/primaryDetail/secondaryDetail mean. `shipIcon` is the resolved ship's cached icon
-    // (ShipIconCacheService), when one was found. `onClick`/`nativeArgument` are the toast's
-    // click-to-open-zKillboard action when a Sighting resolved a pilot name (see
-    // MainWindowViewModel.IntelJumpAlert.cs's BuildZkillSearchUrl) -- same dual-mirror convention as
-    // the Jabber ping toast's "click to join comms" link.
-    internal void ShowIntelToast(string title, Utilities.IntelReportKind kind, string? primaryDetail, string? secondaryDetail, string rawMessage, string accentHex, System.Windows.Media.ImageSource? shipIcon = null, Action? onClick = null, string? nativeArgument = null)
-    {
-        if (EnsureToastWindow() is not { } window) return;
-        window.ShowIntelToast(title, kind, primaryDetail, secondaryDetail, rawMessage, accentHex, shipIcon, onClick);
-        AssertToastZOrder();
-        MirrorToNativeNotificationCenter(title, rawMessage, nativeArgument);
     }
 
     private Views.ToastNotificationWindow? EnsureToastWindow()
@@ -1270,7 +1293,7 @@ public sealed partial class MainWindowViewModel
         else BumpToastAboveEverything();
     }
 
-    // Position (corner id, or a group's centre slot number) that `seat` currently occupies on the
+    // Position (corner id, or a group's center slot number) that `seat` currently occupies on the
     // overlay -- the reverse of OccupantAtPosition. -1 when the seat isn't currently placed (corner
     // overlays off, or the profile has no matching slot).
     private int CurrentPositionForSeat(int seat)
@@ -1345,6 +1368,53 @@ public sealed partial class MainWindowViewModel
         Save();
     }
 
+    // -- Hide previews while EVE isn't the foreground app -------------------------
+    // EVE-O Preview's HideThumbnailsOnLostFocus, and the reason EveDeck does not need to reorder
+    // real game windows to "let apps cover the previews": alt-tab to a browser and the overlay simply
+    // gets out of the way. The surfaces are hidden with SW_HIDE rather than torn down, so the DWM
+    // thumbnail registrations survive and coming back is instant with no re-register blink (see
+    // project-thumbnail-random-refresh for why re-registering is something to avoid).
+    //
+    // The delay exists because the foreground briefly leaves EVE during a seat swap and while dialogs
+    // open; hiding instantly would flash the whole overlay off and back on during normal play.
+    private void UpdateFocusLossHiding(bool eveOrEwcForeground)
+    {
+        if (!_settings.HidePreviewsOnFocusLoss)
+        {
+            if (_previewsHiddenByFocusLoss) SetOverlaySurfacesVisible(true);
+            _focusLostSince = null;
+            return;
+        }
+
+        if (eveOrEwcForeground)
+        {
+            _focusLostSince = null;
+            if (_previewsHiddenByFocusLoss) SetOverlaySurfacesVisible(true);
+            return;
+        }
+
+        if (_previewsHiddenByFocusLoss) return;
+        _focusLostSince ??= DateTime.UtcNow;
+        var delay = Math.Max(0, _settings.HidePreviewsOnFocusLossDelaySeconds);
+        if ((DateTime.UtcNow - _focusLostSince.Value).TotalSeconds >= delay)
+            SetOverlaySurfacesVisible(false);
+    }
+
+    private void SetOverlaySurfacesVisible(bool visible)
+    {
+        _previewsHiddenByFocusLoss = !visible;
+        var cmd = visible ? Utilities.Win32Native.SwShowNoActivate : Utilities.Win32Native.SwHide;
+
+        if (_tileSurface is { IsHandleCreated: true } tiles)
+            Utilities.Win32Native.ShowWindow(tiles.Handle, cmd);
+        if (_labelSurface is { } labels && labels.Handle != 0)
+            Utilities.Win32Native.ShowWindow(labels.Handle, cmd);
+
+        // Re-showing puts both surfaces back at the bottom of the z-order, so they need re-asserting
+        // topmost or they come back buried behind the EVE client that just regained focus.
+        if (visible) ReassertOwnOverlaySurfaces();
+    }
+
     // -- Per-tick upkeep ---------------------------------------------------------
 
     internal void MaintainCornerOverlays()
@@ -1385,6 +1455,12 @@ public sealed partial class MainWindowViewModel
         }
 
         var eveOrEwcFg = IsEveOrEwcForeground();
+
+        // Runs before the z-order/hover work below: while the overlay is hidden there is nothing to
+        // keep on top and no tile for the cursor to be over.
+        UpdateFocusLossHiding(eveOrEwcFg);
+        if (_previewsHiddenByFocusLoss) return;
+
         // The overlay itself is always topmost now (ApplySurfaceZOrder, called on creation and from
         // event-driven triggers) -- no per-tick re-assertion of OUR OWN HWND_TOPMOST here, that churn
         // was the historical source of every "labels flicker" report. The allow-list bump used to run
@@ -1465,7 +1541,13 @@ public sealed partial class MainWindowViewModel
             }
 
             var hiddenAsActive = _settings.HideActiveSeatTile && window.Handle == fgHandle;
-            var desiredHandle = hiddenAsActive ? 0 : window.Handle;
+            // Title-only detection (no memory reading, no injection): EVE titles a client's window
+            // plainly "EVE", with no " - Character Name" suffix, until a character has been selected
+            // past the login/character-select screen -- reuses CharacterNameFromTitle's existing
+            // "EVE - X" -> "X" parsing (MainWindowViewModel.Clients.cs) rather than a second rule, since
+            // a title with no prefix match comes back unchanged, i.e. still literally "EVE".
+            var hiddenAsLoginScreen = _settings.HidePreviewsAtLoginScreen && IsAtLoginScreen(window.Title);
+            var desiredHandle = (hiddenAsActive || hiddenAsLoginScreen) ? 0 : window.Handle;
             _cornerSourceHandles.TryGetValue(position, out var lastHandle);
             if (desiredHandle != lastHandle)
             {
