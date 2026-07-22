@@ -353,7 +353,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
     private static int ApplyThumbnailProperties(nint thumbnailId, ref Win32Native.DwmThumbnailProperties props)
     {
         Services.SafetyGuard.ThrowIfSourceCrop(props.dwFlags);
-        return ApplyThumbnailProperties(thumbnailId, ref props);
+        return Win32Native.DwmUpdateThumbnailProperties(thumbnailId, ref props);
     }
 
     // Cheap live reposition/resize during a drag -- just the dest-rect flag, not a full
