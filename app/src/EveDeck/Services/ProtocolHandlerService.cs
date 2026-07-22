@@ -24,6 +24,12 @@ public sealed class ProtocolHandlerService : IDisposable
     // (portable folder rename, Velopack update swapping install dirs, ...).
     public static void RegisterUrlProtocol()
     {
+        // In the MSIX (Store) build the scheme is declared by AppxManifest.xml's uap:Protocol
+        // extension and registered by Windows at install time. Writing HKCU here would be worse than
+        // doing nothing: the package virtualizes the write, so it "succeeds" into a private hive the
+        // shell never reads, and evedeck:// links would silently fail to open.
+        if (Utilities.PackagedAppInfo.IsPackaged) return;
+
         var exe = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exe)) return;
 

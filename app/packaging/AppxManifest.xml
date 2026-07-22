@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  MSIX manifest for the Microsoft Store build of EveDeck.
+
+  IDENTITY FIELDS ARE PLACEHOLDERS AND MUST BE REPLACED WITH THE VALUES PARTNER CENTER ISSUES for
+  this app (Partner Center > your app > Product management > Product identity). They are:
+
+    Identity/@Name                    -> "Package/Identity/Name"        e.g. 12345Publisher.EveDeck
+    Identity/@Publisher               -> "Package/Identity/Publisher"   e.g. CN=A1B2C3D4-....
+    Properties/PublisherDisplayName   -> "Package/Properties/PublisherDisplayName"
+
+  Note what those actually contain: Partner Center's Publisher value is an OPAQUE identifier
+  Microsoft assigns, not a person's name, and PublisherDisplayName is whatever display name the
+  account is set to (e.g. "EveDeck"). Nothing here needs to carry a real name, and Microsoft
+  re-signs the package with its own certificate at ingestion, so no developer certificate (and
+  therefore no certificate subject naming anyone) ends up in the shipped binary.
+
+  The CI release job substitutes __VERSION__ from the git tag.
+-->
+
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 uap5 desktop rescap">
+
+  <Identity
+    Name="REPLACE.WITH.PARTNER.CENTER.PACKAGE.NAME"
+    Publisher="CN=REPLACE-WITH-PARTNER-CENTER-PUBLISHER-ID"
+    Version="__VERSION__" />
+
+  <Properties>
+    <DisplayName>EveDeck</DisplayName>
+    <PublisherDisplayName>EveDeck</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Window layout manager for EVE Online multiboxing: live client previews, hotkey focus switching, and resolution-independent layout profiles.</Description>
+  </Properties>
+
+  <Dependencies>
+    <!-- Matches the app's own SupportedOSPlatformVersion (10.0.19041.0). -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="EveDeck" Executable="EveDeck.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="EveDeck"
+        Description="Window layout manager for EVE Online multiboxing."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- Replaces the HKCU\Software\Classes registry write used by the unpackaged build. Inside a
+             package that write is virtualized and the shell never sees it, so the scheme has to be
+             declared here instead. See Services/ProtocolHandlerService.RegisterUrlProtocol. -->
+        <uap3:Extension Category="windows.protocol">
+          <uap3:Protocol Name="evedeck">
+            <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
+          </uap3:Protocol>
+        </uap3:Extension>
+
+        <!-- Replaces the HKCU ...\CurrentVersion\Run write, for the same reason. Enabled="false" so
+             the app does NOT start at login until the user opts in via Windows' Startup Apps
+             settings, which is where a packaged app's startup is managed. See
+             MainWindowViewModel.CanManageLaunchWithWindows. -->
+        <desktop:Extension Category="windows.startupTask" Executable="EveDeck.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="EveDeckStartup" Enabled="false" DisplayName="EveDeck" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Full-trust Win32. EveDeck needs it for the things it exists to do: enumerating and
+         repositioning other applications' windows (SetWindowPos), system-wide hotkeys
+         (RegisterHotKey), and DWM thumbnail previews. It reads EVE's own log files and talks to
+         CCP's public API; it never injects into, reads memory from, or sends input to any game
+         client. See COMPLIANCE.md.
+
+         runFullTrust is a restricted capability: the Store submission must justify it, and that
+         justification is exactly the above. -->
+    <rescap:Capability Name="runFullTrust" />
+    <Capability Name="internetClient" />
+  </Capabilities>
+</Package>

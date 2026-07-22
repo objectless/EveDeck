@@ -132,6 +132,32 @@ jobs:
             "/DMyAppVersion=${{ steps.ver.outputs.version }}" `
             "/DMySourceDir=$PWD\publish-ci"
 
+      - name: Build Microsoft Store package (MSIX)
+        shell: pwsh
+        # Deliberately UNSIGNED: Microsoft re-signs Store submissions with its own certificate at
+        # ingestion. Signing here would need a code-signing certificate whose subject names its
+        # holder, which is exactly what publishing through the Store avoids. The artifact is
+        # therefore not directly installable -- it is only meaningful uploaded to Partner Center.
+        #
+        # Not attached to the GitHub Release for the same reason: a .msix nobody can install would
+        # only generate confused issues. It is uploaded as a workflow artifact for manual
+        # submission instead.
+        continue-on-error: true
+        run: |
+          & app/scripts/pack-msix.ps1 `
+            -Version ${{ steps.ver.outputs.version }} `
+            -PublishDir "$PWD\publish-ci" `
+            -OutFile "$PWD\publish-msix\EveDeck-Store-v${{ steps.ver.outputs.version }}.msix"
+
+      - name: Upload MSIX artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: msix-store-package
+          path: publish-msix/*.msix
+          if-no-files-found: warn
+          retention-days: 90
+
       - name: Scan release files with VirusTotal
         id: vt
         shell: pwsh

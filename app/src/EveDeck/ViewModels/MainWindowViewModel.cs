@@ -293,6 +293,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private async Task CheckForUpdateAsync(bool manual = false)
     {
+        // The Store build never self-updates -- a packaged app cannot rewrite its own install
+        // directory, and Windows already keeps Store apps current. Say so rather than offering a
+        // check that could only ever end in a download the app is not permitted to apply.
+        if (Utilities.PackagedAppInfo.IsPackaged)
+        {
+            if (manual)
+            {
+                UpdateCheckStatusText = "Updates for the Microsoft Store version are delivered by the Store itself.";
+                OnPropertyChanged(nameof(UpdateCheckStatusText));
+            }
+            return;
+        }
+
         if (manual)
         {
             _isCheckingForUpdate = true;
@@ -960,15 +973,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     // 2j — Launch EveDeck with Windows via Run registry key.
+    // Run-at-login. In the MSIX (Store) build this is owned by the manifest's StartupTask extension
+    // and managed by Windows' own Startup Apps settings -- the HKCU Run key is virtualized inside the
+    // package, so writing it would appear to work and then do nothing. Report false and ignore
+    // writes there rather than lying to the user with a checkbox that silently has no effect; the
+    // Options UI hides the checkbox and points at Windows Settings instead.
+    public bool CanManageLaunchWithWindows => !Utilities.PackagedAppInfo.IsPackaged;
+
     public bool LaunchWithWindows
     {
         get
         {
+            if (Utilities.PackagedAppInfo.IsPackaged) return false;
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
             return key?.GetValue("EveDeck") is not null;
         }
         set
         {
+            if (Utilities.PackagedAppInfo.IsPackaged) return;
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
             if (key is null) return;
             if (value)

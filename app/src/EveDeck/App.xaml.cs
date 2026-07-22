@@ -21,7 +21,10 @@ public partial class App : Application
     [STAThread]
     public static void Main(string[] args)
     {
-        VelopackApp.Build().Run();
+        // Skipped entirely in the Microsoft Store (MSIX) build: a packaged app cannot modify its own
+        // install directory, so Velopack has nothing valid to do there -- the Store handles updates.
+        // See Utilities/PackagedAppInfo.
+        if (!Utilities.PackagedAppInfo.IsPackaged) VelopackApp.Build().Run();
         var app = new App();
         app.InitializeComponent();
 
@@ -33,6 +36,7 @@ public partial class App : Application
         // Application.Resources is populated before Run() creates any window, so MainWindow's
         // StaticResource lookups still resolve at parse time.
         app.Resources["IndexToVisibility"] = new Converters.IndexToVisibilityConverter();
+        app.Resources["BoolToVisibility"] = new Converters.BoolToVisibilityConverter();
 
         app.Run();
     }

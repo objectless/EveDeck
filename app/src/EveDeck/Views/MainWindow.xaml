@@ -1761,9 +1761,15 @@ Styling for the active-client highlight frame and the preview-label pills (font,
                     <TextBlock Text="System Integration" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
               <CheckBox Content="Launch EveDeck with Windows"
                         IsChecked="{Binding LaunchWithWindows}"
+                        Visibility="{Binding CanManageLaunchWithWindows, Converter={StaticResource BoolToVisibility}}"
                         Margin="0,0,0,6"/>
               <TextBlock Text="Starts EveDeck automatically when you sign in to Windows."
+                         Visibility="{Binding CanManageLaunchWithWindows, Converter={StaticResource BoolToVisibility}}"
                          Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,4"/>
+              <TextBlock TextWrapping="Wrap" LineHeight="18" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,4"
+                         Visibility="{Binding CanManageLaunchWithWindows, Converter={StaticResource BoolToVisibility}, ConverterParameter=invert}">
+                This is the Microsoft Store version, so Windows manages startup for you: open Settings &gt; Apps &gt; Startup and turn on EveDeck there.
+              </TextBlock>
                   </StackPanel>
                   <!-- section 5: Interface Scale -->
                   <StackPanel Visibility="{Binding SelectedIndex, ElementName=OptionsMenu, Converter={StaticResource IndexToVisibility}, ConverterParameter=5}">

@@ -177,6 +177,22 @@ public sealed partial class MainWindowViewModel
                 MumblePluginInstallStatus = "Plugin DLL not found next to EveDeck.exe — reinstall EveDeck.";
                 return;
             }
+
+            // The Microsoft Store (MSIX) build cannot do this copy. Writing into ANOTHER app's
+            // %APPDATA% is redirected into this package's own private store, so the file would land
+            // somewhere Mumble never looks and the copy would "succeed" while achieving nothing.
+            // Tell the user how to do it by hand instead of failing silently or lying about it.
+            if (Utilities.PackagedAppInfo.IsPackaged)
+            {
+                var mumbleDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Mumble", "Mumble", "Plugins");
+                MumblePluginInstallStatus =
+                    "The Microsoft Store version can't copy files into Mumble's folder for you (Windows sandboxes packaged apps). "
+                    + $"Copy this file:\n{source}\n\ninto:\n{mumbleDir}\n\n"
+                    + "then in Mumble: Configure > Plugins > enable \"EveDeck Talker Bridge\".";
+                Log.Info("Mumble plugin auto-install skipped (packaged build); showed manual instructions.");
+                return;
+            }
             // Mumble's user plugin dir nests the Qt org AND app name: %APPDATA%\Mumble\Mumble\Plugins.
             // The shorter %APPDATA%\Mumble\Plugins also exists on disk but is never scanned
             // (verified empirically against Mumble 1.5 -- the DLL sat there invisible to Mumble).
