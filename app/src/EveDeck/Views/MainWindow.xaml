@@ -457,12 +457,21 @@
                       BorderThickness="1"
                       CornerRadius="6"
                       Padding="10">
+                <!-- Scrolls the whole Slots panel when the window is too short to show everything at
+                     once (e.g. high OS display scaling shrinks the usable height): the header,
+                     description, minimap, and slots list stack taller than the pane, so without this
+                     the *-sized slots list collapsed to nothing and became unreachable for drag-drop.
+                     WPF auto-scrolls this during a drag, so dragging a slot grip up to the minimap
+                     still works. -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <Grid>
                   <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
+                    <!-- Auto (not star): the slots list sizes to its content and the ScrollViewer
+                         above does the scrolling, rather than the list being squeezed to zero. -->
+                    <RowDefinition Height="Auto"/>
                   </Grid.RowDefinitions>
 
                   <!-- Character Set switcher -->
@@ -631,17 +640,19 @@
                     </Canvas>
                   </Border>
 
-                  <ListBox x:Name="SlotsListBox" Grid.Row="3"
+                  <!-- Row 3 is Auto now, so the list sizes to its content and the outer ScrollViewer
+                       owns the scrolling; its own vertical scrollbar is disabled to avoid a nested
+                       scroll region. MinHeight keeps an empty/short list a usable drag-drop target. -->
+                  <ListBox x:Name="SlotsListBox" Grid.Row="3" MinHeight="160"
                            PreviewKeyDown="SlotsListBox_PreviewKeyDown"
                            ItemsSource="{Binding Assignments}"
                            SelectedItem="{Binding SelectedAssignment}"
-                           VirtualizingPanel.ScrollUnit="Pixel"
-                           VirtualizingPanel.IsVirtualizing="True"
-                           ScrollViewer.CanContentScroll="True"
+                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
                            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                            ItemTemplate="{StaticResource SeatCardTemplate}">
                   </ListBox>
                 </Grid>
+                </ScrollViewer>
               </Border>
             </Grid>
           </Grid>
