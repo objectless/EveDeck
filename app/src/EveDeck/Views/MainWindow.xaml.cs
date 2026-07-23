@@ -115,9 +115,65 @@ public partial class MainWindow : Window
         double scale = _viewModel.UiScale;
         // +10 covers RootContent's 1px border per side plus slack, so the last tab is never flush.
         double stripNeed = _tabStripWidth > 0 ? (_tabStripWidth * scale) + 10 : 0;
-        MinWidth = Math.Max(BaseMinWidth * scale, stripNeed);
-        MinHeight = BaseMinHeight * scale;
+        double minW = Math.Max(BaseMinWidth * scale, stripNeed);
+        double minH = BaseMinHeight * scale;
+
+        // Never let the minimum -- or the window's current size -- exceed the display it sits on.
+        // Without this, at a high OS display-scaling value on a small screen the window becomes
+        // taller/wider than the monitor, so its bottom/right controls sit off-screen with no way to
+        // reach them (MinHeight blocks shrinking, the title bar can't leave the top). Microsoft Store
+        // certification flagged exactly this under policy 10.1.2.10 ("fully accessible on common
+        // resolution scaling values"): the Copy Settings button on the Profile Sync tab was clipped
+        // below the screen edge. Clamp to the current monitor's work area (in DIPs).
+        var (workW, workH) = CurrentScreenWorkAreaDip();
+        if (workW > 0) minW = Math.Min(minW, workW);
+        if (workH > 0) minH = Math.Min(minH, workH);
+
+        MinWidth = minW;
+        MinHeight = minH;
+
         if (Width < MinWidth) Width = MinWidth;
+        if (workW > 0 && Width > workW) Width = workW;
+        if (workH > 0 && Height > workH) Height = workH;
+    }
+
+    // Work area (taskbar excluded) of the monitor this window is currently on, in DIPs. Returns
+    // (0,0) before the HWND exists (early ctor-time calls via ApplyUiScale), which callers treat as
+    // "not resolvable yet, don't clamp" -- OnSourceInitialized re-runs the clamp once it is.
+    private (double w, double h) CurrentScreenWorkAreaDip()
+    {
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == 0) return (0, 0);
+            var wa = System.Windows.Forms.Screen.FromHandle(hwnd).WorkingArea; // physical pixels
+            var src = PresentationSource.FromVisual(this);
+            double dpiX = src?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+            double dpiY = src?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+            if (dpiX <= 0) dpiX = 1;
+            if (dpiY <= 0) dpiY = 1;
+            return (wa.Width / dpiX, wa.Height / dpiY);
+        }
+        catch
+        {
+            return (0, 0); // any failure to resolve the screen just skips the clamp this pass
+        }
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        // The HWND (and thus the screen work area) is resolvable now but was not during the ctor's
+        // ApplyUiScale call -- re-clamp before the first frame so an oversized window never appears.
+        ApplyWindowMinimums();
+    }
+
+    protected override void OnDpiChanged(System.Windows.DpiScale oldDpi, System.Windows.DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        // Dragging to a monitor with different scaling changes the DIP size of the work area, so the
+        // window that just fit may now be larger than the new screen -- re-clamp to it.
+        ApplyWindowMinimums();
     }
 
     // Re-runnable from the Settings tab; on first run it's launched automatically.
