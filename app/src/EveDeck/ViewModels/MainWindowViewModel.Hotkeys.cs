@@ -80,6 +80,10 @@ public sealed partial class MainWindowViewModel
             {
                 ForceRefreshPreviews();
             }
+            else if (actionId.Equals("TogglePreviewsSuspended", StringComparison.OrdinalIgnoreCase))
+            {
+                PreviewsSuspended = !PreviewsSuspended;
+            }
         }
         catch (Exception ex)
         {

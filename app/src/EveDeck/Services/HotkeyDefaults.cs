@@ -109,6 +109,11 @@ public static class HotkeyDefaults
         // fired automatically on a timer. Ships unbound.
         bindings.Add(new HotkeyBinding { ActionId = "ForceRefreshPreviews", DisplayName = "Force refresh previews", Modifiers = 0, VirtualKey = 0, GestureText = "" });
 
+        // Suspend/resume every corner preview at once -- hides the overlay surfaces so DWM stops
+        // compositing the live thumbnails (a GPU/clutter breather) without tearing the overlay down,
+        // so resuming is instant. Also on the tray menu. Ships unbound.
+        bindings.Add(new HotkeyBinding { ActionId = "TogglePreviewsSuspended", DisplayName = "Suspend / resume all previews", Modifiers = 0, VirtualKey = 0, GestureText = "" });
+
         return bindings;
     }
 }

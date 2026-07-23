@@ -49,6 +49,24 @@ public sealed partial class MainWindowViewModel
     // True while the corner-overlay surfaces exist (the overlays are live on screen).
     internal bool CornerOverlaysLive => _tileSurface is not null;
 
+    // Show/hide the live corner-preview surfaces to match PreviewsSuspended. Hiding stops DWM
+    // compositing every registered thumbnail (the whole point -- a GPU/clutter breather) WITHOUT
+    // unregistering anything, so resuming is instant and needs no re-register blink. Routed through
+    // the same SW_HIDE path as focus-loss hiding; UpdateFocusLossHiding and MaintainCornerOverlays
+    // are both gated on _previewsSuspended so the per-tick upkeep can't re-show a suspended overlay
+    // (which is exactly what re-appeared the previews ~250ms after a WinForms Hide()). No-op when the
+    // overlays aren't running; the state still sticks and is re-applied when they next build.
+    internal void ApplyPreviewsSuspended()
+    {
+        if (_tileSurface is null) return;
+        if (_previewsSuspended)
+            ShowOverlaySurfaces(false);
+        else if (!_previewsHiddenByFocusLoss)
+            // Resuming: only show if focus-loss hiding doesn't already want them hidden (don't flash
+            // the overlay on while alt-tabbed away). The next tick re-evaluates focus loss cleanly.
+            ShowOverlaySurfaces(true);
+    }
+
     // Corner position waiting for the debounce delay to fire. -1 = none pending.
     private int _pendingHoverPosition = -1;
 
@@ -362,6 +380,10 @@ public sealed partial class MainWindowViewModel
             _labelSurface.SetOwner(_tileSurface.Handle);
             _labelSurface.Show();
         }
+
+        // Keep a suspended overlay suspended across a rebuild -- otherwise reconstructing the
+        // surfaces above (which Show() them) would silently pop the previews back on.
+        ApplyPreviewsSuspended();
 
         var allGroupCenterSlotNums = groupCenterSlots.Values.ToHashSet();
         foreach (var slot in SelectedProfile.Slots.Where(s => !allGroupCenterSlotNums.Contains(s.SlotNumber)))
@@ -1403,6 +1425,10 @@ public sealed partial class MainWindowViewModel
     // open; hiding instantly would flash the whole overlay off and back on during normal play.
     private void UpdateFocusLossHiding(bool eveOrEwcForeground)
     {
+        // User-suspended previews stay hidden regardless of focus -- never re-show them here.
+        // ApplyPreviewsSuspended restores the correct visibility when suspension is lifted.
+        if (_previewsSuspended) return;
+
         if (!_settings.HidePreviewsOnFocusLoss)
         {
             if (_previewsHiddenByFocusLoss) SetOverlaySurfacesVisible(true);
@@ -1427,6 +1453,16 @@ public sealed partial class MainWindowViewModel
     private void SetOverlaySurfacesVisible(bool visible)
     {
         _previewsHiddenByFocusLoss = !visible;
+        ShowOverlaySurfaces(visible);
+    }
+
+    // Raw SW_HIDE / SW_SHOWNOACTIVATE on both owned surfaces, WITHOUT touching the focus-loss
+    // bookkeeping. Used by the focus-loss path (via SetOverlaySurfacesVisible) AND by the user-driven
+    // preview suspend (ApplyPreviewsSuspended), which is an independent reason to hide the overlay --
+    // keeping the ShowWindow call in one place is what stops the two features fighting over
+    // visibility (an earlier suspend using WinForms Hide() got re-shown by this path every tick).
+    private void ShowOverlaySurfaces(bool visible)
+    {
         var cmd = visible ? Utilities.Win32Native.SwShowNoActivate : Utilities.Win32Native.SwHide;
 
         if (_tileSurface is { IsHandleCreated: true } tiles)
@@ -1483,7 +1519,9 @@ public sealed partial class MainWindowViewModel
         // Runs before the z-order/hover work below: while the overlay is hidden there is nothing to
         // keep on top and no tile for the cursor to be over.
         UpdateFocusLossHiding(eveOrEwcFg);
-        if (_previewsHiddenByFocusLoss) return;
+        // Suspended or focus-hidden: nothing on screen to keep topmost, no tile for the cursor to be
+        // over, and no source liveness to push -- skip the rest of the tick.
+        if (_previewsHiddenByFocusLoss || _previewsSuspended) return;
 
         // The overlay itself is always topmost now (ApplySurfaceZOrder, called on creation and from
         // event-driven triggers) -- no per-tick re-assertion of OUR OWN HWND_TOPMOST here, that churn

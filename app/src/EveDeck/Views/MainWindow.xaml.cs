@@ -262,6 +262,13 @@ public partial class MainWindow : Window
         var contextMenu = new System.Windows.Forms.ContextMenuStrip();
         contextMenu.Items.Add("Open EveDeck", null, (_, _) => ShowFromTray());
         contextMenu.Items.Add("Reload active profile", null, (_, _) => ReloadActiveProfileFromTray());
+        // Suspend/resume the live corner previews. Checkmark reflects the current state, which can also
+        // be flipped by the TogglePreviewsSuspended hotkey, so it's re-synced on every menu open rather
+        // than tracked via CheckOnClick.
+        _suspendPreviewsMenuItem = new System.Windows.Forms.ToolStripMenuItem("Suspend previews", null,
+            (_, _) => _viewModel.PreviewsSuspended = !_viewModel.PreviewsSuspended);
+        contextMenu.Items.Add(_suspendPreviewsMenuItem);
+        contextMenu.Opening += (_, _) => _suspendPreviewsMenuItem.Checked = _viewModel.PreviewsSuspended;
         _configProfilesMenu = new System.Windows.Forms.ToolStripMenuItem("Config profile");
         contextMenu.Items.Add(_configProfilesMenu);
         contextMenu.Items.Add("Check for Updates", null, (_, _) => _viewModel.CheckForUpdateCommand.Execute(null));
@@ -275,6 +282,7 @@ public partial class MainWindow : Window
     }
 
     private System.Windows.Forms.ToolStripMenuItem? _configProfilesMenu;
+    private System.Windows.Forms.ToolStripMenuItem? _suspendPreviewsMenuItem;
 
     // The tray is the ONLY switcher for config profiles (the Options panel creates and edits them,
     // which is a different job). Rebuilt from scratch on every change rather than diffed -- the list

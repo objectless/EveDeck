@@ -25,7 +25,8 @@ public static class SafetyGuard
         "ToggleTopmost",
         "SwitchCharacterSet",
         "MinimizeAllClients",
-        "ForceRefreshPreviews"
+        "ForceRefreshPreviews",
+        "TogglePreviewsSuspended"
     };
 
     public static bool AllowsHotkeyAction(string actionId)

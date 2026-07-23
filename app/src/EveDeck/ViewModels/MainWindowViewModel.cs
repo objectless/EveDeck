@@ -1551,6 +1551,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    // Suspend the live corner previews without tearing the overlay down -- hides both overlay
+    // surfaces so DWM stops compositing every registered thumbnail, then shows them again to resume
+    // (no re-register blink, since nothing is unregistered). Runtime-only, deliberately NOT persisted
+    // for the same reason as HotkeysSuspended: a tool that silently stayed "previews off" across a
+    // restart would read as broken. ApplyPreviewsSuspended (partial, in CornerOverlays) does the
+    // show/hide and is re-run whenever the overlay is rebuilt so a rebuild stays suspended.
+    private bool _previewsSuspended;
+    public bool PreviewsSuspended
+    {
+        get => _previewsSuspended;
+        set
+        {
+            if (_previewsSuspended == value) return;
+            _previewsSuspended = value;
+            OnPropertyChanged();
+            Log.Info(value ? "Corner previews suspended." : "Corner previews resumed.");
+            ApplyPreviewsSuspended();
+        }
+    }
+
     public bool ThrottleBackgroundProcesses
     {
         get => _settings.ThrottleBackgroundProcesses;
