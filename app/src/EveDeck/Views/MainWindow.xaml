@@ -457,21 +457,18 @@
                       BorderThickness="1"
                       CornerRadius="6"
                       Padding="10">
-                <!-- Scrolls the whole Slots panel when the window is too short to show everything at
-                     once (e.g. high OS display scaling shrinks the usable height): the header,
-                     description, minimap, and slots list stack taller than the pane, so without this
-                     the *-sized slots list collapsed to nothing and became unreachable for drag-drop.
-                     WPF auto-scrolls this during a drag, so dragging a slot grip up to the minimap
-                     still works. -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <Grid>
                   <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <!-- Auto (not star): the slots list sizes to its content and the ScrollViewer
-                         above does the scrolling, rather than the list being squeezed to zero. -->
-                    <RowDefinition Height="Auto"/>
+                    <!-- The minimap and the slots list SHARE the leftover height instead of the
+                         minimap taking a fixed 216px and starving the list. The minimap row is capped
+                         at the minimap's natural 216 (never grows past it, so no gap on a tall window)
+                         and, being star-sized, shrinks below it when the window is short (e.g. high OS
+                         display scaling); a Viewbox scales the minimap down to match. The slots list
+                         gets the larger share so it stays usable without scrolling the whole panel. -->
+                    <RowDefinition Height="*" MaxHeight="216"/>
+                    <RowDefinition Height="2*"/>
                   </Grid.RowDefinitions>
 
                   <!-- Character Set switcher -->
@@ -556,8 +553,12 @@
                   </DockPanel>
 
                   <!-- Layout minimap: drag an EVE window onto a cell to assign it, or drag a slot card's grip
-                       onto a corner to set that seat's home corner (center cell = Master). -->
-                  <Border Grid.Row="2" Margin="0,0,0,8" HorizontalAlignment="Center" Padding="4"
+                       onto a corner to set that seat's home corner (center cell = Master). The Viewbox
+                       (DownOnly) scales the whole minimap down to fit its row when the window is short,
+                       and drag hit-testing follows the scale, so drops still land on the right cell. -->
+                  <Viewbox Grid.Row="2" StretchDirection="DownOnly" HorizontalAlignment="Center"
+                           VerticalAlignment="Top" Margin="0,0,0,8">
+                  <Border HorizontalAlignment="Center" Padding="4"
                           Background="#080D14" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4">
                     <Border.Style>
                       <Style TargetType="Border">
@@ -639,20 +640,22 @@
                       </ItemsControl>
                     </Canvas>
                   </Border>
+                  </Viewbox>
 
-                  <!-- Row 3 is Auto now, so the list sizes to its content and the outer ScrollViewer
-                       owns the scrolling; its own vertical scrollbar is disabled to avoid a nested
-                       scroll region. MinHeight keeps an empty/short list a usable drag-drop target. -->
-                  <ListBox x:Name="SlotsListBox" Grid.Row="3" MinHeight="160"
+                  <!-- Fills the leftover height (Row 3 = 2*) and scrolls internally with its own
+                       virtualized scroll; MinHeight keeps a short/empty list a usable drag-drop target
+                       when the window is small. -->
+                  <ListBox x:Name="SlotsListBox" Grid.Row="3" MinHeight="120"
                            PreviewKeyDown="SlotsListBox_PreviewKeyDown"
                            ItemsSource="{Binding Assignments}"
                            SelectedItem="{Binding SelectedAssignment}"
-                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                           VirtualizingPanel.ScrollUnit="Pixel"
+                           VirtualizingPanel.IsVirtualizing="True"
+                           ScrollViewer.CanContentScroll="True"
                            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                            ItemTemplate="{StaticResource SeatCardTemplate}">
                   </ListBox>
                 </Grid>
-                </ScrollViewer>
               </Border>
             </Grid>
           </Grid>
