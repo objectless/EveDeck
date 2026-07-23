@@ -49,6 +49,10 @@ internal static class Win32Native
     internal const int DwmTnpRectDestination = 0x00000001;
     internal const int DwmTnpOpacity = 0x00000004;
     internal const int DwmTnpVisible = 0x00000008;
+    // DWM_TNP_SOURCECLIENTAREAONLY: draw only the source window's client area (drop the title bar and
+    // border chrome), so more of a small preview tile is actual game content. Strips chrome, not game
+    // content, so unlike rcSource cropping it doesn't fall under the EULA whole-window-preview rule.
+    internal const int DwmTnpSourceClientAreaOnly = 0x00000010;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct NativeRect { public int Left, Top, Right, Bottom; }

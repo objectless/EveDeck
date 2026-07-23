@@ -97,6 +97,17 @@ public class SafetyGuardTests
         SafetyGuard.ThrowIfSourceCrop(destination | visible | opacity);
     }
 
+    [Fact]
+    public void ThrowIfSourceCrop_AllowsSourceClientAreaOnlyFlag()
+    {
+        // fSourceClientAreaOnly (DWM_TNP_SOURCECLIENTAREAONLY, 0x10) drops the source window's title
+        // bar/border chrome, NOT game content, so it is EULA-safe and must not be mistaken for a crop.
+        const int destination = 0x00000001, visible = 0x00000008, opacity = 0x00000004,
+                  sourceClientAreaOnly = 0x00000010;
+
+        SafetyGuard.ThrowIfSourceCrop(destination | visible | opacity | sourceClientAreaOnly);
+    }
+
     [Theory]
     [InlineData("CropPreview")]
     [InlineData("PreviewSlice")]

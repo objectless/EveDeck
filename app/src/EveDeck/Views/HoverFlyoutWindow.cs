@@ -49,9 +49,11 @@ internal sealed class HoverFlyoutWindow : Window
             {
                 var props = new Win32Native.DwmThumbnailProperties
                 {
-                    dwFlags = Win32Native.DwmTnpRectDestination | Win32Native.DwmTnpVisible,
+                    dwFlags = Win32Native.DwmTnpRectDestination | Win32Native.DwmTnpVisible
+                              | Win32Native.DwmTnpSourceClientAreaOnly,
                     rcDestination = new Win32Native.NativeRect { Left = 0, Top = 0, Right = cw, Bottom = ch },
-                    fVisible = true
+                    fVisible = true,
+                    fSourceClientAreaOnly = true
                 };
                 // Guarded like every other thumbnail update -- rcSource / DWM_TNP_RECTSOURCE would
                 // show only part of the EVE client, which is against the EULA. See

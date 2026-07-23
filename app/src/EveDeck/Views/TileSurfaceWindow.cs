@@ -323,7 +323,8 @@ internal sealed class TileSurfaceWindow : WinForms.Form
         _thumbnails[position] = id;
         var props = new Win32Native.DwmThumbnailProperties
         {
-            dwFlags = Win32Native.DwmTnpRectDestination | Win32Native.DwmTnpVisible | Win32Native.DwmTnpOpacity,
+            dwFlags = Win32Native.DwmTnpRectDestination | Win32Native.DwmTnpVisible | Win32Native.DwmTnpOpacity
+                      | Win32Native.DwmTnpSourceClientAreaOnly,
             rcDestination = new Win32Native.NativeRect
             {
                 Left = dest.Left,
@@ -332,6 +333,7 @@ internal sealed class TileSurfaceWindow : WinForms.Form
                 Bottom = dest.Bottom
             },
             fVisible = true,
+            fSourceClientAreaOnly = true,
             opacity = _opacity
         };
         if (ApplyThumbnailProperties(id, ref props) != 0)
